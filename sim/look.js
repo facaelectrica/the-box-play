@@ -73,16 +73,20 @@ export function buildLook(THREE, mergeGeometries, W) {
           [0.128, 0.082, 0.056, -0.012]],
           { n: 2.6, capB: 0.004, capT: 0.010, seg: 56, sub: 5, bump: (th, y) => {
             const pec = gau(y - 0.035, y < 0.035 ? 0.022 : 0.05);
-            return 0.016 * (gau(angTo(th, 0.42), 0.3) + gau(angTo(th, -0.42), 0.3)) * pec
+            return 0.02 * (gau(angTo(th, 0.42), 0.3) + gau(angTo(th, -0.42), 0.3)) * pec
               - 0.005 * gau(th, 0.07) * gau(y - 0.02, 0.07)
               + 0.010 * (gau(angTo(th, PI - 0.55), 0.33) + gau(angTo(th, -PI + 0.55), 0.33)) * gau(y - 0.045, 0.04)
               + 0.006 * (gau(angTo(th, PI / 2 + 0.35), 0.35) + gau(angTo(th, -PI / 2 - 0.35), 0.35)) * gau(y - 0.02, 0.05)
               - 0.004 * gau(angTo(th, PI), 0.07);
           } });
-      case 'belly': return loft([[-0.062, 0.110, 0.078], [-0.030, 0.100, 0.074, 0.002], [0.000, 0.097, 0.073, 0.003],
-          [0.030, 0.099, 0.074, 0.003], [0.062, 0.104, 0.075]],
-          { n: 2.3, capB: 0.006, capT: 0.006, seg: 48, bump: (th, y) =>
-            0.004 * (gau(angTo(th, 0.2), 0.13) + gau(angTo(th, -0.2), 0.13)) * (1 - 0.35 * gau(y + 0.005, 0.012))
+      // paint-over (user, 09:46): a taller abdomen from the ribs down to below the navel, flaring into the ribcage
+      // (bottom ring = the hips' top, top ring = the ribcage's bottom, so the three join without a step)
+      case 'belly': return loft([[-0.096, 0.125, 0.080], [-0.062, 0.110, 0.077, 0.001], [-0.030, 0.102, 0.075, 0.002],
+          [0.005, 0.099, 0.075, 0.002], [0.040, 0.099, 0.077, 0.001], [0.072, 0.100, 0.081], [0.096, 0.101, 0.084]],
+          { n: 2.3, capB: 0.004, capT: 0.004, seg: 56, sub: 5, bump: (th, y) =>
+            0.004 * (gau(angTo(th, 0.2), 0.13) + gau(angTo(th, -0.2), 0.13)) * gau(y - 0.01, 0.06)    // stomach muscles
+            - 0.003 * gau(th, 0.05) * gau(y - 0.01, 0.07)                                          // the line down the middle
+            - 0.007 * gau(th, 0.07) * gau(y + 0.035, 0.011)                                        // navel
             - 0.004 * gau(angTo(th, PI), 0.07) });
       case 'pelvis': return loft([
           [-0.074, 0.050, 0.052, 0.008], [-0.062, 0.088, 0.070, 0.004], [-0.040, 0.122, 0.082, 0.001], [-0.008, 0.134, 0.086, -0.002],
@@ -95,19 +99,22 @@ export function buildLook(THREE, mergeGeometries, W) {
           { capB: 0.008, capT: 0.008, seg: 28 });
       case 'head': {
         const r = 0.10;
+        // paint-over (user, 09:46): more defined brow, nose, cheekbones and jaw (v12.1's head, each feature raised
+        // moderately; much stronger and the surface folds inward)
         const g = loft([
           [-1.20, 0.18, 0.12, 0.40], [-1.12, 0.38, 0.27, 0.30], [-0.98, 0.56, 0.46, 0.16], [-0.72, 0.66, 0.63, 0.07],
           [-0.40, 0.76, 0.76, 0.02], [-0.05, 0.83, 0.86, -0.02], [0.25, 0.86, 0.90, -0.05], [0.50, 0.835, 0.88, -0.07]],
-          { capB: 0.03, capT: 0.52, seg: 64, sub: 6, bump: (th, y) => {
+          { capB: 0.03, capT: 0.55, seg: 72, sub: 7, bump: (th, y) => {
             const ny = gau(y + 0.32, y > -0.32 ? 0.36 : 0.15);
-            return 0.14 * gau(th, 0.075 + 0.05 * ny) * ny
-              + 0.05 * gau(th, 0.6) * gau(y - 0.15, 0.07)
-              - 0.035 * (gau(angTo(th, 0.36), 0.15) + gau(angTo(th, -0.36), 0.15)) * gau(y - 0.0, 0.1)
-              + 0.025 * (gau(angTo(th, 0.75), 0.2) + gau(angTo(th, -0.75), 0.2)) * gau(y + 0.22, 0.12)
-              + 0.012 * gau(th, 0.3) * gau(y + 0.66, 0.09)
-              + 0.035 * gau(th, 0.28) * gau(y + 1.02, 0.09);
+            return 0.14 * gau(th, 0.075 + 0.05 * ny) * ny                                                      // nose (v12.1)
+              + 0.065 * gau(th, 0.6) * gau(y - 0.14, 0.065)                                                     // brow ridge
+              - 0.022 * (gau(angTo(th, 0.36), 0.16) + gau(angTo(th, -0.36), 0.16)) * gau(y - 0.0, 0.1)         // eye sockets
+              + 0.036 * (gau(angTo(th, 0.74), 0.2) + gau(angTo(th, -0.74), 0.2)) * gau(y + 0.21, 0.11)         // cheekbones
+              + 0.03 * (gau(angTo(th, 1.05), 0.3) + gau(angTo(th, -1.05), 0.3)) * gau(y + 0.84, 0.11)          // jaw angle
+              + 0.012 * gau(th, 0.3) * gau(y + 0.66, 0.09)                                                      // mouth, barely there
+              + 0.045 * gau(th, 0.3) * gau(y + 1.02, 0.09);                                                     // chin
           } });
-        g.scale(r, r, r);
+        g.scale(r, r * 1.03, r);
         const ears = [-1, 1].map(sx => { const e = bare(new THREE.SphereGeometry(1, 16, 12)); e.scale(0.11 * r, 0.27 * r, 0.19 * r); e.rotateY(sx * 0.25); e.translate(sx * 0.82 * r, -0.12 * r, -0.10 * r); return e; });
         return mergeGeometries([g, ...ears]);
       }
@@ -116,10 +123,17 @@ export function buildLook(THREE, mergeGeometries, W) {
         g.scale(1, 0.8, 0.95); g.rotateZ(-side * 0.55);
         return g;
       }
-      case 'uArm': return loft([[-0.092, 0.030, 0.032], [-0.050, 0.034, 0.037], [0.010, 0.040, 0.044], [0.060, 0.045, 0.046], [0.086, 0.043, 0.043]],
-          { capB: 0.016, capT: 0.02, bump: (th, y) => 0.004 * gau(th, 0.6) * gau(y - 0.0, 0.04) });
-      case 'fArm': return loft([[-0.088, 0.023, 0.020], [-0.050, 0.028, 0.026], [0.0, 0.034, 0.033], [0.050, 0.038, 0.036], [0.078, 0.035, 0.034]],
-          { capB: 0.012, capT: 0.018 });
+      // paint-over (user, 09:46): rounded upper arms and a natural forearm taper, not straight tubes
+      case 'uArm': return loft([[-0.096, 0.031, 0.033], [-0.062, 0.035, 0.039], [-0.022, 0.040, 0.046], [0.020, 0.043, 0.047],
+          [0.058, 0.046, 0.046], [0.092, 0.049, 0.047]],
+          { capB: 0.018, capT: 0.026, seg: 40, bump: (th, y) =>
+            0.008 * gau(th, 0.55) * gau(y + 0.012, 0.042)                                    // biceps
+            + 0.006 * gau(angTo(th, PI), 0.6) * gau(y - 0.01, 0.05)                         // triceps
+            + 0.009 * gau(angTo(th, side * PI / 2), 0.95) * gau(y - 0.085, 0.035) });      // deltoid, outside and up
+      case 'fArm': return loft([[-0.095, 0.021, 0.016], [-0.062, 0.024, 0.019], [-0.022, 0.030, 0.026], [0.020, 0.037, 0.033],
+          [0.058, 0.041, 0.037], [0.084, 0.039, 0.037]],
+          { capB: 0.011, capT: 0.02, seg: 40, bump: (th, y) =>
+            0.006 * gau(angTo(th, side * 0.95), 0.5) * gau(y - 0.045, 0.04) });           // the muscle on the thumb side, below the elbow
       case 'thigh': return loft([[-0.150, 0.040, 0.043], [-0.100, 0.046, 0.050, 0.002], [-0.030, 0.054, 0.059, 0.004], [0.050, 0.061, 0.065, 0.002],
           [0.120, 0.065, 0.066], [0.150, 0.064, 0.063], [0.178, 0.056, 0.056, 0, side * 0.012]],
           { capB: 0.022, capT: 0.018, bump: (th, y) => 0.005 * gau(th, 0.5) * gau(y + 0.02, 0.07) });
@@ -184,22 +198,36 @@ export function buildLook(THREE, mergeGeometries, W) {
   const out = {}; for (const n of W.bodyNames) out[n] = [];
   const add = (body, geo, mat = 'shell') => { geo.computeVertexNormals(); out[body].push({ geo, mat, at: P[body] }); };
   const ball = (body, r) => add(body, place(bare(new THREE.SphereGeometry(r, 20, 14)), { at: P[body] }), 'dark');
-  const band = (body, rx, rz, dy) => { const g = bare(new THREE.CylinderGeometry(1, 1, 0.014, 40)); g.scale(rx, 1, rz); add(body, place(g, { at: P[body].clone().add(V(0, dy, 0)) }), 'dark'); };
+  // a thin dark seam line around the torso at height z, on a superellipse outline (half width w, half depth d, exponent
+  // n like the loft's), a hair outside it, dipping `dip` at the front
+  const seam = (body, z, w, d, n, y0, dip) => {
+    const e = 2 / n, pts = [];
+    for (let i = 0; i < 96; i++) { const t = i / 96 * 2 * PI, sn = Math.sin(t), c = Math.cos(t);
+      const dz = dip * Math.pow(Math.max(0, c), 1.6), k = 1.014 + 1.4 * dz;   // further out where it dips (over the belly and hips)
+      pts.push(V(k * w * Math.sign(sn) * Math.pow(Math.abs(sn), e), y0 - k * d * Math.sign(c) * Math.pow(Math.abs(c), e), z - dz)); }
+    const g = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 192, 0.0032, 8, true);
+    add(body, bare(g), 'dark');
+  };
 
   // torso: pelvis on the hips, belly on Spine2 (between Spine1 and Chest), chest up to the neck; dark waist bands
   const hipJ = P.RightLeg.clone().add(P.LeftLeg).multiplyScalar(0.5), hipW = P.LeftLeg.x - P.RightLeg.x;
   add('Hips', place(sculpt('pelvis', 1), { s: [hipW / 0.18, 0.95, 1], at: V(0, hipJ.y - 0.004, hipJ.z + 0.08 * 0.95) }));
-  const bellyLen = P.Chest.z - P.Spine1.z;
-  add('Spine2', place(sculpt('belly', 1), { s: [0.97, bellyLen / 0.145, 0.98], at: V(0, P.Spine2.y - 0.035, (P.Spine1.z + P.Chest.z) / 2) }));
-  band('Spine1', 0.104, 0.074, -0.035);
-  band('Chest', 0.098, 0.070, -0.035);
-  const chestLen = P.Neck1.z - P.Chest.z, chestS = chestLen / 0.225;
-  add('Chest', place(sculpt('chest', 1), { s: [0.88, chestS, 1.0], at: V(0, P.Chest.y - 0.028, P.Chest.z + 0.115 * chestS) }));
+  // the two seams (paint-over: thin dark lines that dip at the front): the rib line a little above the Chest joint,
+  // the waist line at Spine1
+  const ribZ = P.Chest.z + 0.045, waistZ = P.Spine1.z - 0.004;
+  const bellyLen = ribZ - waistZ;
+  const bellyY = -0.026;
+  add('Spine2', place(sculpt('belly', 1), { s: [0.98, bellyLen / 0.192, 1.0], at: V(0, bellyY, (waistZ + ribZ) / 2) }));
+  const chestLen = P.Neck1.z - ribZ, chestS = chestLen / 0.225;
+  add('Chest', place(sculpt('chest', 1), { s: [0.95, chestS, 1.16], at: V(0, P.Chest.y - 0.03, ribZ + 0.114 * chestS) }));
+  // seams on the shapes' own outlines (ribcage bottom, hips top), dipping at the front like the paint-over
+  seam('Chest', ribZ, 0.104 * 0.95, 0.074 * 1.16, 2.6, P.Chest.y - 0.03, 0.010);
+  seam('Hips', waistZ + 0.004, 0.110 * hipW / 0.18, 0.078, 2.4, hipJ.y - 0.004, 0);   // on the hips' top edge
   // neck in two pieces (Neck1 -> Neck2 -> Head), dark like v12.1
-  // the neck sits a little behind the joint line and stops under the skull (in front it showed as a dark beard)
-  add('Neck1', limb('neck', 1, 'Neck1', 'Neck2', 0.10, 0.92).translate(0, 0.008, 0), 'dark');
-  add('Neck2', limb('neck', 1, 'Neck2', 'Head', 0.13, 0.88).translate(0, 0.016, -0.006), 'dark');
-  add('Head', place(sculpt('head', 1), { s: [0.97, 0.97, 0.97], at: P.Head.clone().add(V(0, 0.022, 0.075)) }));
+  // a short, upright neck (paint-over): one collar from the top of the chest, the head sitting lower and further back
+  // over it (SOMA's neck bones lean forward; the drawing doesn't follow that lean)
+  { const g = sculpt('neck', 1); place(g, { s: [0.9, 0.75, 0.9], at: P.Neck2.clone().add(V(0, 0.022, -0.012)) }); add('Neck2', g, 'dark'); }
+  add('Head', place(sculpt('head', 1), { s: [0.97, 0.97, 0.97], at: P.Head.clone().add(V(0, 0.036, 0.058)) }));
   ball('Head', 0.035);
   // arms (old R shapes on SOMA's Left, old L on Right)
   for (const [S, side] of [['Left', 1], ['Right', -1]]) {
