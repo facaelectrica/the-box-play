@@ -55,7 +55,7 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.11</div>
+<div id="ver">v15.12</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <button id="place" aria-label="The box or an open floor"></button>
 <button id="fig" aria-label="Change the figure"></button>
@@ -451,7 +451,10 @@ const AUDIT = { n: 0, check() {
 // into the other and scales metres to drawing units; inside it, every part sits exactly where MuJoCo has it.
 const figRoot = new THREE.Group(); figRoot.rotation.x = -Math.PI / 2; scene.add(figRoot);
 const SHELL = new THREE.MeshStandardMaterial({ color: 0xebe5da, roughness: 0.38 });
-const JOINT = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.48, metalness: 0.15 });
+// the figure's parts are shells: draw their insides too, so a gap at a joint shows the part's inside, never the box
+// behind it (user, 10:46: "Can we have backfaces?")
+SHELL.side = THREE.DoubleSide; SHELL.shadowSide = THREE.FrontSide;
+const JOINT = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.48, metalness: 0.15, side: THREE.DoubleSide });
 const JOINT2 = JOINT.clone(); JOINT2.side = THREE.DoubleSide;   // open shapes (the shoulder caps)
 const bodyGroup = [];   // by MuJoCo body id
 function buildFigure() {
