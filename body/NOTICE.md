@@ -22,3 +22,9 @@ inference_last_lab.ckpt`, the IsaacLab fine-tune; PPO, 6 x 1024 MLP). Only the a
 ONNX with float16 weights by `tools/brain/export_onnx.py` (no other change); `soma_tracker.json` holds the PD gains
 and action scale from the same checkpoint's `resolved_configs.json`. ProtoMotions source code is Apache-2.0; the
 model was trained on BONES-SEED motion data, whose own terms are not granted by the model licence.
+
+# body/doll.glb (v15.6+)
+
+The figure's look: the female doll from "Ball Joint Doll Rigged Basemesh (male ver)" supplied by the project's owner
+(source and licence to be recorded here). Converted by `tools/look/doll_build.py` (parts fitted onto the SOMA body,
+triangles reduced); drawing only.

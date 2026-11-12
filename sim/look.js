@@ -253,3 +253,16 @@ export function buildLook(THREE, mergeGeometries, W) {
   for (const n of W.bodyNames) for (const it of out[n]) { it.geo.translate(-it.at.x, -it.at.y, -it.at.z); delete it.at; }
   return out;
 }
+
+// The user's ball-joint doll (body/doll.glb, built by tools/look/doll_build.py): one node per SOMA body, already in
+// that body's frame; materials "shell" and "dark". Same shape of result as buildLook().
+export function lookFromGLTF(THREE, gltf) {
+  const out = {};
+  gltf.scene.traverse(o => {
+    if (!o.isMesh) return;
+    const body = o.parent && o.parent.name && !o.parent.isScene ? o.parent.name : o.name.replace(/_\d+$/, '');
+    const geo = o.geometry.clone(); geo.computeVertexNormals();
+    (out[body] || (out[body] = [])).push({ geo, mat: /dark/.test(o.material && o.material.name) ? 'dark' : 'shell' });
+  });
+  return out;
+}

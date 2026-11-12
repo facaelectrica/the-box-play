@@ -49,7 +49,7 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.5</div>
+<div id="ver">v15.6</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <div id="note"></div>
 <div id="hud">
@@ -83,7 +83,8 @@ import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import * as ort from 'onnxruntime-web';
 import { Brain, BRAIN_STAND, makeCalmGravity } from './sim/brain.js';
-import { buildLook } from './sim/look.js';
+import { buildLook, lookFromGLTF } from './sim/look.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const $ = id => document.getElementById(id);
 const DEG = Math.PI / 180;
@@ -354,6 +355,8 @@ function updateEnv() {
 // The body is NVIDIA's SOMA 23-body humanoid (Apache 2.0), loaded as it is from its MJCF file. Metres, kilograms,
 // seconds, g = 9.81: the box is sized around him, and the picture is drawn at S drawing units per metre.
 const mj = await loadMujoco();
+let DOLL = null;
+try { DOLL = await new GLTFLoader().loadAsync('body/doll.glb'); } catch (e) { console.warn('doll model did not load', e); }
 const W = new BoxWorld(mj, await (await fetch(BODY_FILE)).text());
 let control = null;
 // the trained brain: NVIDIA's SOMA motion tracker (sim/brain.js, body/soma_tracker.onnx). If it can't load, the
@@ -412,7 +415,9 @@ const bodyGroup = [];   // by MuJoCo body id
 function buildFigure() {
   const m = W.m;
   let look = null;
-  try { look = buildLook(THREE, mergeGeometries, W); } catch (e) { console.warn('mannequin look failed, drawing the plain shapes', e); }
+  // the user's ball-joint doll (body/doll.glb); else the code-sculpted mannequin (sim/look.js); else the MJCF shapes
+  try { look = DOLL ? lookFromGLTF(THREE, DOLL) : buildLook(THREE, mergeGeometries, W); }
+  catch (e) { console.warn('figure look failed, drawing the plain shapes', e); }
   for (const g of bodyGroup) if (g) { figRoot.remove(g); g.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); movers.splice(movers.indexOf(g), 1); }
   bodyGroup.length = 0;
   for (const name of W.bodyNames) {

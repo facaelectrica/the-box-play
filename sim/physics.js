@@ -117,6 +117,7 @@ export class BoxWorld {
   standAt(q) {
     const m = this.m, d = this.d, mj = this.mj;
     mj.mj_resetData(m, d);
+    this.tControl = 0;     // the clock restarts: ask the controller again right away
     this.placeWalls();
     const z0 = -this.box.h / 2 + 0.95;   // ProtoMotions soma23 default_root_height
     d.qpos[0] = 0; d.qpos[1] = this.box.D / 2; d.qpos[2] = z0;
