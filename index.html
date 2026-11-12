@@ -8,6 +8,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="The Box">
 <meta name="theme-color" content="#1a120b">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>The Box</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#1a120b;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -27,7 +30,7 @@
 <body>
 <div id="start">
   <h1>The Box</h1>
-  <p>Your screen is the open top of a box. Tilt your phone to look inside and roll the ball into the corners.</p>
+  <p>Your screen is the glass top of a box. Tilt your phone to look inside and tumble the figure and the ball around. Give it a shake too.</p>
   <button id="go">Start</button>
 </div>
 <div id="note"></div>
@@ -35,17 +38,21 @@
   <span class="pill" id="mode">Tilt mode</span>
   <button class="pill" id="level">Level</button>
   <button class="pill" id="sound">Sound on</button>
+  <button class="pill" id="full">Full screen</button>
 </div>
 
 <script type="importmap">
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js"
 } }
 </script>
 <script type="module">
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import * as CANNON from 'cannon-es';
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -221,9 +228,7 @@ function buildBox() {
   rim.material.envMapIntensity = .5;
   boxGroup.add(rim);
 
-  // keep the ball inside the new bounds
-  ball.x = THREE.MathUtils.clamp(ball.x, -ix + R, ix - R);
-  ball.y = THREE.MathUtils.clamp(ball.y, -iy + R, iy - R);
+  physWalls();
 
   // light aimed down into the box
   spot.position.set(-0.3 * hw, 0.3 * hh, 4.2);
@@ -246,6 +251,67 @@ const fill = new THREE.PointLight(0xffe6c8, 6, 0, 2);
 scene.add(fill);
 scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.55));
 
+// ---------- physics ----------
+const world = new CANNON.World();
+world.broadphase = new CANNON.SAPBroadphase(world);
+world.solver.iterations = 18;
+world.allowSleep = false;
+const woodPM = new CANNON.Material('wood'), dollPM = new CANNON.Material('doll'), ballPM = new CANNON.Material('ball');
+// cannon-es caps friction per step and per contact point (measured: at 1/120 s steps the real
+// grip is about friction x 120 x contact points), so a wood-like grip of ~0.35 is set as 0.0012
+world.addContactMaterial(new CANNON.ContactMaterial(woodPM, dollPM, { friction: 0.0012, restitution: 0.12 }));
+world.addContactMaterial(new CANNON.ContactMaterial(dollPM, dollPM, { friction: 0.0015, restitution: 0.05 }));
+world.addContactMaterial(new CANNON.ContactMaterial(woodPM, ballPM, { friction: 0.25, restitution: 0.5 }));
+world.addContactMaterial(new CANNON.ContactMaterial(dollPM, ballPM, { friction: 0.3, restitution: 0.35 }));
+
+// the box: floor, four walls, and the glass lid at the screen
+let walls = [];
+function plane(nx, ny, nz, d) {
+  const b = new CANNON.Body({ type: CANNON.Body.STATIC, material: woodPM, shape: new CANNON.Plane() });
+  // a plane faces local +z; the lid faces straight down (-z), which needs a half turn
+  if (nz < -0.5) b.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI);
+  else b.quaternion.setFromVectors(new CANNON.Vec3(0, 0, 1), new CANNON.Vec3(nx, ny, nz));
+  b.position.set(-nx * d, -ny * d, -nz * d);
+  b.isWood = true;
+  world.addBody(b);
+  return b;
+}
+const dyn = [];   // every moving body, to keep inside when the screen turns
+function physWalls() {
+  for (const w of walls) world.removeBody(w);
+  walls = [
+    plane(0, 0, 1, D),       // floor at z = -D
+    plane(0, 0, -1, 0),      // glass lid at z = 0
+    plane(1, 0, 0, ix),      // left wall
+    plane(-1, 0, 0, ix),     // right wall
+    plane(0, 1, 0, iy),      // bottom wall
+    plane(0, -1, 0, iy),     // top wall
+  ];
+  const m = 0.14;
+  for (const b of dyn) {
+    const p = b.position;
+    const cx = THREE.MathUtils.clamp(p.x, -ix + m, ix - m), cy = THREE.MathUtils.clamp(p.y, -iy + m, iy - m), cz = THREE.MathUtils.clamp(p.z, -D + m, -m);
+    if (cx !== p.x || cy !== p.y || cz !== p.z) { p.set(cx, cy, cz); b.velocity.setZero(); b.angularVelocity.setZero(); }
+  }
+}
+
+// ---------- sound on hits ----------
+let lastKnock = 0;
+function onCollide(e) {
+  const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
+  if (v < 1.1) return;
+  const now = performance.now();
+  if (now - lastKnock < 45) return;
+  lastKnock = now;
+  knock(v * (e.body.isWood ? 0.75 : 0.35));
+}
+
+const syncs = [];   // [body, mesh]
+function addDyn(body, mesh) {
+  world.addBody(body); dyn.push(body); syncs.push([body, mesh]); scene.add(mesh);
+  body.addEventListener('collide', onCollide);
+}
+
 // ---------- the ball ----------
 function ballTexture() {
   const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
@@ -264,8 +330,116 @@ const ballMesh = new THREE.Mesh(
   new THREE.MeshPhysicalMaterial({ map: ballTexture(), roughness: .32, clearcoat: 1, clearcoatRoughness: .08 })
 );
 ballMesh.castShadow = true;
-scene.add(ballMesh);
-const ball = { x: 0, y: 0, vx: 0, vy: 0 };
+const ballBody = new CANNON.Body({ mass: 1.6, material: ballPM, shape: new CANNON.Sphere(R), linearDamping: 0.08, angularDamping: 0.12 });
+
+// ---------- the figure: a jointed mannequin ragdoll ----------
+const SHELL = new THREE.MeshPhysicalMaterial({ color: 0xe9e3d8, roughness: 0.45, clearcoat: 0.6, clearcoatRoughness: 0.35 });
+const JOINT = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.5, metalness: 0.15 });
+SHELL.envMapIntensity = 0.7; JOINT.envMapIntensity = 0.6;
+
+// standing pose, metres, y up, z forward, feet at y = 0
+const PARTS = {
+  pelvis:  { box: [0.32, 0.17, 0.20], at: [0, 0.95, 0], mass: 4 },
+  belly:   { box: [0.26, 0.14, 0.17], at: [0, 1.10, 0], mass: 3 },
+  chest:   { box: [0.38, 0.26, 0.22], at: [0, 1.31, 0], mass: 6 },
+  head:    { head: 0.105, at: [0, 1.62, 0], mass: 2.5 },
+  uArmL:   { limb: [0.045, 0.12], at: [-0.24, 1.25, 0], mass: 1.2 },
+  uArmR:   { limb: [0.045, 0.12], at: [ 0.24, 1.25, 0], mass: 1.2 },
+  fArmL:   { limb: [0.04, 0.11], at: [-0.24, 0.98, 0], mass: 0.9 },
+  fArmR:   { limb: [0.04, 0.11], at: [ 0.24, 0.98, 0], mass: 0.9 },
+  handL:   { box: [0.06, 0.13, 0.04], at: [-0.24, 0.775, 0], mass: 0.4 },
+  handR:   { box: [0.06, 0.13, 0.04], at: [ 0.24, 0.775, 0], mass: 0.4 },
+  thighL:  { limb: [0.06, 0.18], at: [-0.09, 0.66, 0], mass: 3 },
+  thighR:  { limb: [0.06, 0.18], at: [ 0.09, 0.66, 0], mass: 3 },
+  shinL:   { limb: [0.05, 0.17], at: [-0.09, 0.26, 0], mass: 2 },
+  shinR:   { limb: [0.05, 0.17], at: [ 0.09, 0.26, 0], mass: 2 },
+  footL:   { box: [0.09, 0.06, 0.22], at: [-0.09, 0.03, 0.04], mass: 0.7 },
+  footR:   { box: [0.09, 0.06, 0.22], at: [ 0.09, 0.03, 0.04], mass: 0.7 },
+};
+// [parent, child, joint position, cone angle, twist angle, joint ball radius]
+const PI = Math.PI;
+const JOINTS = [
+  ['pelvis', 'belly',  [0, 1.03, 0], PI / 9, PI / 10, 0.075],
+  ['belly',  'chest',  [0, 1.18, 0], PI / 9, PI / 10, 0.075],
+  ['chest',  'head',   [0, 1.47, 0], PI / 4, PI / 5, 0.045],
+  ['chest',  'uArmL',  [-0.24, 1.39, 0], PI * 0.55, PI / 3, 0.055],
+  ['chest',  'uArmR',  [ 0.24, 1.39, 0], PI * 0.55, PI / 3, 0.055],
+  ['uArmL',  'fArmL',  [-0.24, 1.11, 0], PI / 2.6, PI / 12, 0.045],
+  ['uArmR',  'fArmR',  [ 0.24, 1.11, 0], PI / 2.6, PI / 12, 0.045],
+  ['fArmL',  'handL',  [-0.24, 0.85, 0], PI / 5, PI / 8, 0.035],
+  ['fArmR',  'handR',  [ 0.24, 0.85, 0], PI / 5, PI / 8, 0.035],
+  ['pelvis', 'thighL', [-0.09, 0.87, 0], PI / 3, PI / 10, 0.07],
+  ['pelvis', 'thighR', [ 0.09, 0.87, 0], PI / 3, PI / 10, 0.07],
+  ['thighL', 'shinL',  [-0.09, 0.46, 0], PI / 2.8, PI / 16, 0.058],
+  ['thighR', 'shinR',  [ 0.09, 0.46, 0], PI / 2.8, PI / 16, 0.058],
+  ['shinL',  'footL',  [-0.09, 0.075, 0], PI / 6, PI / 12, 0.045],
+  ['shinR',  'footR',  [ 0.09, 0.075, 0], PI / 6, PI / 12, 0.045],
+];
+
+const bodies = {};
+function makePart(name, P) {
+  const body = new CANNON.Body({ mass: P.mass, material: dollPM, linearDamping: 0.06, angularDamping: 0.18 });
+  let mesh;
+  if (P.box) {
+    const [w, h, d] = P.box;
+    // collide as a cluster of spheres: boxes stick to the floor in this engine instead of sliding
+    const half = [w / 2 * 0.95, h / 2 * 0.95, d / 2 * 0.95], r = Math.min(...half);
+    const offs = half.map(hv => hv - r > 0.008 ? [-(hv - r), hv - r] : [0]);
+    for (const ox of offs[0]) for (const oy of offs[1]) for (const oz of offs[2])
+      body.addShape(new CANNON.Sphere(r), new CANNON.Vec3(ox, oy, oz));
+    mesh = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 4, Math.min(w, h, d) * 0.42), SHELL);
+  } else if (P.limb) {
+    const [r, h] = P.limb;
+    for (const oy of [-(h - r), 0, h - r]) body.addShape(new CANNON.Sphere(r), new CANNON.Vec3(0, oy, 0));
+    mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.01, 2 * h * 0.86 - 2 * r), 6, 16), SHELL);
+  } else {
+    const r = P.head;
+    body.addShape(new CANNON.Sphere(r * 1.08));
+    const g = new THREE.SphereGeometry(r, 32, 24); g.scale(0.92, 1.25, 1.0);
+    mesh = new THREE.Mesh(g, SHELL);
+    // a plain face: two small dark eyes
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(r * 0.12, 12, 8), JOINT);
+      eye.position.set(sx * r * 0.36, r * 0.12, r * 0.93); eye.scale.z = 0.4;
+      mesh.add(eye);
+    }
+  }
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  body.position.set(...P.at);
+  bodies[name] = body;
+  addDyn(body, mesh);
+  return body;
+}
+for (const [n, P] of Object.entries(PARTS)) makePart(n, P);
+
+for (const [pa, ch, j, cone, twist, jr] of JOINTS) {
+  const A = bodies[pa], B = bodies[ch];
+  const pivotA = new CANNON.Vec3(j[0] - A.position.x, j[1] - A.position.y, j[2] - A.position.z);
+  const pivotB = new CANNON.Vec3(j[0] - B.position.x, j[1] - B.position.y, j[2] - B.position.z);
+  world.addConstraint(new CANNON.ConeTwistConstraint(A, B, {
+    pivotA, pivotB, axisA: new CANNON.Vec3(0, 1, 0), axisB: new CANNON.Vec3(0, 1, 0),
+    angle: cone, twistAngle: twist, collideConnected: false,
+  }));
+  // a dark ball joint that moves with the child part
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(jr, 20, 14), JOINT);
+  ball.position.set(pivotB.x, pivotB.y, pivotB.z);
+  ball.castShadow = true;
+  syncs.find(s => s[0] === B)[1].add(ball);
+}
+
+// lay the figure on its back in the box, the ball by its feet
+function placeAll() {
+  const base = -D + 0.135;
+  for (const [n, P] of Object.entries(PARTS)) {
+    const b = bodies[n];
+    b.position.set(P.at[0], P.at[1] - 0.85, base + P.at[2]);
+    b.quaternion.set(0, 0, 0, 1);
+    b.velocity.setZero(); b.angularVelocity.setZero();
+  }
+  ballBody.position.set(Math.min(ix - R - 0.05, 0.55), Math.max(-iy + R + 0.05, -0.75), -D + R);
+  ballBody.velocity.setZero(); ballBody.angularVelocity.setZero();
+}
+addDyn(ballBody, ballMesh);
 
 // ---------- input: tilt or drag ----------
 const tilt = { x: 0, y: 0 };     // target, in "sin of tilt" units (-1..1)
@@ -289,6 +463,16 @@ function onOrientation(e) {
   const a = screenAngle(), c = Math.cos(a), s = Math.sin(a);
   tilt.x = dx * c - dy * s;
   tilt.y = dx * s + dy * c;
+}
+
+// the phone's own movement: things inside feel it the other way (a shake throws them about)
+const shake = { x: 0, y: 0, z: 0 };
+function onMotion(e) {
+  const a = e.acceleration;
+  if (!a || a.x == null) return;
+  const an = screenAngle(), c = Math.cos(an), s = Math.sin(an);
+  const sx = a.x * c - a.y * s, sy = a.x * s + a.y * c;
+  shake.x = sx; shake.y = sy; shake.z = a.z || 0;
 }
 
 let drag = null;
@@ -338,16 +522,41 @@ function knock(speed) {
 $('sound').onclick = () => { soundOn = !soundOn; $('sound').textContent = soundOn ? 'Sound on' : 'Sound off'; };
 
 // ---------- start ----------
+async function goFull() {
+  const el = document.documentElement;
+  try {
+    if (!document.fullscreenElement && el.requestFullscreen) await el.requestFullscreen({ navigationUI: 'hide' });
+    else if (!document.webkitFullscreenElement && el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  } catch (_) {}
+  try { await screen.orientation.lock('portrait'); } catch (_) {}
+}
+function fullSync() {
+  const on = !!(document.fullscreenElement || document.webkitFullscreenElement)
+    || matchMedia('(display-mode: fullscreen), (display-mode: standalone)').matches;
+  $('full').style.display = on || !(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen) ? 'none' : '';
+}
+document.addEventListener('fullscreenchange', fullSync);
+document.addEventListener('webkitfullscreenchange', fullSync);
+$('full').onclick = goFull;
+
 $('go').onclick = async () => {
+  goFull();
   try { actx = new (window.AudioContext || window.webkitAudioContext)(); await actx.resume(); } catch (_) { actx = null; }
   try {
     if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
       await DeviceOrientationEvent.requestPermission();
     }
   } catch (_) {}
+  try {
+    if (window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function') {
+      await DeviceMotionEvent.requestPermission();
+    }
+  } catch (_) {}
   window.addEventListener('deviceorientation', onOrientation);
+  window.addEventListener('devicemotion', onMotion);
   $('start').classList.add('hide');
   $('hud').classList.add('show');
+  fullSync();
   setTimeout(() => {
     if (mode !== 'tilt') {
       setMode('touch');
@@ -357,36 +566,25 @@ $('go').onclick = async () => {
 };
 
 // ---------- loop ----------
-const G = 16, REST = 0.52, ROLL_DAMP = 0.55;
-const axis = new THREE.Vector3(), q = new THREE.Quaternion();
-function step(dt) {
+const G = 22, SHAKE = 2.2, SHAKE_MAX = 80;
+const gv = new CANNON.Vec3();
+function physics(dt) {
   sm.x += (tilt.x - sm.x) * Math.min(1, dt * 14);
   sm.y += (tilt.y - sm.y) * Math.min(1, dt * 14);
-
-  ball.vx += G * sm.x * dt;
-  ball.vy += G * sm.y * dt;
-  const damp = Math.exp(-ROLL_DAMP * dt);
-  ball.vx *= damp; ball.vy *= damp;
-  ball.x += ball.vx * dt; ball.y += ball.vy * dt;
-
-  const mx = ix - R, my = iy - R;
-  if (ball.x > mx) { ball.x = mx; if (ball.vx > 0) { if (ball.vx > .35) knock(ball.vx); ball.vx *= -REST; ball.vy *= .96; } }
-  if (ball.x < -mx) { ball.x = -mx; if (ball.vx < 0) { if (-ball.vx > .35) knock(-ball.vx); ball.vx *= -REST; ball.vy *= .96; } }
-  if (ball.y > my) { ball.y = my; if (ball.vy > 0) { if (ball.vy > .35) knock(ball.vy); ball.vy *= -REST; ball.vx *= .96; } }
-  if (ball.y < -my) { ball.y = -my; if (ball.vy < 0) { if (-ball.vy > .35) knock(-ball.vy); ball.vy *= -REST; ball.vx *= .96; } }
-
-  const sp = Math.hypot(ball.vx, ball.vy);
-  if (sp > 1e-5) {
-    axis.set(-ball.vy / sp, ball.vx / sp, 0);
-    q.setFromAxisAngle(axis, sp * dt / R);
-    ballMesh.quaternion.premultiply(q);
-  }
+  const n = Math.sqrt(Math.max(0, 1 - sm.x * sm.x - sm.y * sm.y));
+  const cl = v => THREE.MathUtils.clamp(v, -SHAKE_MAX, SHAKE_MAX);
+  // gravity pulls into the box and along the tilt; a shake pushes the other way
+  gv.set(G * sm.x - cl(shake.x * SHAKE), G * sm.y - cl(shake.y * SHAKE), -G * n - cl(shake.z * SHAKE));
+  world.gravity.copy(gv);
+  world.step(1 / 120, dt, 8);
+  shake.x *= 0.5; shake.y *= 0.5; shake.z *= 0.5;
+  for (const [b, m] of syncs) { m.position.copy(b.position); m.quaternion.copy(b.quaternion); }
 }
 
 function updateCamera() {
   // the eye stays put in the room; when the phone tilts, it moves relative to the screen
   // parallax is softened a little so big tilts still look good
-  const lim = 1.55, gain = EYE * 0.6;
+  const lim = 0.85, gain = EYE * 0.3;
   const ex = -lim * Math.tanh(gain * sm.x / lim), ey = -lim * Math.tanh(gain * sm.y / lim);
   const ez = EYE;
   camera.position.set(ex, ey, ez);
@@ -400,9 +598,7 @@ function updateCamera() {
 let last = performance.now();
 function frame(now) {
   let dt = Math.min(0.05, (now - last) / 1000); last = now;
-  const sub = Math.ceil(dt / (1 / 120));
-  for (let i = 0; i < sub; i++) step(dt / sub);
-  ballMesh.position.set(ball.x, ball.y, -D + R);
+  physics(dt);
   updateCamera();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -410,7 +606,7 @@ function frame(now) {
 
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); buildBox(); });
 buildBox();
-ball.y = -iy * 0.3;
+placeAll();
 requestAnimationFrame(frame);
 </script>
 </body>
