@@ -12,3 +12,13 @@ How The Box uses it (sim/physics.js), the same way ProtoMotions' MuJoCo backend 
   springs zeroed; torque limits 300 N·m (spine, neck, head, legs) and 150 N·m (shoulders, arms, hands)
 - implicitfast integrator; the box's walls are added as mocap bodies, nothing in the body is changed
 - note: with its density-1000 shapes the body weighs 42.5 kg (as shipped; kept so NVIDIA's trained models match)
+
+# body/soma_tracker.onnx, body/soma_tracker.json (v15+)
+
+Licensed by NVIDIA Corporation under the NVIDIA Open Model License (`body/soma_tracker_LICENSE.pdf`).
+
+NVIDIA ProtoMotions' pretrained SOMA motion tracker (`data/pretrained_models/motion_tracker/soma-bones/
+inference_last_lab.ckpt`, the IsaacLab fine-tune; PPO, 6 x 1024 MLP). Only the actor network is used, exported to
+ONNX with float16 weights by `tools/brain/export_onnx.py` (no other change); `soma_tracker.json` holds the PD gains
+and action scale from the same checkpoint's `resolved_configs.json`. ProtoMotions source code is Apache-2.0; the
+model was trained on BONES-SEED motion data, whose own terms are not granted by the model licence.

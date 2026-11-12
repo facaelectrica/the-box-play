@@ -49,7 +49,7 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v14.1</div>
+<div id="ver">v15</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <div id="note"></div>
 <div id="hud">
@@ -70,7 +70,8 @@
 { "imports": {
   "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
   "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
-  "@mujoco/mujoco": "https://cdn.jsdelivr.net/npm/@mujoco/mujoco@4.0.1/mujoco.js"
+  "@mujoco/mujoco": "https://cdn.jsdelivr.net/npm/@mujoco/mujoco@4.0.1/mujoco.js",
+  "onnxruntime-web": "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort.wasm.min.mjs"
 } }
 </script>
 <script type="module">
@@ -80,6 +81,8 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
+import * as ort from 'onnxruntime-web';
+import { Brain, BRAIN_STAND } from './sim/brain.js';
 
 const $ = id => document.getElementById(id);
 const DEG = Math.PI / 180;
@@ -294,7 +297,17 @@ function updateEnv() {
 const mj = await loadMujoco();
 const W = new BoxWorld(mj, await (await fetch(BODY_FILE)).text());
 let control = null;
-function newController() { control = makeController(W); control.hz = 240; }
+// the trained brain: NVIDIA's SOMA motion tracker (sim/brain.js, body/soma_tracker.onnx). If it can't load, the
+// hand-written stand (sim/control.js) takes over.
+let brain = null;
+ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/';
+ort.env.wasm.numThreads = 1;
+try { brain = await Brain.create(W, ort, 'body/'); brain.setStandPose(BRAIN_STAND); }
+catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; }
+function newController() {
+  if (brain) { brain.attach(); control = brain.control; }
+  else { control = makeController(W); control.hz = 240; }
+}
 let S = 1;   // drawing units per metre
 function figureScale() {
   // he is about 70% of the box's height, and fits its width and depth
@@ -318,7 +331,8 @@ function keepInside() {
   mj.mj_forward(W.m, d);
 }
 function standUp() {
-  W.standAt(STAND); W.started = true; W.tControl = 0;
+  W.standAt(brain ? BRAIN_STAND : STAND); W.started = true; W.tControl = 0;
+  if (brain) { W.d.qpos[1] = Math.max(0.3, W.d.qpos[1] - brain.settleBack); mj.mj_forward(W.m, W.d); }   // he settles back
   newController();
   syncFigure();
 }
@@ -737,7 +751,7 @@ function lookCamera() {
 // ================= the loop =================
 let acc = 0, last = performance.now(), frameN = 0;
 const lu = new THREE.Vector3();
-function frame(now) {
+async function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
 
   // which way is down? (in g, screen axes; shakes included)
@@ -767,6 +781,7 @@ function frame(now) {
   while (acc >= PHYS.dt && n < nMax) {
     if (poke.on) poke.t += PHYS.dt;
     fingerPush();
+    if (brain && control === brain.control && brain.due()) await brain.think();   // the network, 30 times a second
     W.step(control);
     AUDIT.check();
     acc -= PHYS.dt; n++;
