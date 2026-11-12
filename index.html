@@ -49,7 +49,7 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.2</div>
+<div id="ver">v15.3</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <div id="note"></div>
 <div id="hud">
@@ -130,7 +130,6 @@ scene.add(camera);
 // ================= dimensions (world units; the screen's short side = 2) =================
 const D = 2.34;      // box depth: room to turn round and get up
 const LIP = 0.07;    // wall thickness at the rim
-const BEVEL = 0.04;  // radius of the rim's rounded inside edge (drawing only)
 const EYE = 5.2;     // viewing distance
 let hw, hh, ix, iy;
 
@@ -259,11 +258,11 @@ function woodTexture(worldW, worldH, alongX, opt, ao) {
 }
 
 // honey-coloured oak, like the reference: light earlywood, orange-brown latewood
-const WOOD = { light: '#e5962f', dark: '#b45f12', tintVar: 0.1, knots: 0.45 };
+const WOOD = { light: '#dc7e1f', dark: '#a84c0b', tintVar: 0.1, knots: 0.45 };
 const WALL = { ...WOOD, planks: 1 };
 const BACK = { ...WOOD, planks: 3 };
-const FLOOR = { ...WOOD, light: '#d8903c', dark: '#a85d1c', planks: 3 };
-const RIM = { ...WOOD, light: '#dc933d', dark: '#ae601c', planks: 4, seams: false, knots: 0.15, tilt: 0.5 };
+const FLOOR = { ...WOOD, light: '#d27a22', dark: '#9c480c', planks: 1 };   // one board, like the reference
+const RIM = { ...WOOD, light: '#d8802a', dark: '#a8500e', planks: 1, seams: false, knots: 0.15, tilt: 0.5 };
 const seeded = (o, k) => ({ ...o, seed: WOOD_SEED + 101 * k });
 function woodMat(t) {
   const m = new THREE.MeshStandardMaterial({ map: t.map, bumpMap: t.bump, bumpScale: 1.2, roughness: 0.74, metalness: 0 });
@@ -272,7 +271,7 @@ function woodMat(t) {
 }
 
 // ================= the box =================
-let boxGroup = null, rimMesh = null;
+let boxGroup = null;
 function buildBox() {
   const s = Math.min(innerWidth, innerHeight);
   hw = innerWidth / s; hh = innerHeight / s;
@@ -286,73 +285,47 @@ function buildBox() {
   const back = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, 2 * iy),
     woodMat(woodTexture(2 * ix, 2 * iy, !longY, seeded(BACK, 0), { top: .45, bottom: .45, left: .45, right: .45 })));
   back.position.z = -D; back.receiveShadow = true; boxGroup.add(back);
-  // the walls start where the rim's rounded edge ends
-  const deep = .5, side = .34, Dw = D - BEVEL, zc = -(D + BEVEL) / 2;
-  const left = new THREE.Mesh(new THREE.PlaneGeometry(Dw, 2 * iy), woodMat(woodTexture(Dw, 2 * iy, false, seeded(WALL, 1), { right: deep, top: side, bottom: side })));
-  left.rotation.y = Math.PI / 2; left.position.set(-ix, 0, zc);
-  const right = new THREE.Mesh(new THREE.PlaneGeometry(Dw, 2 * iy), woodMat(woodTexture(Dw, 2 * iy, false, seeded(WALL, 2), { left: deep, top: side, bottom: side })));
-  right.rotation.y = -Math.PI / 2; right.position.set(ix, 0, zc);
-  const bottom = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, Dw), woodMat(woodTexture(2 * ix, Dw, true, seeded(FLOOR, 3), { top: deep, left: side, right: side })));
-  bottom.rotation.x = -Math.PI / 2; bottom.position.set(0, -iy, zc);
-  const top = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, Dw), woodMat(woodTexture(2 * ix, Dw, true, seeded(WALL, 4), { bottom: deep, left: side, right: side })));
-  top.rotation.x = Math.PI / 2; top.position.set(0, iy, zc);
+  const deep = .5, side = .34;
+  const left = new THREE.Mesh(new THREE.PlaneGeometry(D, 2 * iy), woodMat(woodTexture(D, 2 * iy, false, seeded(WALL, 1), { right: deep, top: side, bottom: side })));
+  left.rotation.y = Math.PI / 2; left.position.set(-ix, 0, -D / 2);
+  const right = new THREE.Mesh(new THREE.PlaneGeometry(D, 2 * iy), woodMat(woodTexture(D, 2 * iy, false, seeded(WALL, 2), { left: deep, top: side, bottom: side })));
+  right.rotation.y = -Math.PI / 2; right.position.set(ix, 0, -D / 2);
+  const bottom = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, D), woodMat(woodTexture(2 * ix, D, true, seeded(FLOOR, 3), { top: deep, left: side, right: side })));
+  bottom.rotation.x = -Math.PI / 2; bottom.position.set(0, -iy, -D / 2);
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, D), woodMat(woodTexture(2 * ix, D, true, seeded(WALL, 4), { bottom: deep, left: side, right: side })));
+  top.rotation.x = Math.PI / 2; top.position.set(0, iy, -D / 2);
   for (const w of [left, right, bottom, top]) { w.receiveShadow = true; boxGroup.add(w); }
-  // the rim: four boards mitred at the corners, flat at the glass, their inside edge rounded over into the walls
-  // (a quarter round), so the light runs along the edge as on a real box
-  const out = LIP + .01, prof = [];
-  for (let i = 0; i <= 12; i++) {
-    const a = i / 12 * Math.PI / 2;
-    prof.push([BEVEL * (1 - Math.cos(a)), -BEVEL * (1 - Math.sin(a)), -Math.cos(a), Math.sin(a)]);   // [out, z, normal out, normal z]
-  }
-  prof.push([out, 0, 0, 1]);
-  const sLen = [0];
-  for (let i = 1; i < prof.length; i++) sLen.push(sLen[i - 1] + Math.hypot(prof[i][0] - prof[i - 1][0], prof[i][1] - prof[i - 1][1]));
-  const sTot = sLen[sLen.length - 1], Lmax = Math.max(ix, iy) + out;
-  const P = [], N = [], UV = [], I = [];
-  // each side: n = away from the middle, t = along the side, half its inner length
-  [[0, -1, 1, 0, iy, ix], [1, 0, 0, 1, ix, iy], [0, 1, -1, 0, iy, ix], [-1, 0, 0, -1, ix, iy]].forEach(([nx, ny, tx, ty, inner, half], k) => {
-    const base = P.length / 3;
-    for (let i = 0; i < prof.length; i++) {
-      const [o, z, no, nz] = prof[i], L = half + o;
-      for (const e of [-1, 1]) {
-        P.push(nx * (inner + o) + tx * e * L, ny * (inner + o) + ty * e * L, z);
-        N.push(nx * no, ny * no, nz);
-        UV.push((e * L + Lmax) / (2 * Lmax), 1 - (k + sLen[i] / sTot) / 4);
-      }
-    }
-    for (let i = 0; i < prof.length - 1; i++) {
-      const a = base + 2 * i, b = a + 1, c = a + 3, d = a + 2;
-      I.push(a, c, b, a, d, c);
-    }
-  });
-  const rimGeo = new THREE.BufferGeometry();
-  rimGeo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
-  rimGeo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
-  rimGeo.setAttribute('uv', new THREE.Float32BufferAttribute(UV, 2));
-  rimGeo.setIndex(I);
-  const rt = woodTexture(2 * Lmax, 4 * sTot, true, seeded(RIM, 5), {});
-  const rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({ map: rt.map, bumpMap: rt.bump, bumpScale: 1, roughness: .6, color: 0xd0d0d0 }));   // a touch darker: it sits nearest the light
-  rim.material.envMapIntensity = .55;
-  boxGroup.add(rim); rimMesh = rim;
+  // the rim (the walls' top edge), flush with the screen
+  const shape = new THREE.Shape();
+  shape.moveTo(-hw - .01, -hh - .01); shape.lineTo(hw + .01, -hh - .01); shape.lineTo(hw + .01, hh + .01); shape.lineTo(-hw - .01, hh + .01); shape.closePath();
+  const hole = new THREE.Path();
+  hole.moveTo(-ix, -iy); hole.lineTo(-ix, iy); hole.lineTo(ix, iy); hole.lineTo(ix, -iy); hole.closePath();
+  shape.holes.push(hole);
+  const rimGeo = new THREE.ShapeGeometry(shape);
+  const uv = rimGeo.attributes.uv, pos = rimGeo.attributes.position;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (pos.getX(i) + hw) / (2 * hw), (pos.getY(i) + hh) / (2 * hh));
+  const rt = woodTexture(2 * hw, 2 * hh, true, seeded(RIM, 5), {});
+  const rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({ map: rt.map, bumpMap: rt.bump, bumpScale: 1, roughness: .7, emissive: 0x2a1a0c, emissiveIntensity: .45 }));
+  rim.material.envMapIntensity = .4;
+  boxGroup.add(rim);
   physBox();
   envDirty = 0;
 }
 
 // ================= lights =================
 // one soft key light from the room, always from real "up" and in front of the glass
-const LIGHT_DIST = 6.2;   // far enough that the rim near the light isn't blown out (light falls off with distance squared)
-const spot = new THREE.SpotLight(0xfff0dc, 70 * (LIGHT_DIST / 4.6) ** 2, 0, 0.6, 0.65, 2);
+const spot = new THREE.SpotLight(0xfff0dc, 70, 0, 0.6, 0.65, 2);
 spot.castShadow = true;
 spot.shadow.bias = -0.0004;
 spot.shadow.normalBias = 0.02;
 scene.add(spot, spot.target);
-scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.3));   // soft fill from the room, so the side walls aren't lost
+scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12));
 const lightUp = new THREE.Vector3(0, 1, 0);
 function placeLight() {
   const dir = new THREE.Vector3(lightUp.x * 0.75, lightUp.y * 0.75, 0.85);
   if (dir.z < 0.55) dir.z = 0.55;
   dir.normalize();
-  const dist = LIGHT_DIST;
+  const dist = 4.6;
   spot.position.set(dir.x * dist, dir.y * dist, -D / 2 + dir.z * dist);
   spot.target.position.set(0, 0, -D * 0.7);
   spot.angle = Math.atan((Math.max(hw, hh) + 0.4) / dist) + 0.12;
@@ -369,12 +342,10 @@ const movers = [];   // hidden while the box looks at itself
 function updateEnv() {
   cubeCam.position.set(0, 0, -D / 2);
   for (const m of movers) m.visible = false;
-  if (rimMesh) rimMesh.visible = false;   // faces the glass, adds nothing to the bounce, and its capture turned the whole map black (v15.1)
   scene.background = ROOM;   // what comes in through the glass: the room
   cubeCam.update(renderer, scene);
   scene.background = look.on ? GREY : DARK;
   for (const m of movers) m.visible = true;
-  if (rimMesh) rimMesh.visible = true;
   cubeRT.texture.needsPMREMUpdate = true;
 }
 
