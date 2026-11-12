@@ -50,7 +50,7 @@
   <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance.</p>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v9</div>
+<div id="ver">v10</div>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -88,7 +88,7 @@ const OPTS = [
   { grp: 'Gravity and surfaces' },
   { k: 'gravity', label: 'Gravity', min: 5, max: 60, step: 1, def: 25, fmt: v => v.toFixed(0), help: 'How hard things fall toward the real floor.' },
   { k: 'slide', label: 'Slide', min: 0, max: 1, step: 0.01, def: 0.5, fmt: pct, help: 'How easily the figure slides on the wood.' },
-  { k: 'grip', label: 'Foot grip', min: 0, max: 2, step: 0.01, def: 1.4, fmt: v => v.toFixed(2), help: 'How well its feet hold the floor.' },
+  { k: 'grip', label: 'Foot grip', min: 0, max: 2, step: 0.01, def: 0.75, fmt: v => v.toFixed(2), help: 'How well its feet hold the floor.' },
   { k: 'bounce', label: 'Bounce', min: 0, max: 0.8, step: 0.01, def: 0.15, fmt: v => v.toFixed(2), help: 'How much things bounce off the walls.' },
   { grp: 'The figure' },
   { k: 'muscle', label: 'Muscle strength', min: 0, max: 2, step: 0.01, def: 1, fmt: pct, help: 'How firmly the joints hold their pose. 0 is a limp ragdoll.' },
@@ -106,7 +106,7 @@ const OPTS = [
   { k: 'sound', label: 'Sound', tog: true, def: true, help: 'Knocks when things hit the wood.' },
 ];
 const SET = {};
-const STORE = 'thebox.settings.v2';
+const STORE = 'thebox.settings.v3';
 function loadSettings() {
   for (const o of OPTS) if (o.k) SET[o.k] = o.def;
   try { Object.assign(SET, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch (_) {}
@@ -131,7 +131,7 @@ const camera = new THREE.PerspectiveCamera();
 scene.add(camera);
 
 // ================= dimensions (world units; the screen's short side = 2) =================
-const D = 1.17;      // box depth: room to kneel and get up
+const D = 2.34;      // box depth: room to turn round and get up
 const LIP = 0.07;    // wall thickness at the rim
 const EYE = 5.2;     // viewing distance
 let hw, hh, ix, iy;
@@ -452,13 +452,13 @@ const JOINTS = [
   ['clavR',  'uArmR',  [ 0.21, 1.36, 0],      [1, 0, 0],  [0, 0, 1],  1.75, 1.75, -1.00, 1.00, 0.05, 0.8],
   ['uArmR',  'fArmR',  [ 0.21, 1.10, 0],      [-1, 0, 0], [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.042, 0.7],
   ['fArmR',  'handR',  [ 0.21, 0.86, 0],      [0, -1, 0], [1, 0, 0],  0.40, 0.55, -0.50, 0.50, 0.032, 0.4],
-  ['pelvis', 'thighL', [-0.09, 0.87, 0],      [0, -1, 0], [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.065, 2.0],
-  ['thighL', 'shinL',  [-0.09, 0.47, 0],      [1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.055, 2.1],    // knee: a hinge
-  ['shinL',  'footL',  [-0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.042, 1.6],
+  ['pelvis', 'thighL', [-0.09, 0.87, 0],      [0, -1, 0], [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.065, 2.7],
+  ['thighL', 'shinL',  [-0.09, 0.47, 0],      [1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.055, 2.9],    // knee: a hinge
+  ['shinL',  'footL',  [-0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.042, 2.1],
   ['footL',  'toeL',   [-0.09, 0.03, 0.075],  [1, 0, 0],  [0, 0, 1],  0.03, 0.03, -1.00, 0.30, 0.02, 0.8],    // toes: a hinge
-  ['pelvis', 'thighR', [ 0.09, 0.87, 0],      [0, -1, 0], [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.065, 2.0],
-  ['thighR', 'shinR',  [ 0.09, 0.47, 0],      [1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.055, 2.1],
-  ['shinR',  'footR',  [ 0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.042, 1.6],
+  ['pelvis', 'thighR', [ 0.09, 0.87, 0],      [0, -1, 0], [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.065, 2.7],
+  ['thighR', 'shinR',  [ 0.09, 0.47, 0],      [1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.055, 2.9],
+  ['shinR',  'footR',  [ 0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.042, 2.1],
   ['footR',  'toeR',   [ 0.09, 0.03, 0.075],  [1, 0, 0],  [0, 0, 1],  0.03, 0.03, -1.00, 0.30, 0.02, 0.8],
 ];
 
@@ -936,7 +936,7 @@ function control(dt) {
   if (stun > 0 && state !== 'down' && state !== 'fall') { state = 'fall'; stateT = 0; step = null; }
   offT = state !== 'stand' ? 0 : Math.abs(outBy) > 0.55 * S && handOn.L > 0.2 && handOn.R > 0.2 ? offT + dt : Math.max(0, offT - dt);
   // just up from the floor it is still bent over: a moment to straighten before a lean counts as a fall
-  const tiltMax = (stateT < 1.6 && fromGetUp ? 82 : 58) * DEG;
+  const tiltMax = (stateT < 2.5 && fromGetUp ? 82 : 58) * DEG;
   if (state === 'stand' && (!fl || tilt > tiltMax || ungrounded > 0.5 || offT > 0.7 || SET.balance < 0.02)) {
     state = 'fall'; stateT = 0; step = null;
     fallWhy = !fl ? 'floor' : tilt > tiltMax ? 'tilt' : ungrounded > 0.5 ? 'feet' : offT > 0.7 ? 'balance lost' : 'balance';
@@ -1057,7 +1057,8 @@ function control(dt) {
   if (stun > 0 || !fl || bal < 0.02) return;
   if (state === 'stand') {
     const feet = (footDown.L ? 1 : 0) + (footDown.R ? 1 : 0);
-    const carry = feet ? 0.8 : 0.2;
+    const justUp = fromGetUp && stateT < 3 ? 1 - stateT / 3 : 0;   // just up from the floor: help while it straightens
+    const carry = (feet ? 0.72 : 0.15) + 0.3 * justUp;
     B.pelvis.force.vadd(up.scale(figMass * g * carry * Math.min(1, bal)), B.pelvis.force);
     // hold the hips at standing height over the floor
     const hP = B.pelvis.position.dot(n) + off, want = PARTS.pelvis.at[1] * S * 0.985;
@@ -1073,7 +1074,13 @@ function control(dt) {
     const drift = (0.018 * Math.sin(life * 2 * Math.PI / 11) + 0.012 * Math.sin(life * 2 * Math.PI / 27 + 2)) * S;
     // ankles and hips: a limited push of the body back over the feet (a bigger push needs a step)
     const footMid = (fT.L + fT.R) / 2, halfW = Math.abs(fT.R - fT.L) / 2;
-    const mid = (footDown.L && footDown.R ? footMid + Math.sign(fT.R - fT.L) * shiftAmt * halfW * 0.8 : (supLo + supHi) / 2) + drift, here = com.dot(t) - (hCom / Math.max(0.3, up.dot(n))) * up.dot(t);
+    // a tilted floor pushes it toward the low side: past ~12 degrees it gives way and staggers there, until a hand or
+    // shoulder is against that wall; then it leans on it and stays up
+    const slope = -up.dot(t);   // + : the floor runs down toward +t
+    const lowWall = Math.sign(slope) * (n.x ? iy : ix);
+    const atWall = Math.abs(lowWall - com.dot(t)) < 0.45 * S || handOn.L < 0.15 || handOn.R < 0.15;
+    const give = Math.abs(slope) > Math.sin(12 * DEG) && !atWall ? Math.sign(slope) * Math.min(0.32 * S, (Math.abs(slope) - 0.2) * 1.6 * S + 0.08 * S) : 0;
+    const mid = (footDown.L && footDown.R ? footMid + Math.sign(fT.R - fT.L) * shiftAmt * halfW * 0.8 : (supLo + supHi) / 2) + drift + give, here = com.dot(t) - (hCom / Math.max(0.3, up.dot(n))) * up.dot(t);
     const want2 = (mid - here) * figMass * 16 * bal - comV.dot(t) * figMass * 5 * Math.sqrt(bal);
     const cap = figMass * g * 0.18 * bal;
     const push = clamp(want2, -cap, cap);
@@ -1082,7 +1089,7 @@ function control(dt) {
     // it stands turned a little toward the glass rather than square on (about 20 degrees), now and then turning
     // slightly the other way; the turn comes from the hips and chest, the feet pivoting on the floor
     if (!step) {
-      const want = (faceSide * 0.36 + 0.06 * Math.sin(life * 2 * Math.PI / 13)) ;
+      const want = 0.06 * Math.sin(life * 2 * Math.PI / 13);   // facing the glass, a small look about
       const dir = new CANNON.Vec3(Math.sin(want), 0, Math.cos(want));
       const dirP = dir.vsub(up.scale(dir.dot(up))); dirP.normalize();
       for (const [nm, kk] of [['pelvis', 1], ['chest', 0.7]]) {
@@ -1114,12 +1121,14 @@ function control(dt) {
   } else return;
   // chest and pelvis upright to the room, feet flat on the floor
   const lift = 1;
+  // upright to the room, but leaning a quarter of the way with the floor: it feels the slope push it
+  const lean = up.scale(0.85).vadd(n.scale(0.15)); lean.normalize();
   for (const [nm, kk] of [['chest', 1], ['pelvis', 0.8], ['footL', 0.6], ['footR', 0.6]]) {
     const b = B[nm];
     if (step && nm === 'foot' + step.side) continue;
-    const want = PARTS[nm].foot ? n : up;
+    const want = PARTS[nm].foot ? n : lean;
     const bu = bodyUp(b), ax = bu.cross(want), sn = ax.length(), ang = Math.atan2(sn, bu.dot(want));
-    const I = avgInertia(b) * 3, w0 = 14 * Math.sqrt(bal) * lift * kk;
+    const I = avgInertia(b) * 3, w0 = 14 * Math.sqrt(bal) * lift * kk * (1 + (fromGetUp && state === 'stand' && stateT < 3 ? 0.6 * (1 - stateT / 3) : 0));
     const tq = new CANNON.Vec3();
     if (sn > 1e-5) ax.scale(I * w0 * w0 * ang / sn, tq);
     tq.vsub(b.angularVelocity.scale(2 * I * w0 * 0.9), tq);
