@@ -49,7 +49,7 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15</div>
+<div id="ver">v15.1</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <div id="note"></div>
 <div id="hud">
@@ -130,62 +130,117 @@ scene.add(camera);
 // ================= dimensions (world units; the screen's short side = 2) =================
 const D = 2.34;      // box depth: room to turn round and get up
 const LIP = 0.07;    // wall thickness at the rim
+const BEVEL = 0.04;  // radius of the rim's rounded inside edge (drawing only)
 const EYE = 5.2;     // viewing distance
 let hw, hh, ix, iy;
 
 // ================= procedural wood =================
-const PX = 256;
-const rnd = (a, b) => a + Math.random() * (b - a);
-function drawGrain(g, w, h, opt) {
-  g.fillStyle = opt.base; g.fillRect(0, 0, w, h);
-  const bands = opt.planks || 1, bh = h / bands;
-  for (let p = 0; p < bands; p++) {
-    const y0 = p * bh;
-    g.save(); g.beginPath(); g.rect(0, y0, w, bh); g.clip();
-    g.fillStyle = `rgba(${opt.tint},${rnd(0, opt.tintVar)})`; g.fillRect(0, y0, w, bh);
-    if (Math.random() < 0.5) { g.fillStyle = `rgba(255,235,200,${rnd(0, 0.08)})`; g.fillRect(0, y0, w, bh); }
-    const lines = Math.round(bh * w / 900);
-    for (let i = 0; i < lines; i++) {
-      const yy = y0 + Math.random() * bh, amp = rnd(1, 5), f = rnd(0.004, 0.012), ph = rnd(0, 6.28), f2 = rnd(0.02, 0.05);
-      g.strokeStyle = `rgba(${opt.dark},${rnd(0.05, 0.28)})`; g.lineWidth = rnd(0.4, 2.4);
-      g.beginPath();
-      for (let x = -10; x <= w + 10; x += 6) {
-        const y = yy + Math.sin(x * f + ph) * amp + Math.sin(x * f2 + ph * 1.7) * amp * 0.25;
-        x < 0 ? g.moveTo(x, y) : g.lineTo(x, y);
-      }
-      g.stroke();
-    }
-    if (Math.random() < 0.55) {
-      const kx = rnd(0.1, 0.9) * w, ky = y0 + rnd(0.3, 0.7) * bh, kr = rnd(6, 14);
-      for (let k = 6; k >= 1; k--) {
-        g.strokeStyle = `rgba(${opt.dark},${0.12 + 0.05 * (6 - k)})`; g.lineWidth = 1.4;
-        g.beginPath(); g.ellipse(kx, ky, kr * k * 1.32, kr * k * 0.55, 0, 0, Math.PI * 2); g.stroke();
-      }
-      g.fillStyle = `rgba(${opt.dark},.55)`; g.beginPath(); g.ellipse(kx, ky, kr * 1.1, kr * 0.5, 0, 0, Math.PI * 2); g.fill();
-    }
-    g.restore();
-    if (bands > 1 && p > 0) {
-      g.fillStyle = 'rgba(40,22,8,.55)'; g.fillRect(0, y0 - 1.2, w, 2.4);
-      g.fillStyle = 'rgba(255,230,190,.12)'; g.fillRect(0, y0 + 1.2, w, 1.2);
-    }
-  }
-  const img = g.getImageData(0, 0, w, h), d = img.data;
-  for (let i = 0; i < d.length; i += 4) { const n = (Math.random() - 0.5) * 14; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
-  g.putImageData(img, 0, 0);
+// Each board is drawn as a real cut through a log: the growth rings are cylinders around the pith, the board's face
+// cuts them at a slight angle, so they show as nested arches ("cathedrals") with straight grain at the edges.
+// Earlywood is light, latewood darker with a sharp edge into the next year's ring; fine pores run along the grain;
+// knots push the rings round them. Drawn once per surface on the GPU, read back into a canvas (fast enough to redo
+// when the screen turns). The same seed gives the same boards, so the wood doesn't change when the box is rebuilt.
+const PX = 320;   // texels per world unit
+const WOOD_SEED = Math.floor(Math.random() * 997);
+const WOOD_GLSL = /* glsl */`
+precision highp float;
+uniform vec2 uSize; uniform float uPX, uAlong, uPlanks, uSeed, uMode, uSeams, uKnots, uTilt;
+uniform vec3 uE, uL; uniform float uVar;
+float h11(float p) { p = fract(p * .1031); p *= p + 33.33; p *= p + p; return fract(p); }
+float h21(vec2 p) { vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float vn(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+  return mix(mix(h21(i), h21(i + vec2(1, 0)), f.x), mix(h21(i + vec2(0, 1)), h21(i + vec2(1, 1)), f.x), f.y);
 }
-function cloneCanvas(src) { const c = document.createElement('canvas'); c.width = src.width; c.height = src.height; c.getContext('2d').drawImage(src, 0, 0); return c; }
+float fbm(vec2 p) { float a = .5, s = 0.; for (int i = 0; i < 4; i++) { s += a * vn(p); p = p * 2.03 + 17.1; a *= .5; } return s - .47; }
+void main() {
+  vec2 c = gl_FragCoord.xy;   // read back bottom row first, so this is the canvas pixel, top row first
+  vec2 b = (uAlong > .5 ? c : c.yx) / uPX;                           // board: x along the grain, y across
+  float W = (uAlong > .5 ? uSize.y : uSize.x) / uPX, Lb = (uAlong > .5 ? uSize.x : uSize.y) / uPX;
+  float pw = W / uPlanks, p = min(floor(b.y / pw), uPlanks - 1.), v = b.y - p * pw, u = b.x;
+  float s = uSeed + p * 17.31;
+  float r1 = h11(s + .1), r2 = h11(s + .2), r3 = h11(s + .3), r4 = h11(s + .4), r5 = h11(s + .5), r6 = h11(s + .6);
+  // the log: pith beside/under the board, its depth below the face changing along the board (that makes the arches)
+  float rf = mix(38., 58., r1);                                       // rings per unit
+  float pc = pw * (.5 + (r2 - .5) * 1.3);
+  float tilt = mix(.08, .18, r4) * uTilt;
+  float along = r5 < .5 ? u : Lb - u;                                 // arches point up or down the board
+  float uu = u + r6 * 40.;
+  float dz = mix(.05, .55, r3 * r3) + tilt * along + .07 * sin(uu * .6 + r6 * 6.) + .08 * fbm(vec2(uu * .3, s));
+  float dx = v - pc + .06 * fbm(vec2(uu * .45, v * 1.5 + s));
+  float r = sqrt(dx * dx + dz * dz);
+  r += .005 * fbm(vec2(uu * 1.5, v * 5. + s * 3.)) + .0012 * vn(vec2(uu * 10., v * 40.));
+  // knots: the rings swell round them; a dark core with its own little rings
+  float knot = 0.;
+  for (int k = 0; k < 2; k++) {
+    float q = s + float(k) * 3.7;
+    if (h11(q + .7) > uKnots) continue;
+    vec2 kp = vec2(h11(q + .8) * Lb, mix(.15, .85, h11(q + .9)) * pw);
+    float ks = mix(.012, .028, h11(q + 1.1));
+    vec2 d = (vec2(u, v) - kp) / vec2(ks * 4.5, ks * 1.7);
+    r += mix(2.5, 5., h11(q + 1.3)) / rf * exp(-.5 * dot(d, d));
+    float e = length((vec2(u, v) - kp) / vec2(ks * 1.25, ks));
+    knot = max(knot, (1. - smoothstep(.6, 1.05, e)) * (.85 + .15 * sin(e * 12.)));
+  }
+  float x = r * rf, f = fract(x), id = floor(x);
+  float ri = mix(.25, 1., pow(h11(id * 1.37 + s), 1.5));                          // some years darker than others
+  float late = smoothstep(.55, .97, f); late *= late; late *= 1. - smoothstep(.975, 1., f);
+  late *= ri;
+  // pores and fibres, along the grain
+  float por = vn(vec2(u * 3., v * 110.)), dash = smoothstep(.7, .95, vn(vec2(u * 7., v * 140.)));
+  float big = fbm(vec2(u * .55, v * 1.6 + s));
+  // seams between boards
+  float de = min(v, pw - v) * uPX;
+  float seam = 0., lip = 0.;
+  if (uSeams > .5 && uPlanks > 1.) {
+    bool inner = (v < pw * .5 && p > 0.) || (v >= pw * .5 && p < uPlanks - 1.);
+    if (inner) { seam = 1. - smoothstep(.5, 1.6, de); lip = smoothstep(1.2, 2., de) * (1. - smoothstep(2., 5., de)); }
+  }
+  if (uMode > .5) {                                                    // height, for the bump map
+    float hgt = .62 - .16 * late - .22 * dash - .1 * por + .08 * big - .25 * knot;
+    hgt = mix(hgt, .05, seam) - .04 * lip;
+    gl_FragColor = vec4(vec3(clamp(hgt, 0., 1.)), 1.);
+    return;
+  }
+  vec3 tint = vec3(1. + uVar * (r1 - .5), 1. + uVar * .8 * (r1 - .5) - .04 * (r2 - .5), 1. + uVar * (r3 - .5) * 1.5);
+  vec3 E = uE * tint * (1. + .1 * (r4 - .5));
+  vec3 L = uL * tint;
+  vec3 col = mix(E, L, late * .75);
+  col *= 1. + .18 * big;
+  col *= 1. - .06 * por - .09 * dash * (.4 + late);
+  col = mix(col, L * .5, knot * .85);
+  col *= 1. - .78 * seam;
+  col *= 1. - .1 * lip;
+  gl_FragColor = vec4(clamp(col, 0., 1.), 1.);
+}`;
+const bakeCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), bakeScene = new THREE.Scene();
+const bakeMat = new THREE.ShaderMaterial({
+  vertexShader: 'void main() { gl_Position = vec4(position.xy, 0., 1.); }', fragmentShader: WOOD_GLSL, depthTest: false,
+  uniforms: { uSize: { value: new THREE.Vector2() }, uPX: { value: PX }, uAlong: { value: 1 }, uPlanks: { value: 1 }, uSeed: { value: 0 },
+    uMode: { value: 0 }, uSeams: { value: 1 }, uKnots: { value: .4 }, uTilt: { value: 1 }, uE: { value: new THREE.Color() }, uL: { value: new THREE.Color() }, uVar: { value: .1 } }
+});
+bakeScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), bakeMat));
+function bakeWood(w, h, alongX, opt, mode) {
+  const U = bakeMat.uniforms;
+  U.uSize.value.set(w, h); U.uAlong.value = alongX ? 1 : 0; U.uPlanks.value = opt.planks || 1; U.uSeed.value = opt.seed || 0;
+  U.uMode.value = mode; U.uSeams.value = opt.seams === false ? 0 : 1; U.uKnots.value = opt.knots ?? .4; U.uTilt.value = opt.tilt ?? 1;
+  U.uE.value.setStyle(opt.light, THREE.NoColorSpace); U.uL.value.setStyle(opt.dark, THREE.NoColorSpace); U.uVar.value = opt.tintVar;
+  const rt = new THREE.WebGLRenderTarget(w, h, { depthBuffer: false });
+  const prev = renderer.getRenderTarget();
+  renderer.setRenderTarget(rt); renderer.render(bakeScene, bakeCam);
+  const buf = new Uint8ClampedArray(w * h * 4);
+  renderer.readRenderTargetPixels(rt, 0, 0, w, h, buf);
+  renderer.setRenderTarget(prev); rt.dispose();
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  c.getContext('2d').putImageData(new ImageData(buf, w, h), 0, 0);
+  return c;
+}
 // ao: corner darkening per edge, canvas orientation (top = the plane's +y)
 function woodTexture(worldW, worldH, alongX, opt, ao) {
-  const w = Math.max(64, Math.round(worldW * PX)), h = Math.max(64, Math.round(worldH * PX));
-  const c = document.createElement('canvas'); c.width = w; c.height = h;
-  const g = c.getContext('2d');
-  if (alongX) drawGrain(g, w, h, opt);
-  else {
-    const t = document.createElement('canvas'); t.width = h; t.height = w;
-    drawGrain(t.getContext('2d'), h, w, opt);
-    g.save(); g.translate(w, 0); g.rotate(Math.PI / 2); g.drawImage(t, 0, 0); g.restore();
-  }
-  const bump = new THREE.CanvasTexture(cloneCanvas(c));   // the grain, before the corner shading
+  const maxT = Math.min(4096, renderer.capabilities.maxTextureSize);
+  const w = clamp(Math.round(worldW * PX), 64, maxT), h = clamp(Math.round(worldH * PX), 64, maxT);
+  const bump = new THREE.CanvasTexture(bakeWood(w, h, alongX, opt, 1));
+  const c = bakeWood(w, h, alongX, opt, 0), g = c.getContext('2d');
   const aoW = 0.28 * PX;
   const edge = (x0, y0, x1, y1, s, rx, ry, rw, rh) => {
     if (!s) return;
@@ -203,9 +258,13 @@ function woodTexture(worldW, worldH, alongX, opt, ao) {
   return { map: tex, bump };
 }
 
-const WALL = { base: '#c99a62', tint: '120,70,25', tintVar: 0.12, dark: '92,52,18', planks: 1 };
-const FLOOR = { base: '#ad7642', tint: '90,45,12', tintVar: 0.22, dark: '70,36,10', planks: 4 };
-const RIM = { base: '#ddb57f', tint: '150,95,40', tintVar: 0.1, dark: '120,75,30', planks: 1 };
+// honey-coloured oak, like the reference: light earlywood, orange-brown latewood
+const WOOD = { light: '#e5962f', dark: '#b45f12', tintVar: 0.1, knots: 0.45 };
+const WALL = { ...WOOD, planks: 1 };
+const BACK = { ...WOOD, planks: 3 };
+const FLOOR = { ...WOOD, light: '#d8903c', dark: '#a85d1c', planks: 3 };
+const RIM = { ...WOOD, light: '#dc933d', dark: '#ae601c', planks: 4, seams: false, knots: 0.15, tilt: 0.5 };
+const seeded = (o, k) => ({ ...o, seed: WOOD_SEED + 101 * k });
 function woodMat(t) {
   const m = new THREE.MeshStandardMaterial({ map: t.map, bumpMap: t.bump, bumpScale: 1.2, roughness: 0.74, metalness: 0 });
   m.envMapIntensity = 0.55;   // light bounced between the walls
@@ -213,7 +272,7 @@ function woodMat(t) {
 }
 
 // ================= the box =================
-let boxGroup = null;
+let boxGroup = null, rimMesh = null;
 function buildBox() {
   const s = Math.min(innerWidth, innerHeight);
   hw = innerWidth / s; hh = innerHeight / s;
@@ -225,49 +284,75 @@ function buildBox() {
   boxGroup = new THREE.Group(); scene.add(boxGroup);
   const longY = iy >= ix;
   const back = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, 2 * iy),
-    woodMat(woodTexture(2 * ix, 2 * iy, !longY, WALL, { top: .45, bottom: .45, left: .45, right: .45 })));
+    woodMat(woodTexture(2 * ix, 2 * iy, !longY, seeded(BACK, 0), { top: .45, bottom: .45, left: .45, right: .45 })));
   back.position.z = -D; back.receiveShadow = true; boxGroup.add(back);
-  const deep = .5, side = .34;
-  const left = new THREE.Mesh(new THREE.PlaneGeometry(D, 2 * iy), woodMat(woodTexture(D, 2 * iy, false, WALL, { right: deep, top: side, bottom: side })));
-  left.rotation.y = Math.PI / 2; left.position.set(-ix, 0, -D / 2);
-  const right = new THREE.Mesh(new THREE.PlaneGeometry(D, 2 * iy), woodMat(woodTexture(D, 2 * iy, false, WALL, { left: deep, top: side, bottom: side })));
-  right.rotation.y = -Math.PI / 2; right.position.set(ix, 0, -D / 2);
-  const bottom = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, D), woodMat(woodTexture(2 * ix, D, true, FLOOR, { top: deep, left: side, right: side })));
-  bottom.rotation.x = -Math.PI / 2; bottom.position.set(0, -iy, -D / 2);
-  const top = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, D), woodMat(woodTexture(2 * ix, D, true, WALL, { bottom: deep, left: side, right: side })));
-  top.rotation.x = Math.PI / 2; top.position.set(0, iy, -D / 2);
+  // the walls start where the rim's rounded edge ends
+  const deep = .5, side = .34, Dw = D - BEVEL, zc = -(D + BEVEL) / 2;
+  const left = new THREE.Mesh(new THREE.PlaneGeometry(Dw, 2 * iy), woodMat(woodTexture(Dw, 2 * iy, false, seeded(WALL, 1), { right: deep, top: side, bottom: side })));
+  left.rotation.y = Math.PI / 2; left.position.set(-ix, 0, zc);
+  const right = new THREE.Mesh(new THREE.PlaneGeometry(Dw, 2 * iy), woodMat(woodTexture(Dw, 2 * iy, false, seeded(WALL, 2), { left: deep, top: side, bottom: side })));
+  right.rotation.y = -Math.PI / 2; right.position.set(ix, 0, zc);
+  const bottom = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, Dw), woodMat(woodTexture(2 * ix, Dw, true, seeded(FLOOR, 3), { top: deep, left: side, right: side })));
+  bottom.rotation.x = -Math.PI / 2; bottom.position.set(0, -iy, zc);
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, Dw), woodMat(woodTexture(2 * ix, Dw, true, seeded(WALL, 4), { bottom: deep, left: side, right: side })));
+  top.rotation.x = Math.PI / 2; top.position.set(0, iy, zc);
   for (const w of [left, right, bottom, top]) { w.receiveShadow = true; boxGroup.add(w); }
-  // the rim (the walls' top edge), flush with the screen
-  const shape = new THREE.Shape();
-  shape.moveTo(-hw - .01, -hh - .01); shape.lineTo(hw + .01, -hh - .01); shape.lineTo(hw + .01, hh + .01); shape.lineTo(-hw - .01, hh + .01); shape.closePath();
-  const hole = new THREE.Path();
-  hole.moveTo(-ix, -iy); hole.lineTo(-ix, iy); hole.lineTo(ix, iy); hole.lineTo(ix, -iy); hole.closePath();
-  shape.holes.push(hole);
-  const rimGeo = new THREE.ShapeGeometry(shape);
-  const uv = rimGeo.attributes.uv, pos = rimGeo.attributes.position;
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, (pos.getX(i) + hw) / (2 * hw), (pos.getY(i) + hh) / (2 * hh));
-  const rt = woodTexture(2 * hw, 2 * hh, true, RIM, {});
-  const rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({ map: rt.map, bumpMap: rt.bump, bumpScale: 1, roughness: .7, emissive: 0x2a1a0c, emissiveIntensity: .45 }));
-  rim.material.envMapIntensity = .4;
-  boxGroup.add(rim);
+  // the rim: four boards mitred at the corners, flat at the glass, their inside edge rounded over into the walls
+  // (a quarter round), so the light runs along the edge as on a real box
+  const out = LIP + .01, prof = [];
+  for (let i = 0; i <= 12; i++) {
+    const a = i / 12 * Math.PI / 2;
+    prof.push([BEVEL * (1 - Math.cos(a)), -BEVEL * (1 - Math.sin(a)), -Math.cos(a), Math.sin(a)]);   // [out, z, normal out, normal z]
+  }
+  prof.push([out, 0, 0, 1]);
+  const sLen = [0];
+  for (let i = 1; i < prof.length; i++) sLen.push(sLen[i - 1] + Math.hypot(prof[i][0] - prof[i - 1][0], prof[i][1] - prof[i - 1][1]));
+  const sTot = sLen[sLen.length - 1], Lmax = Math.max(ix, iy) + out;
+  const P = [], N = [], UV = [], I = [];
+  // each side: n = away from the middle, t = along the side, half its inner length
+  [[0, -1, 1, 0, iy, ix], [1, 0, 0, 1, ix, iy], [0, 1, -1, 0, iy, ix], [-1, 0, 0, -1, ix, iy]].forEach(([nx, ny, tx, ty, inner, half], k) => {
+    const base = P.length / 3;
+    for (let i = 0; i < prof.length; i++) {
+      const [o, z, no, nz] = prof[i], L = half + o;
+      for (const e of [-1, 1]) {
+        P.push(nx * (inner + o) + tx * e * L, ny * (inner + o) + ty * e * L, z);
+        N.push(nx * no, ny * no, nz);
+        UV.push((e * L + Lmax) / (2 * Lmax), 1 - (k + sLen[i] / sTot) / 4);
+      }
+    }
+    for (let i = 0; i < prof.length - 1; i++) {
+      const a = base + 2 * i, b = a + 1, c = a + 3, d = a + 2;
+      I.push(a, c, b, a, d, c);
+    }
+  });
+  const rimGeo = new THREE.BufferGeometry();
+  rimGeo.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+  rimGeo.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3));
+  rimGeo.setAttribute('uv', new THREE.Float32BufferAttribute(UV, 2));
+  rimGeo.setIndex(I);
+  const rt = woodTexture(2 * Lmax, 4 * sTot, true, seeded(RIM, 5), {});
+  const rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({ map: rt.map, bumpMap: rt.bump, bumpScale: 1, roughness: .6, color: 0xd0d0d0 }));   // a touch darker: it sits nearest the light
+  rim.material.envMapIntensity = .55;
+  boxGroup.add(rim); rimMesh = rim;
   physBox();
   envDirty = 0;
 }
 
 // ================= lights =================
 // one soft key light from the room, always from real "up" and in front of the glass
-const spot = new THREE.SpotLight(0xfff0dc, 70, 0, 0.6, 0.65, 2);
+const LIGHT_DIST = 6.2;   // far enough that the rim near the light isn't blown out (light falls off with distance squared)
+const spot = new THREE.SpotLight(0xfff0dc, 70 * (LIGHT_DIST / 4.6) ** 2, 0, 0.6, 0.65, 2);
 spot.castShadow = true;
 spot.shadow.bias = -0.0004;
 spot.shadow.normalBias = 0.02;
 scene.add(spot, spot.target);
-scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12));
+scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.3));   // soft fill from the room, so the side walls aren't lost
 const lightUp = new THREE.Vector3(0, 1, 0);
 function placeLight() {
   const dir = new THREE.Vector3(lightUp.x * 0.75, lightUp.y * 0.75, 0.85);
   if (dir.z < 0.55) dir.z = 0.55;
   dir.normalize();
-  const dist = 4.6;
+  const dist = LIGHT_DIST;
   spot.position.set(dir.x * dist, dir.y * dist, -D / 2 + dir.z * dist);
   spot.target.position.set(0, 0, -D * 0.7);
   spot.angle = Math.atan((Math.max(hw, hh) + 0.4) / dist) + 0.12;
@@ -284,10 +369,12 @@ const movers = [];   // hidden while the box looks at itself
 function updateEnv() {
   cubeCam.position.set(0, 0, -D / 2);
   for (const m of movers) m.visible = false;
+  if (rimMesh) rimMesh.visible = false;   // faces the glass, adds nothing to the bounce, and its capture turned the whole map black (v15.1)
   scene.background = ROOM;   // what comes in through the glass: the room
   cubeCam.update(renderer, scene);
   scene.background = look.on ? GREY : DARK;
   for (const m of movers) m.visible = true;
+  if (rimMesh) rimMesh.visible = true;
   cubeRT.texture.needsPMREMUpdate = true;
 }
 
