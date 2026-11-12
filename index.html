@@ -538,32 +538,40 @@ function bareGeo(g) { if (g.getAttribute('uv')) g.deleteAttribute('uv'); return 
 function sculpt(nm) {
   const side = nm.endsWith('L') ? -1 : 1, base = nm.replace(/[LR]$/, '');
   switch (base) {
-    case 'chest': return { g: loft([
-        [-0.110, 0.122, 0.082], [-0.070, 0.131, 0.088, 0.003], [-0.020, 0.144, 0.096, 0.005], [0.030, 0.156, 0.099, 0.004],
-        [0.065, 0.168, 0.096], [0.090, 0.170, 0.087, -0.004], [0.108, 0.148, 0.074, -0.006], [0.120, 0.090, 0.058, -0.008]],
-        { n: 2.6, capB: 0.004, capT: 0.012, seg: 48, bump: (th, y) =>
-          0.012 * (gau(angTo(th, 0.45), 0.32) + gau(angTo(th, -0.45), 0.32)) * gau(y - 0.02, 0.04)      // chest muscles
-          - 0.004 * gau(th, 0.07) * gau(y - 0.0, 0.07)                                                    // breastbone line
-          + 0.008 * (gau(angTo(th, PI - 0.5), 0.35) + gau(angTo(th, -PI + 0.5), 0.35)) * gau(y - 0.04, 0.045) // shoulder blades
-          - 0.003 * gau(angTo(th, PI), 0.08) }) };                                                          // spine
-    case 'belly': return { g: loft([[-0.060, 0.116, 0.080], [-0.020, 0.110, 0.077], [0.030, 0.113, 0.079], [0.058, 0.120, 0.082]],
-        { n: 2.4, capB: 0.006, capT: 0.006, seg: 44, bump: (th, y) =>
-          0.004 * (gau(angTo(th, 0.2), 0.14) + gau(angTo(th, -0.2), 0.14)) - 0.004 * gau(angTo(th, PI), 0.08) }) };
-    case 'pelvis': return { g: loft([[-0.074, 0.060, 0.064, 0.008], [-0.058, 0.110, 0.084, 0.002], [-0.030, 0.138, 0.090], [0.005, 0.142, 0.092],
-        [0.040, 0.132, 0.087], [0.070, 0.121, 0.082]],
-        { n: 2.4, capB: 0.012, capT: 0.004, seg: 44, bump: (th, y) =>
-          0.011 * (gau(angTo(th, PI - 0.55), 0.4) + gau(angTo(th, -PI + 0.55), 0.4)) * gau(y + 0.025, 0.04)  // seat
-          - 0.006 * gau(angTo(th, PI), 0.06) * gau(y + 0.04, 0.04) }) };
-    case 'neck': return { g: loft([[-0.045, 0.042, 0.040], [-0.015, 0.036, 0.036], [0.015, 0.035, 0.035], [0.045, 0.037, 0.037]],
-        { capB: 0.008, capT: 0.008, seg: 24 }), dark: 1 };
+    case 'chest': return { g: loft([   // a V: broad shoulders over a ribcage that narrows to the waist, trapezius up to the neck
+        [-0.110, 0.104, 0.074], [-0.080, 0.114, 0.082, 0.004], [-0.040, 0.130, 0.090, 0.006], [0.000, 0.146, 0.096, 0.006],
+        [0.040, 0.160, 0.098, 0.004], [0.075, 0.172, 0.094], [0.098, 0.168, 0.084, -0.006], [0.115, 0.130, 0.070, -0.010],
+        [0.128, 0.082, 0.056, -0.012]],
+        { n: 2.6, capB: 0.004, capT: 0.010, seg: 56, sub: 5, bump: (th, y) => {
+          const pec = gau(y - 0.035, y < 0.035 ? 0.022 : 0.05);                                            // a crisp lower edge
+          return 0.016 * (gau(angTo(th, 0.42), 0.3) + gau(angTo(th, -0.42), 0.3)) * pec                   // chest muscles
+            - 0.005 * gau(th, 0.07) * gau(y - 0.02, 0.07)                                                   // breastbone line
+            + 0.010 * (gau(angTo(th, PI - 0.55), 0.33) + gau(angTo(th, -PI + 0.55), 0.33)) * gau(y - 0.045, 0.04) // shoulder blades
+            + 0.006 * (gau(angTo(th, PI / 2 + 0.35), 0.35) + gau(angTo(th, -PI / 2 - 0.35), 0.35)) * gau(y - 0.02, 0.05) // lats
+            - 0.004 * gau(angTo(th, PI), 0.07);                                                             // spine
+        } }) };
+    case 'belly': return { g: loft([[-0.062, 0.110, 0.078], [-0.030, 0.100, 0.074, 0.002], [0.000, 0.097, 0.073, 0.003],
+        [0.030, 0.099, 0.074, 0.003], [0.062, 0.104, 0.075]],
+        { n: 2.3, capB: 0.006, capT: 0.006, seg: 48, bump: (th, y) =>
+          0.004 * (gau(angTo(th, 0.2), 0.13) + gau(angTo(th, -0.2), 0.13)) * (1 - 0.35 * gau(y + 0.005, 0.012))  // stomach muscles
+          - 0.004 * gau(angTo(th, PI), 0.07) }) };
+    case 'pelvis': return { g: loft([   // hips like briefs: a narrow crotch, the hip bones widest, up to the waist
+        [-0.074, 0.050, 0.052, 0.008], [-0.062, 0.088, 0.070, 0.004], [-0.040, 0.122, 0.082, 0.001], [-0.008, 0.134, 0.086, -0.002],
+        [0.030, 0.126, 0.084, -0.002], [0.055, 0.114, 0.079], [0.070, 0.110, 0.078]],
+        { n: 2.4, capB: 0.010, capT: 0.003, seg: 48, sub: 5, bump: (th, y) =>
+          0.013 * (gau(angTo(th, PI - 0.5), 0.38) + gau(angTo(th, -PI + 0.5), 0.38)) * gau(y + 0.03, 0.035)    // seat
+          - 0.006 * gau(angTo(th, PI), 0.06) * gau(y + 0.045, 0.035)
+          - (Math.cos(th) > 0 ? 0.004 * gau(Math.abs(th) - (0.3 + 8 * (y + 0.07)), 0.09) * gau(y + 0.03, 0.04) : 0) }) };  // leg line
+    case 'neck': return { g: loft([[-0.045, 0.050, 0.046], [-0.015, 0.045, 0.043], [0.015, 0.043, 0.042], [0.045, 0.045, 0.044]],
+        { capB: 0.008, capT: 0.008, seg: 28 }), dark: 1 };
     case 'head': {
       const r = PARTS.head.head;
       const g = loft([
-        [-1.20, 0.16, 0.12, 0.40], [-1.12, 0.34, 0.26, 0.30], [-0.98, 0.52, 0.45, 0.16], [-0.72, 0.66, 0.63, 0.07],
+        [-1.20, 0.18, 0.12, 0.40], [-1.12, 0.38, 0.27, 0.30], [-0.98, 0.56, 0.46, 0.16], [-0.72, 0.66, 0.63, 0.07],
         [-0.40, 0.76, 0.76, 0.02], [-0.05, 0.83, 0.86, -0.02], [0.25, 0.86, 0.90, -0.05], [0.50, 0.835, 0.88, -0.07]],
         { capB: 0.03, capT: 0.52, seg: 64, sub: 6, bump: (th, y) => {
-          const ny = y > -0.34 ? clamp((0.12 - y) / 0.46, 0, 1) : clamp((y + 0.58) / 0.24, 0, 1);
-          return 0.17 * gau(th, 0.09 + 0.05 * ny) * ny * Math.sqrt(ny)                                   // nose
+          const ny = gau(y + 0.32, y > -0.32 ? 0.36 : 0.15);   // a ridge from the brow, rounded at the tip
+          return 0.14 * gau(th, 0.075 + 0.05 * ny) * ny                                   // nose
             + 0.05 * gau(th, 0.6) * gau(y - 0.15, 0.07)                                                     // brow
             - 0.035 * (gau(angTo(th, 0.36), 0.15) + gau(angTo(th, -0.36), 0.15)) * gau(y - 0.0, 0.1)       // eye sockets
             + 0.025 * (gau(angTo(th, 0.75), 0.2) + gau(angTo(th, -0.75), 0.2)) * gau(y + 0.22, 0.12)       // cheekbones
@@ -580,13 +588,13 @@ function sculpt(nm) {
       g.scale(1, 0.8, 0.95); g.rotateZ(-side * 0.55); g.translate(side * 0.118, -0.006, 0);
       return { g, dark: 1, both: 1 };
     }
-    case 'uArm': return { g: loft([[-0.092, 0.031, 0.033], [-0.050, 0.035, 0.038], [0.010, 0.040, 0.043], [0.060, 0.043, 0.044], [0.086, 0.040, 0.041]],
+    case 'uArm': return { g: loft([[-0.092, 0.030, 0.032], [-0.050, 0.034, 0.037], [0.010, 0.040, 0.044], [0.060, 0.045, 0.046], [0.086, 0.043, 0.043]],
         { capB: 0.016, capT: 0.02, bump: (th, y) => 0.004 * gau(th, 0.6) * gau(y - 0.0, 0.04) }) };
     case 'fArm': return { g: loft([[-0.088, 0.023, 0.020], [-0.050, 0.028, 0.026], [0.0, 0.034, 0.033], [0.050, 0.038, 0.036], [0.078, 0.035, 0.034]],
         { capB: 0.012, capT: 0.018 }) };
-    case 'thigh': return { g: loft([[-0.150, 0.043, 0.046], [-0.100, 0.049, 0.053, 0.002], [-0.030, 0.055, 0.060, 0.003], [0.050, 0.061, 0.065],
-        [0.120, 0.065, 0.066], [0.150, 0.063, 0.062]],
-        { capB: 0.022, capT: 0.03, bump: (th, y) => 0.005 * gau(th, 0.5) * gau(y + 0.02, 0.07) }) };
+    case 'thigh': return { g: loft([[-0.150, 0.040, 0.043], [-0.100, 0.046, 0.050, 0.002], [-0.030, 0.054, 0.059, 0.004], [0.050, 0.061, 0.065, 0.002],
+        [0.120, 0.065, 0.066], [0.150, 0.064, 0.063], [0.178, 0.056, 0.056, 0, side * 0.012]],   // up into the hip, outer side higher
+        { capB: 0.022, capT: 0.018, bump: (th, y) => 0.005 * gau(th, 0.5) * gau(y + 0.02, 0.07) }) };
     case 'shin': return { g: loft([[-0.150, 0.026, 0.028], [-0.100, 0.031, 0.034, -0.003], [-0.020, 0.039, 0.045, -0.008], [0.060, 0.044, 0.050, -0.010],
         [0.110, 0.044, 0.045, -0.004], [0.140, 0.041, 0.041]],
         { capB: 0.018, capT: 0.022 }) };
@@ -711,7 +719,7 @@ function buildFigure() {
     let ball;
     if (child === 'belly' || child === 'chest') {   // the torso joints show as a dark band at the waist, not a ball
       ball = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.014 * S, 40), JOINT);
-      ball.scale.set(0.112 * S, 1, 0.076 * S);
+      ball.scale.set((child === 'chest' ? 0.100 : 0.106) * S, 1, (child === 'chest' ? 0.071 : 0.075) * S);   // a little inside the waist
     } else ball = new THREE.Mesh(new THREE.SphereGeometry(jd[9] * S, 20, 14), JOINT);
     ball.position.set(pivotB.x, pivotB.y, pivotB.z); ball.castShadow = true;
     meshes[child].add(ball);
