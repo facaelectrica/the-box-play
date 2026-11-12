@@ -52,7 +52,7 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.8</div>
+<div id="ver">v15.9</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <button id="place" aria-label="The box or an open floor"></button>
 <div id="note"></div>
@@ -67,6 +67,7 @@
     <button class="pill" id="resetFig">Stand it up again</button>
     <button class="pill" id="resetVals">Default values</button>
   </div>
+  <div class="figs"><div style="margin-top:16px;font-size:13px;opacity:.7">Figure</div><div class="btns" id="figBtns" style="flex-wrap:wrap;margin-top:8px"></div></div>
   <div class="btns"><a class="pill" href="v13/" style="text-align:center;text-decoration:none">The old figure (v13)</a></div>
 </div>
 
@@ -359,8 +360,26 @@ function updateEnv() {
 // The body is NVIDIA's SOMA 23-body humanoid (Apache 2.0), loaded as it is from its MJCF file. Metres, kilograms,
 // seconds, g = 9.81: the box is sized around him, and the picture is drawn at S drawing units per metre.
 const mj = await loadMujoco();
-let DOLL = null;
-try { DOLL = await new GLTFLoader().loadAsync('body/doll.glb'); } catch (e) { console.warn('doll model did not load', e); }
+// figure looks the user can switch between (Options > Figure); all are drawn on the same SOMA bodies
+const FIGS = [
+  { id: 'bodychan', label: 'Body-chan', file: 'body/bodychan.glb' },       // the user's Body-chan figure (10:22)
+  { id: 'blender', label: 'Blender female', file: 'body/hbm_female.glb' },  // Blender Studio Human Base Meshes (CC0)
+  { id: 'doll', label: 'Ball-joint doll', file: 'body/doll.glb' },          // the user's ball-joint doll (09:54)
+  { id: 'sculpt', label: 'Mannequin', file: null },                         // code-sculpted (sim/look.js)
+];
+const figCache = {};
+let FIG = 'bodychan';
+try { const f = localStorage.getItem('box.figure'); if (FIGS.some(x => x.id === f)) FIG = f; } catch (e) {}
+async function loadFig(id) {
+  const f = FIGS.find(x => x.id === id);
+  if (!f || !f.file) return null;
+  if (!(id in figCache)) {
+    try { figCache[id] = await new GLTFLoader().loadAsync(f.file); }
+    catch (e) { console.warn(f.file + ' did not load', e); figCache[id] = null; }
+  }
+  return figCache[id];
+}
+let DOLL = await loadFig(FIG);
 const W = new BoxWorld(mj, await (await fetch(BODY_FILE)).text());
 let control = null;
 // the trained brain: NVIDIA's SOMA motion tracker (sim/brain.js, body/soma_tracker.onnx). If it can't load, the
@@ -422,7 +441,7 @@ const bodyGroup = [];   // by MuJoCo body id
 function buildFigure() {
   const m = W.m;
   let look = null;
-  // the user's ball-joint doll (body/doll.glb); else the code-sculpted mannequin (sim/look.js); else the MJCF shapes
+  // the chosen figure's GLB (FIGS); else the code-sculpted mannequin (sim/look.js); else the MJCF shapes
   try { look = DOLL ? lookFromGLTF(THREE, DOLL) : buildLook(THREE, mergeGeometries, W); }
   catch (e) { console.warn('figure look failed, drawing the plain shapes', e); }
   for (const g of bodyGroup) if (g) { figRoot.remove(g); g.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); movers.splice(movers.indexOf(g), 1); }
@@ -745,6 +764,20 @@ function changed(k) {
 $('optBtn').onclick = () => $('opts').classList.add('open');
 $('optClose').onclick = () => $('opts').classList.remove('open');
 $('resetFig').onclick = () => standUp();
+function showFigBtns() {
+  const box = $('figBtns'); box.innerHTML = '';
+  for (const f of FIGS) {
+    const b = document.createElement('button'); b.className = 'pill'; b.textContent = f.label;
+    b.style.flex = '1 1 40%'; if (f.id === FIG) { b.style.background = '#f5e8d6'; b.style.color = '#2a1a0c'; }
+    b.onclick = async () => {
+      if (f.id === FIG) return;
+      FIG = f.id; try { localStorage.setItem('box.figure', FIG); } catch (e) {}
+      showFigBtns(); DOLL = await loadFig(FIG); buildFigure();
+    };
+    box.appendChild(b);
+  }
+}
+showFigBtns();
 $('resetVals').onclick = () => { for (const o of OPTS) if (o.k) SET[o.k] = o.def; saveSettings(); buildOptions(); applyQuality(); };
 for (const ev of ['pointerdown', 'pointermove', 'touchmove']) $('opts').addEventListener(ev, e => e.stopPropagation(), { passive: true });
 

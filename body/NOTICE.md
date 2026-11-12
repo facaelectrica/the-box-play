@@ -28,3 +28,9 @@ model was trained on BONES-SEED motion data, whose own terms are not granted by 
 The figure's look: the female doll from "Ball Joint Doll Rigged Basemesh (male ver)" supplied by the project's owner
 (source and licence to be recorded here). Converted by `tools/look/doll_build.py` (parts fitted onto the SOMA body,
 triangles reduced); drawing only.
+
+## Figure models (Options > Figure)
+- `bodychan.glb`: built from "BodyChan - BodyKun | Posable Drawing Figures" by vinchau
+  (https://blendswap.com/blend/23521), CC0. Parts moved onto the SOMA skeleton by `tools/look/bodychan_build.py`.
+- `hbm_female.glb`: built from Blender Studio's "Human Base Meshes" bundle v1.4.1 (realistic female), CC0
+  (https://www.blender.org/download/demo-files/). Cut into parts at the SOMA joints by `tools/look/hbm_build.py`.
