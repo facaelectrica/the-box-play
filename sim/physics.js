@@ -109,9 +109,16 @@ export class BoxWorld {
     this.placeWalls();
   }
   placeWalls() {
-    const mp = this.d.mocap_pos;
-    for (const n of WALLS) { const k = this.wallMocap[n], p = this.wallAt[n]; mp[3 * k] = p[0]; mp[3 * k + 1] = p[1]; mp[3 * k + 2] = p[2]; }
+    const mp = this.d.mocap_pos, far = 18;
+    for (const n of WALLS) {
+      const k = this.wallMocap[n], p = this.wallAt[n].slice();
+      // open floor: every wall but the floor goes far away (the floor slab is 40 m across, centred under him)
+      if (this.open && n !== 'floor') { if (n === 'ceil') p[2] += far; else if (n === 'glass') p[1] -= far; else if (n === 'back') p[1] += far; else p[0] += Math.sign(p[0]) * far; }
+      mp[3 * k] = p[0]; mp[3 * k + 1] = p[1]; mp[3 * k + 2] = p[2];
+    }
   }
+  // open floor (true) or the box (false); he stays where he is
+  setOpen(on) { this.open = !!on; this.placeWalls(); }
   setGravity(v) { const g = this.m.opt.gravity; g[0] = v[0]; g[1] = v[1]; g[2] = v[2]; }
   // stand him up: on the floor, mid-depth, facing the glass (the body's forward is -y: toward you)
   standAt(q) {

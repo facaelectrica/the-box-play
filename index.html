@@ -25,6 +25,9 @@
   #note.show{opacity:1}
   #look{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #look::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:rgba(255,235,205,.9)}
+  #place{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(56px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #place::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border:2px solid rgba(255,235,205,.9);border-radius:2px;box-sizing:border-box}
+  #place.floor{background:#ffd400;border-color:#ffd400}#place.floor::after{border:0;height:3px;margin-top:2px;background:#111;width:16px;margin-left:-8px;border-radius:2px}
   #look.on{background:#ffd400;border-color:#ffd400}#look.on::after{background:#111;width:10px;height:10px;border-radius:2px}
   #ver{position:fixed;left:calc(12px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));z-index:6;font-size:16px;font-weight:800;letter-spacing:.5px;color:#111;background:#ffd400;border-radius:8px;padding:4px 10px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #opts{position:fixed;left:0;right:0;bottom:0;z-index:4;max-height:72vh;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;background:rgba(24,16,9,.92);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid rgba(255,230,200,.18);border-radius:18px 18px 0 0;padding:6px 18px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .3s ease}
@@ -49,8 +52,9 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.7</div>
+<div id="ver">v15.8</div>
 <button id="look" aria-label="Freeze and look around"></button>
+<button id="place" aria-label="The box or an open floor"></button>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -346,7 +350,7 @@ function updateEnv() {
   for (const m of movers) m.visible = false;
   scene.background = ROOM;   // what comes in through the glass: the room
   cubeCam.update(renderer, scene);
-  scene.background = look.on ? GREY : DARK;
+  scene.background = bgNow();
   for (const m of movers) m.visible = true;
   cubeRT.texture.needsPMREMUpdate = true;
 }
@@ -381,6 +385,7 @@ function physBox() {
   W.setBox(2 * ix / S, 2 * iy / S, D / S);
   figRoot.scale.setScalar(S);
   keepInside();
+  applyPlaceVis();
 }
 function keepInside() {
   const d = W.d, b = W.box;
@@ -388,8 +393,10 @@ function keepInside() {
   mj.mj_forward(W.m, d);
   const lo = W.lowestZ() + b.h / 2;
   if (lo < 0) d.qpos[2] -= lo;
-  d.qpos[0] = clamp(d.qpos[0], -b.w / 2 + 0.25, b.w / 2 - 0.25);
-  d.qpos[1] = clamp(d.qpos[1], 0.2, b.D - 0.2);
+  if (!W.open) {
+    d.qpos[0] = clamp(d.qpos[0], -b.w / 2 + 0.25, b.w / 2 - 0.25);
+    d.qpos[1] = clamp(d.qpos[1], 0.2, b.D - 0.2);
+  }
   mj.mj_forward(W.m, d);
 }
 function standUp() {
@@ -789,6 +796,40 @@ function updateCamera(dt) {
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 }
 
+// ================= where he is: the box, or an open floor (user, 10:05: "so I can see how he moves on a flat floor") =================
+// The open floor is the same floor with every wall moved far away (W.setOpen); the picture swaps the box for a wide
+// floor with a 1 m grid, so his steps and drift can be judged.
+let place = 'box', floorGroup = null;
+function buildFloor() {
+  if (floorGroup) { floorGroup.traverse(o => { if (o.isMesh || o.isLineSegments) { o.geometry.dispose(); o.material.dispose(); } }); scene.remove(floorGroup); }
+  floorGroup = new THREE.Group(); scene.add(floorGroup);
+  const size = 40 * S;   // 40 m across
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshStandardMaterial({ color: 0x9a8e80, roughness: 0.88, metalness: 0 }));
+  plane.rotation.x = -Math.PI / 2; plane.position.set(0, -iy, -D / 2); plane.receiveShadow = true; floorGroup.add(plane);
+  const grid = new THREE.GridHelper(size, 40, 0x5d544a, 0x6f655a);
+  grid.material.transparent = true; grid.material.opacity = 0.45; grid.position.set(0, -iy + 0.002, -D / 2); floorGroup.add(grid);
+}
+function bgNow() { return look.on ? GREY : place === 'floor' ? ROOM : DARK; }
+function applyPlaceVis() {
+  const box = place === 'box';
+  if (place === 'floor' && (!floorGroup || floorGroup.userData.S !== S || floorGroup.userData.iy !== iy)) { buildFloor(); floorGroup.userData = { S, iy }; }
+  if (boxGroup) boxGroup.visible = box && !look.on;
+  if (floorGroup) floorGroup.visible = !box && !look.on;
+  scene.background = bgNow();
+  scene.fog = box || look.on ? null : new THREE.Fog(ROOM, 8, 34);
+  envDirty = 0;
+}
+$('place').onclick = e => {
+  e.stopPropagation();
+  place = place === 'box' ? 'floor' : 'box';
+  $('place').classList.toggle('floor', place === 'floor');
+  W.setOpen(place === 'floor');
+  applyPlaceVis();
+  standUp();
+  note(place === 'box' ? 'Back in the box.' : 'Open floor: no walls. Double-tap to stand him up again.', 2400);
+};
+for (const ev of ['pointerdown', 'pointerup']) $('place').addEventListener(ev, e => e.stopPropagation());
+
 // ================= look mode: physics stops, he stands in his default pose, a finger turns the view around him =================
 const look = { on: false, yaw: 0, pitch: 0.12, dist: 0, tgt: new THREE.Vector3(), drag: null };
 $('look').onclick = e => {
@@ -802,8 +843,7 @@ $('look').onclick = e => {
     poke.on = false; drag = null;
     note('Paused. Slide to look around him; tap the circle to carry on.', 2600);
   } else { acc = 0; last = performance.now(); }
-  if (boxGroup) boxGroup.visible = !look.on;
-  scene.background = look.on ? GREY : DARK;   // looking him over: a plain 50% grey behind him
+  applyPlaceVis();   // looking him over: a plain 50% grey behind him, no box or floor
 };
 for (const ev of ['pointerdown', 'pointerup']) $('look').addEventListener(ev, e => e.stopPropagation());
 el.addEventListener('pointerdown', e => { if (look.on) look.drag = { x: e.clientX, y: e.clientY, yaw: look.yaw, pitch: look.pitch, id: e.pointerId }; }, true);
