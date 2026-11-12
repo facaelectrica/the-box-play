@@ -48,9 +48,9 @@
 <div id="start">
   <h1>The Box</h1>
   <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance.</p>
-  <button id="go">Start</button>
+  <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v5</div>
+<div id="ver">v6</div>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -76,6 +76,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import * as CANNON from 'cannon-es';
+import initJolt from 'https://cdn.jsdelivr.net/npm/jolt-physics@1.1.1/dist/jolt-physics.wasm-compat.js';
 
 const $ = id => document.getElementById(id);
 const DEG = Math.PI / 180;
@@ -293,131 +294,168 @@ function updateEnv() {
   cubeRT.texture.needsPMREMUpdate = true;
 }
 
-// ================= physics =================
-const world = new CANNON.World();
-world.broadphase = new CANNON.SAPBroadphase(world);
-world.solver.iterations = 12;
-world.allowSleep = false;
-world.gravity.set(0, -SET.gravity, 0);
-const woodPM = new CANNON.Material('wood'), dollPM = new CANNON.Material('doll'), footPM = new CANNON.Material('foot');
-const CM = {
-  wd: new CANNON.ContactMaterial(woodPM, dollPM, {}),
-  wf: new CANNON.ContactMaterial(woodPM, footPM, {}),
-  dd: new CANNON.ContactMaterial(dollPM, dollPM, {}),
-  df: new CANNON.ContactMaterial(dollPM, footPM, {}),
-  ff: new CANNON.ContactMaterial(footPM, footPM, {}),
-};
-for (const c of Object.values(CM)) world.addContactMaterial(c);
-// cannon-es caps friction per step and per contact point (measured: at 1/120 s steps the real grip
-// is about friction x 120 x contact points), so a wood-like grip of 0.35 is set as about 0.0012
-const GRIP = real => real / (120 * 2.5);
-function applySurfaces() {
-  const b = SET.bounce;
-  CM.wd.friction = GRIP((1 - SET.slide) * 0.7); CM.wd.restitution = b;
-  CM.wf.friction = GRIP(SET.grip * 1.6);       CM.wf.restitution = b * 0.5;
-  for (const c of [CM.dd, CM.df, CM.ff]) { c.friction = GRIP(0.3); c.restitution = 0.05; }
-}
-applySurfaces();
+// ================= physics: Jolt =================
+// cannon-es is kept only for its small vector and rotation maths
+const Jolt = await initJolt();
+const LAYER_STILL = 0, LAYER_MOVING = 1;
+const jolt = (() => {
+  const st = new Jolt.JoltSettings();
+  const ol = new Jolt.ObjectLayerPairFilterTable(2);
+  ol.EnableCollision(LAYER_STILL, LAYER_MOVING);
+  ol.EnableCollision(LAYER_MOVING, LAYER_MOVING);
+  const bp = new Jolt.BroadPhaseLayerInterfaceTable(2, 2);
+  bp.MapObjectToBroadPhaseLayer(LAYER_STILL, new Jolt.BroadPhaseLayer(0));
+  bp.MapObjectToBroadPhaseLayer(LAYER_MOVING, new Jolt.BroadPhaseLayer(1));
+  st.mObjectLayerPairFilter = ol;
+  st.mBroadPhaseLayerInterface = bp;
+  st.mObjectVsBroadPhaseLayerFilter = new Jolt.ObjectVsBroadPhaseLayerFilterTable(st.mBroadPhaseLayerInterface, 2, st.mObjectLayerPairFilter, 2);
+  const j = new Jolt.JoltInterface(st);
+  Jolt.destroy(st);
+  return j;
+})();
+const physics = jolt.GetPhysicsSystem();
+const bodies = physics.GetBodyInterface();
+const lockNo = physics.GetBodyLockInterfaceNoLock();
+const gravity = new CANNON.Vec3(0, -SET.gravity, 0);
+const jv = new Jolt.Vec3(0, 0, 0), jv2 = new Jolt.Vec3(0, 0, 0), jr = new Jolt.RVec3(0, 0, 0), jq = new Jolt.Quat(0, 0, 0, 1);
+function setGravity() { jv.Set(gravity.x, gravity.y, gravity.z); physics.SetGravity(jv); }
+setGravity();
 
-// the box: back, four walls, and the glass
-let walls = [];
-const WALLN = [];   // each wall's inward normal, for finding the floor
-function plane(nx, ny, nz, d) {
-  const b = new CANNON.Body({ type: CANNON.Body.STATIC, material: woodPM, shape: new CANNON.Plane() });
-  if (nz < -0.5) b.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), Math.PI);   // a plane faces local +z
-  else b.quaternion.setFromVectors(new CANNON.Vec3(0, 0, 1), new CANNON.Vec3(nx, ny, nz));
-  b.position.set(-nx * d, -ny * d, -nz * d);
-  b.isWall = true;
-  world.addBody(b);
-  return b;
+// the box: back, four walls and the glass, as thick slabs
+let wallIds = [];
+const WALLN = [[0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]];   // inward normals
+function slab(hx, hy, hz, x, y, z) {
+  const bcs = new Jolt.BodyCreationSettings(new Jolt.BoxShape(new Jolt.Vec3(hx, hy, hz), 0.02), new Jolt.RVec3(x, y, z), new Jolt.Quat(0, 0, 0, 1), Jolt.EMotionType_Static, LAYER_STILL);
+  bcs.mFriction = 1.0; bcs.mRestitution = 0.3;
+  const b = bodies.CreateBody(bcs); Jolt.destroy(bcs);
+  bodies.AddBody(b.GetID(), Jolt.EActivation_DontActivate);
+  return b.GetID();
 }
-const dyn = [];
 function physWalls() {
-  for (const w of walls) world.removeBody(w);
-  walls = [plane(0, 0, 1, D), plane(0, 0, -1, 0), plane(1, 0, 0, ix), plane(-1, 0, 0, ix), plane(0, 1, 0, iy), plane(0, -1, 0, iy)];
-  WALLN.length = 0;
-  WALLN.push([0, 0, 1], [0, 0, -1], [1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0]);
-  const m = 0.1;
-  for (const b of dyn) {
-    const p = b.position;
-    const cx = clamp(p.x, -ix + m, ix - m), cy = clamp(p.y, -iy + m, iy - m), cz = clamp(p.z, -D + m, -m);
-    if (cx !== p.x || cy !== p.y || cz !== p.z) { p.set(cx, cy, cz); b.velocity.setZero(); b.angularVelocity.setZero(); }
+  for (const id of wallIds) { bodies.RemoveBody(id); bodies.DestroyBody(id); }
+  const T = 0.5;
+  wallIds = [
+    slab(ix + T, iy + T, T / 2, 0, 0, -D - T / 2),        // back
+    slab(ix + T, iy + T, T / 2, 0, 0, T / 2),             // glass
+    slab(T / 2, iy + T, D / 2 + T, -ix - T / 2, 0, -D / 2),
+    slab(T / 2, iy + T, D / 2 + T, ix + T / 2, 0, -D / 2),
+    slab(ix + T, T / 2, D / 2 + T, 0, -iy - T / 2, -D / 2),
+    slab(ix + T, T / 2, D / 2 + T, 0, iy + T / 2, -D / 2),
+  ];
+}
+
+// one moving part: its state read from Jolt each step, in the maths the controller uses, and the pushes it asks for
+class Part {
+  constructor(name, P, body) {
+    this.name = name; this.P = P; this.body = body; this.id = body.GetID();
+    this.mass = P.mass; this.isCore = !!P.core;
+    this.position = new CANNON.Vec3(); this.quaternion = new CANNON.Quaternion();
+    this.velocity = new CANNON.Vec3(); this.angularVelocity = new CANNON.Vec3();
+    this.force = new CANNON.Vec3(); this.torque = new CANNON.Vec3();
+    this.prevV = new CANNON.Vec3();
+    const ii = body.GetMotionProperties().GetInverseInertiaDiagonal();
+    this.inertia = new CANNON.Vec3(1 / ii.GetX(), 1 / ii.GetY(), 1 / ii.GetZ());
+    this.mass = 1 / body.GetMotionProperties().GetInverseMass();
+  }
+  pull() {
+    const b = this.body, p = b.GetPosition(), q = b.GetRotation(), v = b.GetLinearVelocity(), w = b.GetAngularVelocity();
+    this.prevV.copy(this.velocity);
+    this.position.set(p.GetX(), p.GetY(), p.GetZ());
+    this.quaternion.set(q.GetX(), q.GetY(), q.GetZ(), q.GetW());
+    this.velocity.set(v.GetX(), v.GetY(), v.GetZ());
+    this.angularVelocity.set(w.GetX(), w.GetY(), w.GetZ());
+  }
+  push() {
+    const f = this.force, t = this.torque;
+    if (f.x || f.y || f.z) { jv.Set(f.x, f.y, f.z); this.body.AddForce(jv); f.set(0, 0, 0); }
+    if (t.x || t.y || t.z) { jv.Set(t.x, t.y, t.z); this.body.AddTorque(jv); t.set(0, 0, 0); }
+  }
+  place(p, q) {
+    jr.Set(p.x, p.y, p.z);
+    const qq = new Jolt.Quat(q.x, q.y, q.z, q.w);
+    bodies.SetPositionAndRotation(this.id, jr, qq, Jolt.EActivation_Activate);
+    Jolt.destroy(qq);
+    jv.Set(0, 0, 0); jv2.Set(0, 0, 0);
+    bodies.SetLinearAndAngularVelocity(this.id, jv, jv2);
   }
 }
 
-// knocks and knock-outs
+// knocks on the wood, and hits hard enough to knock it out: a sudden stop near a wall
 let lastKnock = 0;
-function onCollide(e, body) {
-  const v = Math.abs(e.contact.getImpactVelocityAlongNormal());
-  if (body.isCore && v > SET.knock) stun = 0.7;
-  if (v < 1.1) return;
+function hitCheck(part) {
+  const dv = part.velocity.vsub(part.prevV).length();
+  if (dv < 1.2) return;
+  const p = part.position, r = 0.12 * S;
+  const nearWall = ix - Math.abs(p.x) < r || iy - Math.abs(p.y) < r || p.z + D < r || -p.z < r;
+  if (!nearWall) return;
+  if (part.isCore && dv > SET.knock) stun = 0.7;
   const now = performance.now();
   if (now - lastKnock < 45) return;
   lastKnock = now;
-  knock(v * (e.body.isWall ? 0.7 : 0.35));
+  knock(dv * 0.6);
+}
+
+function applySurfaces() {
+  const b = SET.bounce;
+  for (const nm in B) {
+    const part = B[nm];
+    part.body.SetFriction(part.P.foot ? SET.grip * 0.9 : 0.12 + (1 - SET.slide) * 0.8);
+    part.body.SetRestitution(part.P.foot ? b * 0.4 : b);
+  }
 }
 
 const syncs = [];
-function addDyn(body, mesh) {
-  world.addBody(body); dyn.push(body); syncs.push([body, mesh]); scene.add(mesh); movers.push(mesh);
-  if (!body.hasKnock) { body.addEventListener('collide', e => onCollide(e, body)); body.hasKnock = true; }
-}
-function removeDyn(body, dispose) {
-  world.removeBody(body);
-  dyn.splice(dyn.indexOf(body), 1);
-  const i = syncs.findIndex(s => s[0] === body);
-  const mesh = syncs[i][1];
-  syncs.splice(i, 1); scene.remove(mesh); movers.splice(movers.indexOf(mesh), 1);
-  if (dispose) mesh.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
-}
 
 // ================= the figure: an active ragdoll =================
 const SHELL = new THREE.MeshStandardMaterial({ color: 0xebe5da, roughness: 0.38 });
 const JOINT = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.48, metalness: 0.15 });
 
-// standing pose for a figure 1.75 tall, y up, z forward, feet at y = 0 (scaled to the box when built)
+// standing pose for a figure 1.75 tall, y up, z forward (toward the glass), feet at y = 0; scaled to the box when built
 const PARTS = {
-  pelvis: { box: [0.32, 0.17, 0.20], at: [0, 0.95, 0], mass: 4, core: 1 },
-  belly:  { box: [0.26, 0.14, 0.17], at: [0, 1.10, 0], mass: 3, core: 1 },
-  chest:  { box: [0.38, 0.26, 0.22], at: [0, 1.31, 0], mass: 6, core: 1 },
-  head:   { head: 0.105, at: [0, 1.62, 0], mass: 2.5, core: 1 },
-  uArmL:  { limb: [0.045, 0.12], at: [-0.24, 1.25, 0], mass: 1.2 },
-  uArmR:  { limb: [0.045, 0.12], at: [ 0.24, 1.25, 0], mass: 1.2 },
-  fArmL:  { limb: [0.04, 0.11], at: [-0.24, 0.98, 0], mass: 0.9 },
-  fArmR:  { limb: [0.04, 0.11], at: [ 0.24, 0.98, 0], mass: 0.9 },
-  handL:  { box: [0.06, 0.13, 0.04], at: [-0.24, 0.775, 0], mass: 0.4 },
-  handR:  { box: [0.06, 0.13, 0.04], at: [ 0.24, 0.775, 0], mass: 0.4 },
-  thighL: { limb: [0.06, 0.18], at: [-0.09, 0.66, 0], mass: 3 },
-  thighR: { limb: [0.06, 0.18], at: [ 0.09, 0.66, 0], mass: 3 },
-  shinL:  { limb: [0.05, 0.17], at: [-0.09, 0.26, 0], mass: 2 },
-  shinR:  { limb: [0.05, 0.17], at: [ 0.09, 0.26, 0], mass: 2 },
-  footL:  { box: [0.09, 0.06, 0.22], at: [-0.09, 0.03, 0.04], mass: 3, foot: 1 },   // weighted feet, like a toy
-  footR:  { box: [0.09, 0.06, 0.22], at: [ 0.09, 0.03, 0.04], mass: 3, foot: 1 },
+  pelvis: { box: [0.32, 0.17, 0.20], at: [0, 0.95, 0], mass: 9, core: 1 },
+  belly:  { box: [0.26, 0.14, 0.17], at: [0, 1.10, 0], mass: 6, core: 1 },
+  chest:  { box: [0.38, 0.26, 0.22], at: [0, 1.31, 0], mass: 14, core: 1 },
+  head:   { head: 0.105, at: [0, 1.62, 0], mass: 5, core: 1 },
+  uArmL:  { limb: [0.045, 0.12], at: [-0.24, 1.25, 0], mass: 2 },
+  fArmL:  { limb: [0.04, 0.11], at: [-0.24, 0.98, 0], mass: 1.5 },
+  handL:  { box: [0.06, 0.13, 0.04], at: [-0.24, 0.775, 0], mass: 0.5 },
+  uArmR:  { limb: [0.045, 0.12], at: [ 0.24, 1.25, 0], mass: 2 },
+  fArmR:  { limb: [0.04, 0.11], at: [ 0.24, 0.98, 0], mass: 1.5 },
+  handR:  { box: [0.06, 0.13, 0.04], at: [ 0.24, 0.775, 0], mass: 0.5 },
+  thighL: { limb: [0.06, 0.18], at: [-0.09, 0.66, 0], mass: 8 },
+  shinL:  { limb: [0.05, 0.17], at: [-0.09, 0.26, 0], mass: 4 },
+  footL:  { box: [0.09, 0.06, 0.22], at: [-0.09, 0.03, 0.04], mass: 1.5, foot: 1 },
+  thighR: { limb: [0.06, 0.18], at: [ 0.09, 0.66, 0], mass: 8 },
+  shinR:  { limb: [0.05, 0.17], at: [ 0.09, 0.26, 0], mass: 4 },
+  footR:  { box: [0.09, 0.06, 0.22], at: [ 0.09, 0.03, 0.04], mass: 1.5, foot: 1 },
 };
+const ORDER = Object.keys(PARTS);   // parents always come before their children
+// Human joints: twist axis (along the bone, or the hinge line for knees and elbows), plane axis,
+// how far it swings each way, how far it twists, joint ball size and muscle strength.
 const PI = Math.PI;
-// parent, child, joint position, cone, twist, joint ball radius, muscle factor
 const JOINTS = [
-  ['pelvis', 'belly',  [0, 1.03, 0], PI / 9, PI / 10, 0.075, 1.6],
-  ['belly',  'chest',  [0, 1.18, 0], PI / 9, PI / 10, 0.075, 1.6],
-  ['chest',  'head',   [0, 1.47, 0], PI / 4, PI / 5, 0.045, 1.0],
-  ['chest',  'uArmL',  [-0.24, 1.39, 0], PI * 0.55, PI / 3, 0.055, 0.8],
-  ['chest',  'uArmR',  [ 0.24, 1.39, 0], PI * 0.55, PI / 3, 0.055, 0.8],
-  ['uArmL',  'fArmL',  [-0.24, 1.11, 0], PI / 2.6, PI / 12, 0.045, 0.7],
-  ['uArmR',  'fArmR',  [ 0.24, 1.11, 0], PI / 2.6, PI / 12, 0.045, 0.7],
-  ['fArmL',  'handL',  [-0.24, 0.85, 0], PI / 5, PI / 8, 0.035, 0.5],
-  ['fArmR',  'handR',  [ 0.24, 0.85, 0], PI / 5, PI / 8, 0.035, 0.5],
-  ['pelvis', 'thighL', [-0.09, 0.87, 0], PI / 3, PI / 10, 0.07, 1.8],
-  ['pelvis', 'thighR', [ 0.09, 0.87, 0], PI / 3, PI / 10, 0.07, 1.8],
-  ['thighL', 'shinL',  [-0.09, 0.46, 0], PI / 2.8, PI / 16, 0.058, 1.8],
-  ['thighR', 'shinR',  [ 0.09, 0.46, 0], PI / 2.8, PI / 16, 0.058, 1.8],
-  ['shinL',  'footL',  [-0.09, 0.075, 0], PI / 6, PI / 12, 0.045, 1.2],
-  ['shinR',  'footR',  [ 0.09, 0.075, 0], PI / 6, PI / 12, 0.045, 1.2],
+  //  parent    child     where                twist axis    plane axis   normal cone, plane cone, twist min, max, ball, muscle
+  ['pelvis', 'belly',  [0, 1.03, 0],      [0, 1, 0],   [1, 0, 0],  0.30, 0.35, -0.30, 0.30, 0.075, 1.4],
+  ['belly',  'chest',  [0, 1.18, 0],      [0, 1, 0],   [1, 0, 0],  0.30, 0.35, -0.30, 0.30, 0.075, 1.4],
+  ['chest',  'head',   [0, 1.47, 0],      [0, 1, 0],   [1, 0, 0],  0.50, 0.60, -0.90, 0.90, 0.045, 0.8],
+  ['chest',  'uArmL',  [-0.24, 1.39, 0],  [-1, 0, 0],  [0, 0, 1],  1.75, 1.75, -1.00, 1.00, 0.055, 0.7],
+  ['uArmL',  'fArmL',  [-0.24, 1.11, 0],  [-1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.045, 0.6],   // elbow: a hinge
+  ['fArmL',  'handL',  [-0.24, 0.85, 0],  [0, -1, 0],  [1, 0, 0],  0.40, 0.55, -0.50, 0.50, 0.035, 0.4],
+  ['chest',  'uArmR',  [ 0.24, 1.39, 0],  [1, 0, 0],   [0, 0, 1],  1.75, 1.75, -1.00, 1.00, 0.055, 0.7],
+  ['uArmR',  'fArmR',  [ 0.24, 1.11, 0],  [-1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.045, 0.6],
+  ['fArmR',  'handR',  [ 0.24, 0.85, 0],  [0, -1, 0],  [1, 0, 0],  0.40, 0.55, -0.50, 0.50, 0.035, 0.4],
+  ['pelvis', 'thighL', [-0.09, 0.87, 0],  [0, -1, 0],  [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.07, 1.6],
+  ['thighL', 'shinL',  [-0.09, 0.46, 0],  [1, 0, 0],   [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.058, 1.6],    // knee: a hinge
+  ['shinL',  'footL',  [-0.09, 0.075, 0], [0, -1, 0],  [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.045, 1.2],
+  ['pelvis', 'thighR', [ 0.09, 0.87, 0],  [0, -1, 0],  [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.07, 1.6],
+  ['thighR', 'shinR',  [ 0.09, 0.46, 0],  [1, 0, 0],   [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.058, 1.6],
+  ['shinR',  'footR',  [ 0.09, 0.075, 0], [0, -1, 0],  [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.045, 1.2],
 ];
 
 let S = 1;              // figure scale
-const B = {};           // bodies by name
-let joints = [];        // { A, B, name, cons, k, target }
-let figMass = 0;
+const B = {};           // parts by name
+let joints = [];        // { A, B, name, cons, k, target, pivotA }
+let figMass = 0, ragdoll = null;
 let state = 'stand', stateT = 0, stun = 0, ungrounded = 0, still = 0, offT = 0, fallWhy = '';
 
 function figureScale() {
@@ -426,27 +464,38 @@ function figureScale() {
 }
 
 function buildFigure() {
-  for (const j of joints) world.removeConstraint(j.cons);
-  for (const n of Object.keys(B)) { removeDyn(B[n], true); delete B[n]; }
-  joints = []; figMass = 0;
+  if (ragdoll) { ragdoll.RemoveFromPhysicsSystem(); Jolt.destroy(ragdoll); ragdoll = null; }
+  for (const nm of Object.keys(B)) {
+    const mesh = syncs.find(s => s[0] === B[nm])[1];
+    scene.remove(mesh); movers.splice(movers.indexOf(mesh), 1);
+    mesh.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+    delete B[nm];
+  }
+  syncs.length = 0; joints = []; figMass = 0;
   S = figureScale();
-  for (const [n, P] of Object.entries(PARTS)) {
-    const body = new CANNON.Body({ mass: P.mass, material: P.foot ? footPM : dollPM, linearDamping: 0.05, angularDamping: 0.12 });
-    let mesh;
+
+  const rs = new Jolt.RagdollSettings();
+  const sk = new Jolt.Skeleton();
+  const parentOf = {}; for (const j of JOINTS) parentOf[j[1]] = j[0];
+  for (const nm of ORDER) sk.AddJoint(new Jolt.JPHString(nm, nm.length), parentOf[nm] ? ORDER.indexOf(parentOf[nm]) : -1);
+  rs.mSkeleton = sk;
+  rs.mParts.resize(ORDER.length);
+  const meshes = {};
+  ORDER.forEach((nm, i) => {
+    const P = PARTS[nm];
+    const part = rs.mParts.at(i);
+    let shape, mesh;
     if (P.box) {
       const [w, h, d] = P.box.map(v => v * S);
-      // collide as a cluster of spheres (boxes stick to the floor in this engine)
-      const half = [w / 2 * 0.95, h / 2 * 0.95, d / 2 * 0.95], r = Math.min(...half);
-      const offs = half.map(hv => hv - r > 0.008 * S ? [-(hv - r), hv - r] : [0]);
-      for (const ox of offs[0]) for (const oy of offs[1]) for (const oz of offs[2]) body.addShape(new CANNON.Sphere(r), new CANNON.Vec3(ox, oy, oz));
+      shape = new Jolt.BoxShape(new Jolt.Vec3(w / 2, h / 2, d / 2), Math.min(w, h, d) * 0.35);
       mesh = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 4, Math.min(w, h, d) * 0.42), SHELL);
     } else if (P.limb) {
       const r = P.limb[0] * S, h = P.limb[1] * S;
-      for (const oy of [-(h - r), 0, h - r]) body.addShape(new CANNON.Sphere(r), new CANNON.Vec3(0, oy, 0));
+      shape = new Jolt.CapsuleShape(Math.max(0.005, h - r), r);
       mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.01, 2 * h * 0.86 - 2 * r), 6, 16), SHELL);
     } else {
       const r = P.head * S;
-      body.addShape(new CANNON.Sphere(r * 1.08));
+      shape = new Jolt.SphereShape(r * 1.06);
       const g = new THREE.SphereGeometry(r, 32, 24); g.scale(0.92, 1.25, 1.0);
       mesh = new THREE.Mesh(g, SHELL);
       for (const sx of [-1, 1]) {
@@ -455,28 +504,91 @@ function buildFigure() {
         mesh.add(eye);
       }
     }
+    part.SetShape(shape);
+    part.mPosition = new Jolt.RVec3(P.at[0] * S, P.at[1] * S, P.at[2] * S);
+    part.mRotation = new Jolt.Quat(0, 0, 0, 1);
+    part.mMotionType = Jolt.EMotionType_Dynamic;
+    part.mObjectLayer = LAYER_MOVING;
+    part.mOverrideMassProperties = Jolt.EOverrideMassProperties_CalculateInertia;
+    part.mMassPropertiesOverride.mMass = P.mass;
+    part.mFriction = P.foot ? 1 : 0.5;
+    part.mRestitution = 0.1;
+    part.mLinearDamping = 0.05;
+    part.mAngularDamping = 0.25;
+    part.mAllowSleeping = false;
+    part.mMotionQuality = Jolt.EMotionQuality_LinearCast;
+    const jd = JOINTS.find(j => j[1] === nm);
+    if (jd) {
+      const [, , at, tw, pl, nc, pc, tmin, tmax] = jd;
+      const c = new Jolt.SwingTwistConstraintSettings();
+      const p = new Jolt.RVec3(at[0] * S, at[1] * S, at[2] * S);
+      c.mPosition1 = p; c.mPosition2 = p;
+      c.mTwistAxis1 = new Jolt.Vec3(...tw); c.mTwistAxis2 = new Jolt.Vec3(...tw);
+      c.mPlaneAxis1 = new Jolt.Vec3(...pl); c.mPlaneAxis2 = new Jolt.Vec3(...pl);
+      c.mNormalHalfConeAngle = nc; c.mPlaneHalfConeAngle = pc;
+      c.mTwistMinAngle = tmin; c.mTwistMaxAngle = tmax;
+      c.mMaxFrictionTorque = 0.5 * S;   // a little stiffness in the joints even when limp
+      part.mToParent = c;
+    }
+    meshes[nm] = mesh;
     mesh.castShadow = true; mesh.receiveShadow = true;
-    body.position.set(P.at[0] * S, P.at[1] * S, P.at[2] * S);
-    body.isCore = !!P.core;
-    B[n] = body; figMass += P.mass;
-    addDyn(body, mesh);
-  }
-  for (const [pa, ch, jp, cone, twist, jr, k] of JOINTS) {
-    const A = B[pa], C = B[ch];
-    const j = jp.map(v => v * S);
-    const pivotA = new CANNON.Vec3(j[0] - A.position.x, j[1] - A.position.y, j[2] - A.position.z);
-    const pivotB = new CANNON.Vec3(j[0] - C.position.x, j[1] - C.position.y, j[2] - C.position.z);
-    const cons = new CANNON.ConeTwistConstraint(A, C, {
-      pivotA, pivotB, axisA: new CANNON.Vec3(0, 1, 0), axisB: new CANNON.Vec3(0, 1, 0),
-      angle: cone, twistAngle: twist, collideConnected: false,
-    });
-    world.addConstraint(cons);
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(jr * S, 20, 14), JOINT);
+  });
+  rs.Stabilize();
+  rs.DisableParentChildCollisions();
+  rs.CalculateBodyIndexToConstraintIndex();
+  rs.CalculateConstraintIndexToBodyIdxPair();
+  ragdoll = rs.CreateRagdoll(0, 0, physics);
+  ragdoll.AddToPhysicsSystem(Jolt.EActivation_Activate);
+
+  ORDER.forEach((nm, i) => {
+    const body = lockNo.TryGetBody(ragdoll.GetBodyID(i));
+    const part = new Part(nm, PARTS[nm], body);
+    B[nm] = part; figMass += part.mass;
+    syncs.push([part, meshes[nm]]); scene.add(meshes[nm]); movers.push(meshes[nm]);
+  });
+  // match each constraint to its joint (by the bodies it joins)
+  const byId = {}; for (const nm of ORDER) byId[B[nm].id.GetIndexAndSequenceNumber()] = nm;
+  for (let ci = 0; ci < ragdoll.GetConstraintCount(); ci++) {
+    const c = Jolt.castObject(ragdoll.GetConstraint(ci), Jolt.SwingTwistConstraint);
+    const child = byId[c.GetBody2().GetID().GetIndexAndSequenceNumber()];
+    const jd = JOINTS.find(j => j[1] === child);
+    const A = B[jd[0]], C = B[child], at = jd[2];
+    const pivotA = new CANNON.Vec3(at[0] * S - PARTS[jd[0]].at[0] * S, at[1] * S - PARTS[jd[0]].at[1] * S, at[2] * S - PARTS[jd[0]].at[2] * S);
+    const pivotB = new CANNON.Vec3(at[0] * S - PARTS[child].at[0] * S, at[1] * S - PARTS[child].at[1] * S, at[2] * S - PARTS[child].at[2] * S);
+    c.SetSwingMotorState(Jolt.EMotorState_Position);
+    c.SetTwistMotorState(Jolt.EMotorState_Position);
+    joints.push({ A, B: C, name: child, cons: c, k: jd[10], target: new CANNON.Quaternion(), pivotA, str: -1 });
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(jd[9] * S, 20, 14), JOINT);
     ball.position.set(pivotB.x, pivotB.y, pivotB.z); ball.castShadow = true;
-    syncs.find(s => s[0] === C)[1].add(ball);
-    joints.push({ A, B: C, name: ch, cons, k, target: new CANNON.Quaternion() });
+    meshes[child].add(ball);
   }
+  applySurfaces();
   standUp();
+}
+
+// muscles: each joint's motor drives the child toward its target rotation in the parent's frame
+const jtq = new Jolt.Quat(0, 0, 0, 1);
+function driveMuscles(strength) {
+  for (const j of joints) {
+    const s = Math.round(strength * 100) / 100;
+    if (s !== j.str) {
+      j.str = s;
+      const on = s > 0.005;
+      j.cons.SetSwingMotorState(on ? Jolt.EMotorState_Position : Jolt.EMotorState_Off);
+      j.cons.SetTwistMotorState(on ? Jolt.EMotorState_Position : Jolt.EMotorState_Off);
+      for (const ms of [j.cons.GetSwingMotorSettings(), j.cons.GetTwistMotorSettings()]) {
+        ms.mSpringSettings.mFrequency = 2.2 + 5.5 * Math.min(1.6, s) * j.k;
+        ms.mSpringSettings.mDamping = 1.0;
+        const T = 900 * S * S * s * j.k;
+        ms.mMaxTorqueLimit = T; ms.mMinTorqueLimit = -T;
+      }
+    }
+    const q = j.target;
+    const w = Math.sign(q.w || 1);
+    const t = new Jolt.Quat(q.x * w, q.y * w, q.z * w, q.w * w);
+    j.cons.SetTargetOrientationBS(t);
+    Jolt.destroy(t);
+  }
 }
 
 // put it on its feet on whichever wall is the floor right now, facing the glass
@@ -488,56 +600,23 @@ function standUp() {
   if (n.y > 0.5) base = new CANNON.Vec3(0, -iy, -D / 2);
   else if (n.y < -0.5) base = new CANNON.Vec3(0, iy, -D / 2);
   else if (n.x > 0.5) base = new CANNON.Vec3(-ix, 0, -D / 2);
-  else if (n.x < -0.5) base = new CANNON.Vec3(ix, 0, -D / 2);
-  else if (n.z > 0.5) base = new CANNON.Vec3(0, 0, -D);
-  else base = new CANNON.Vec3(0, 0, 0);
-  for (const [nm, P] of Object.entries(PARTS)) {
-    const b = B[nm];
+  else base = new CANNON.Vec3(ix, 0, -D / 2);
+  for (const nm of ORDER) {
+    const P = PARTS[nm];
     const w = qUp.vmult(new CANNON.Vec3(P.at[0] * S, P.at[1] * S + 0.01, P.at[2] * S));
-    b.position.set(base.x + w.x, base.y + w.y, base.z + w.z);
-    b.quaternion.copy(qUp);
-    b.velocity.setZero(); b.angularVelocity.setZero();
+    B[nm].place(new CANNON.Vec3(base.x + w.x, base.y + w.y, base.z + w.z), qUp);
+    B[nm].pull();
   }
-  physWalls();
-  state = 'stand'; stateT = 0; stun = 0; ungrounded = 0; step = null; stepCool = 0.3;
+  state = 'stand'; stateT = 0; stun = 0; ungrounded = 0; step = null; stepCool = 0.3; gp = 0;
 }
 
-// ---------- muscles and balance (a small take on Euphoria-style active ragdolls) ----------
-const qTmp = new CANNON.Quaternion(), qD = new CANNON.Quaternion(), qInv = new CANNON.Quaternion();
-const vT = new CANNON.Vec3(), vA = new CANNON.Vec3();
 const Y = new CANNON.Vec3(0, 1, 0);
 const IDQ = new CANNON.Quaternion();
 const avgInertia = b => (b.inertia.x + b.inertia.y + b.inertia.z) / 3;
 
-// drive one joint toward its target (the child's rotation in its parent's frame), like a muscle.
-// Worked per axis in the child's own frame with that axis's inertia, so thin limbs don't spin up about their length.
-const vL = new CANNON.Vec3(), wL = new CANNON.Vec3();
-function muscle(j, strength) {
-  const A = j.A, C = j.B;
-  A.quaternion.mult(j.target, qD);
-  C.quaternion.conjugate(qInv);
-  qD.mult(qInv, qTmp);
-  if (qTmp.w < 0) { qTmp.x = -qTmp.x; qTmp.y = -qTmp.y; qTmp.z = -qTmp.z; qTmp.w = -qTmp.w; }
-  const w = clamp(qTmp.w, -1, 1), s = Math.sqrt(1 - w * w), ang = 2 * Math.acos(w);
-  vT.set(0, 0, 0);
-  if (s > 1e-5) vT.set(qTmp.x / s * ang, qTmp.y / s * ang, qTmp.z / s * ang);   // error, world
-  C.angularVelocity.vsub(A.angularVelocity, vA);                                    // relative spin, world
-  qInv.vmult(vT, vL); qInv.vmult(vA, wL);                                           // into the child's frame
-  const om = Math.min(40, 20 * strength * j.k), z2 = 2 * 0.9 * om;
-  const Ic = C.inertia, Ia = A.inertia;
-  const h = (a, b) => a * b / (a + b);
-  const ix = h(Ic.x, Ia.x), iy = h(Ic.y, Ia.y), iz = h(Ic.z, Ia.z);
-  vL.set(ix * (om * om * vL.x - z2 * wL.x), iy * (om * om * vL.y - z2 * wL.y), iz * (om * om * vL.z - z2 * wL.z));
-  C.quaternion.vmult(vL, vT);                                                       // back to world
-  const max = 300 * S * S * strength * j.k, m = vT.length();
-  if (m > max) vT.scale(max / m, vT);
-  C.torque.vadd(vT, C.torque);
-  A.torque.vsub(vT, A.torque);
-}
-
-function upNow() { const g = world.gravity; const m = g.length() || 1; return new CANNON.Vec3(-g.x / m, -g.y / m, -g.z / m); }
-// the wall it can stand on: the one facing most nearly up, with room above it for the figure
-function wallInfo(n) {   // offset (n.p + off = height above that wall) and the room above it
+function upNow() { const g = gravity; const m = g.length() || 1; return new CANNON.Vec3(-g.x / m, -g.y / m, -g.z / m); }
+// the wall it can stand on, and the room above it
+function wallInfo(n) {
   if (n[1]) return { off: iy, room: 2 * iy };
   if (n[0]) return { off: ix, room: 2 * ix };
   return n[2] > 0 ? { off: D, room: D } : { off: 0, room: D };
@@ -556,7 +635,7 @@ function floorWall(up) {
   for (const n of WALLN) { if (n[2]) continue; const d = n[0] * u.x + n[1] * u.y; if (d > bd) { bd = d; best = n; } }
   if (bd < Math.cos(42 * DEG)) return null;
   const w = wallInfo(best);
-  if (w.room < 1.75 * S * 1.02) return null;   // no room to stand: it stays lying down
+  if (w.room < 1.75 * S * 1.02) return null;
   return { n: best, d: bd, off: w.off, nv: new CANNON.Vec3(...best), u };
 }
 const bodyUp = b => b.quaternion.vmult(Y);
@@ -565,17 +644,15 @@ const tiltOf = (b, up) => Math.acos(clamp(bodyUp(b).dot(up), -1, 1));
 // ---------- feet on the floor ----------
 const feetDown = { L: 9, R: 9 };   // seconds since each foot last stood on the floor
 const handOn = { L: 9, R: 9 };     // seconds since each hand last touched a wall
-function scanContacts(n) {
-  feetDown.L += 1 / 120; feetDown.R += 1 / 120; handOn.L += 1 / 120; handOn.R += 1 / 120;
-  for (const c of world.contacts) {
-    const wall = c.bi.isWall ? c.bi : c.bj.isWall ? c.bj : null;
-    if (!wall) continue;
-    const other = wall === c.bi ? c.bj : c.bi;
-    const nn = wall === c.bi ? c.ni : c.ni.negate();   // from the wall into the body
-    if (other === B.footL && n && nn.dot(n) > 0.85) feetDown.L = 0;
-    else if (other === B.footR && n && nn.dot(n) > 0.85) feetDown.R = 0;
-    else if (other === B.handL) handOn.L = 0;
-    else if (other === B.handR) handOn.R = 0;
+function scanContacts(n, off, dt) {
+  feetDown.L += dt; feetDown.R += dt; handOn.L += dt; handOn.R += dt;
+  if (n) for (const k of ['L', 'R']) {
+    const f = B['foot' + k];
+    if (f.position.dot(n) + off < 0.065 * S) feetDown[k] = 0;   // the sole is on the floor
+  }
+  for (const k of ['L', 'R']) {
+    const h = B['hand' + k].position;
+    if (ix - Math.abs(h.x) < 0.06 * S || iy - Math.abs(h.y) < 0.06 * S) handOn[k] = 0;
   }
 }
 
@@ -588,7 +665,7 @@ function bend(name, axis, ang) { J(name).target.setFromAxisAngle(axis, ang); }
 // aim an upper arm at a point (simple IK: the arm points at it, the elbow gives a little)
 function reachFor(side, point, strength) {
   const ch = B.chest, sh = J('uArm' + side);
-  const shoulder = ch.position.vadd(ch.quaternion.vmult(sh.cons.pivotA));
+  const shoulder = ch.position.vadd(ch.quaternion.vmult(sh.pivotA));
   const dirW = point.vsub(shoulder); dirW.normalize();
   const dirL = ch.quaternion.conjugate().vmult(dirW);
   sh.target.setFromVectors(DOWN, dirL);
@@ -616,8 +693,36 @@ function setBrace(up) {
   bend('shinL', AX, 0.4); bend('shinR', AX, 0.4);
 }
 
+function getupPose(up) {
+  // each stage of getting up is a shape the muscles make; the hips are helped up stage by stage
+  if (gp === 0) {         // roll: one knee up, the far arm reaching across
+    bend('thighR', AX, -1.0); bend('shinR', AX, 1.4);
+    J('uArmR').target.setFromVectors(DOWN, new CANNON.Vec3(-0.7, 0, 0.7));
+  } else if (gp === 1) {  // hands and knees
+    bend('thighL', AX, -1.45); bend('thighR', AX, -1.45);
+    bend('shinL', AX, 1.75); bend('shinR', AX, 1.75);
+    bend('chest', AX, 0.1); bend('belly', AX, 0.1);
+    J('uArmL').target.setFromVectors(DOWN, new CANNON.Vec3(0, 0, 1));
+    J('uArmR').target.setFromVectors(DOWN, new CANNON.Vec3(0, 0, 1));
+    bend('head', AX, -0.5);
+  } else if (gp === 2) {  // kneeling up
+    bend('thighL', AX, -0.15); bend('thighR', AX, -0.15);
+    bend('shinL', AX, 1.7); bend('shinR', AX, 1.7);
+    bend('uArmL', AZ, -0.2); bend('uArmR', AZ, 0.2);
+  } else if (gp === 3) {  // one foot forward
+    bend('thighR', AX, -1.5); bend('shinR', AX, 1.5);
+    bend('thighL', AX, -0.1); bend('shinL', AX, 1.6);
+    bend('uArmL', AZ, -0.3); bend('uArmR', AX, -0.6);
+  } else {                // pushing up to standing
+    const r = 1 - ease(Math.min(1, gpT / 0.9));
+    bend('thighR', AX, -1.5 * r); bend('shinR', AX, 1.5 * r);
+    bend('thighL', AX, -0.1 * r); bend('shinL', AX, 1.6 * r + 0.1);
+    bend('uArmL', AZ, -0.3); bend('uArmR', AZ, 0.3);
+  }
+}
+
 // ---------- balance: centre of mass, capture point, steps, hands on walls ----------
-let step = null, stepCool = 0, idleT = 0;
+let step = null, stepCool = 0, idleT = 0, gp = 0, gpT = 0;
 const com = new CANNON.Vec3(), comV = new CANNON.Vec3();
 function massCentre() {
   com.set(0, 0, 0); comV.set(0, 0, 0);
@@ -631,11 +736,11 @@ function massCentre() {
 const ease = s => s * s * (3 - 2 * s);
 
 function control(dt) {
-  const real = upNow(), gv = world.gravity;
+  const real = upNow(), gv = gravity;
   const fl = floorWall(real);
   const up = fl ? fl.u : real;               // upright = real up within the glass's plane
   const g = Math.max(0, -(gv.x * up.x + gv.y * up.y + gv.z * up.z));
-  scanContacts(fl ? fl.nv : null);
+  scanContacts(fl ? fl.nv : null, fl ? fl.off : 0, dt);
   stateT += dt;
   if (stun > 0) stun -= dt;
   if (stepCool > 0) stepCool -= dt;
@@ -675,10 +780,19 @@ function control(dt) {
     still = B.pelvis.velocity.length() < 0.5 * S ? still + dt : 0;
     if ((still > 0.35 && stateT > 0.4) || stateT > 3) { state = 'down'; stateT = 0; }
   }
-  if (state === 'down' && SET.getUp && stun <= 0 && stateT > SET.getUpDelay && SET.balance > 0.02 && fl) { state = 'getup'; stateT = 0; }
+  if (state === 'down' && SET.getUp && stun <= 0 && stateT > SET.getUpDelay && SET.balance > 0.02 && fl) {
+    state = 'getup'; stateT = 0; gpT = 0;
+    const face = B.chest.quaternion.vmult(new CANNON.Vec3(0, 0, 1));
+    gp = face.dot(up) > 0.25 ? 0 : 1;      // on its back: roll over first
+  }
   if (state === 'getup') {
-    if (tilt < 14 * DEG && grounded && Math.abs(outBy) < 0.05 * S && stateT > 0.6) { state = 'stand'; stateT = 0; }
-    else if (stateT > 3.5 || !fl) { state = 'down'; stateT = 0; }
+    gpT += dt;
+    const face = B.chest.quaternion.vmult(new CANNON.Vec3(0, 0, 1));
+    const GP = [0.9, 1.0, 0.8, 0.7, 0.9];  // roll, hands and knees, kneel, one foot forward, rise
+    if (gp === 0 && (face.dot(up) < -0.3 || gpT > GP[0] * 2)) { gp = 1; gpT = 0; }
+    else if (gp > 0 && gp < 4 && gpT > GP[gp]) { gp++; gpT = 0; }
+    else if (gp === 4 && gpT > GP[4] && tilt < 16 * DEG) { state = 'stand'; stateT = 0; step = null; stepCool = 0.2; }
+    if (!fl || stateT > 7) { state = 'down'; stateT = 0; }
   }
 
   // ---- muscles: the pose for what it's doing ----
@@ -688,6 +802,7 @@ function control(dt) {
   const bal = SET.balance;
   if (state === 'fall') { setBrace(up); strength = M * 0.65; }
   else if (state === 'down') strength = M * 0.22;
+  else if (state === 'getup') getupPose(up);
   else {
     bend('shinL', AX, 0.12); bend('shinR', AX, 0.12);     // soft knees
     bend('thighL', AX, -0.06); bend('thighR', AX, -0.06);
@@ -751,7 +866,7 @@ function control(dt) {
       // which hand is on that side?
       const lT = B.handL.position.dot(t), rT = B.handR.position.dot(t);
       const side = (towards > 0) === (lT > rT) ? 'L' : 'R';
-      const ch = B.chest, shoulder = ch.position.vadd(ch.quaternion.vmult(J('uArm' + side).cons.pivotA));
+      const ch = B.chest, shoulder = ch.position.vadd(ch.quaternion.vmult(J('uArm' + side).pivotA));
       const dist = Math.abs(wallT - shoulder.dot(t));
       const armLen = 0.66 * S;
       if (dist < armLen * 1.35) {
@@ -762,7 +877,7 @@ function control(dt) {
     }
   }
 
-  if (strength > 0.005) for (const j of joints) muscle(j, strength);
+  driveMuscles(strength);
 
   // ---- carrying its weight on the feet that are down (the help every active ragdoll gets) ----
   if (stun > 0 || !fl || bal < 0.02) return;
@@ -786,26 +901,32 @@ function control(dt) {
     const zf = (-D / 2 - B.pelvis.position.z) * figMass * 6 - B.pelvis.velocity.z * figMass * 2;
     B.pelvis.force.z += zf * 0.5;
   } else if (state === 'getup') {
-    const lift = Math.min(1, stateT / 1.0) * Math.min(1, bal);
-    B.pelvis.force.vadd(up.scale(figMass * g * 0.95 * lift * (grounded ? 1 : 0.25)), B.pelvis.force);
-    const om = 9 * Math.sqrt(bal) * lift;
-    const feetC = B.footL.position.vadd(B.footR.position).scale(0.5);
-    const hf = feetC.dot(n) + off;
-    const g0 = feetC.vsub(up.scale(hf / Math.max(0.5, up.dot(n))));
-    const back = new CANNON.Vec3();
-    for (const nm of ['pelvis', 'chest', 'head']) {
-      const b = B[nm];
-      const target = g0.vadd(up.scale(PARTS[nm].at[1] * S));
-      const k = b.mass * om * om * (nm === 'pelvis' ? 1.6 : 1), c = 2 * 0.95 * b.mass * om;
-      const f = target.vsub(b.position).scale(k).vsub(b.velocity.scale(c));
-      b.force.vadd(f, b.force);
-      back.vadd(f.vsub(up.scale(f.dot(up))), back);
+    // the help to get up, matched to each stage: how high the hips go, how upright the chest is
+    const k = Math.min(1, gpT / 0.5) * Math.min(1, bal);
+    const hipH = [0.2, 0.47, 0.5, 0.55, 0.55 + 0.42 * ease(Math.min(1, gpT / 0.9))][gp] * S;
+    const carry = [0, 0.55, 0.75, 0.85, 0.95][gp];
+    B.pelvis.force.vadd(up.scale(figMass * g * carry * k), B.pelvis.force);
+    if (gp > 0) {
+      const hP = B.pelvis.position.dot(n) + off, om = 7;
+      B.pelvis.force.vadd(n.scale(((hipH - hP) * om * om - B.pelvis.velocity.dot(n) * 2 * om) * figMass * 0.5 * k), B.pelvis.force);
     }
-    B.footL.force.vsub(back.scale(0.5), B.footL.force);
-    B.footR.force.vsub(back.scale(0.5), B.footR.force);
+    if (gp === 0) {   // turn over onto the front
+      const face = B.chest.quaternion.vmult(new CANNON.Vec3(0, 0, 1));
+      const ax = face.cross(up.negate()); const sn = ax.length();
+      if (sn > 1e-4) {
+        const I = avgInertia(B.chest) * 6;
+        B.chest.torque.vadd(ax.scale(I * 60 / sn), B.chest.torque);
+        B.pelvis.torque.vadd(ax.scale(avgInertia(B.pelvis) * 6 * 60 / sn), B.pelvis.torque);
+      }
+    }
+    if (gp === 1) {   // chest held level, a little above the hips
+      const hC = B.chest.position.dot(n) + off, om = 6;
+      B.chest.force.vadd(n.scale(((0.55 * S - hC) * om * om - B.chest.velocity.dot(n) * 2 * om) * B.chest.mass * k), B.chest.force);
+    }
+    if (gp < 2) return;
   } else return;
   // chest and pelvis upright to the room, feet flat on the floor
-  const lift = state === 'stand' ? 1 : Math.min(1, stateT / 1.0);
+  const lift = state === 'stand' ? 1 : Math.min(1, gpT / 0.5);
   for (const [nm, kk] of [['chest', 1], ['pelvis', 0.8], ['footL', 0.6], ['footR', 0.6]]) {
     const b = B[nm];
     if (step && nm === 'foot' + step.side) continue;
@@ -1003,7 +1124,7 @@ function updateCamera(dt) {
 }
 
 // ================= the loop =================
-const STEP = 1 / 120;
+const STEP = 1 / 60;
 let acc = 0, last = performance.now(), frameN = 0;
 const lu = new THREE.Vector3();
 function frame(now) {
@@ -1021,7 +1142,8 @@ function frame(now) {
     gy = -Math.cos(dragS.roll) * Math.cos(dragS.pitch);
     gz = -Math.sin(dragS.pitch);
   }
-  world.gravity.set(gx * SET.gravity, gy * SET.gravity, gz * SET.gravity);
+  gravity.set(gx * SET.gravity, gy * SET.gravity, gz * SET.gravity);
+  setGravity();
   // the room's light stays up
   const gl = Math.hypot(gx, gy, gz) || 1;
   lu.set(-gx / gl, -gy / gl, -gz / gl);
@@ -1030,8 +1152,15 @@ function frame(now) {
 
   acc += dt;
   let n = 0;
-  while (acc >= STEP && n < 3) { control(STEP); world.step(STEP); acc -= STEP; n++; }
-  if (n === 3) acc = 0;
+  while (acc >= STEP && n < 2) {
+    for (const nm in B) B[nm].pull();
+    control(STEP);
+    for (const nm in B) B[nm].push();
+    jolt.Step(STEP, 1);
+    acc -= STEP; n++;
+  }
+  if (n === 2) acc = 0;
+  for (const nm in B) { B[nm].pull(); hitCheck(B[nm]); }
   for (const [b, m] of syncs) { m.position.copy(b.position); m.quaternion.copy(b.quaternion); }
 
   updateCamera(dt);
@@ -1044,6 +1173,7 @@ function frame(now) {
 }
 
 // ================= start =================
+$('go').disabled = false; $('go').textContent = 'Start';
 $('go').onclick = async () => {
   goFull();
   try { actx = new (window.AudioContext || window.webkitAudioContext)(); await actx.resume(); } catch (_) { actx = null; }
