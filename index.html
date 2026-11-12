@@ -17,6 +17,14 @@
   canvas{display:block;width:100%;height:100%}
   #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(22,14,8,.74);text-align:center;padding:24px;z-index:5;transition:opacity .4s}
   #start.hide{opacity:0;pointer-events:none}
+  #load{width:min(320px,86vw);font-size:13px;font-variant-numeric:tabular-nums}
+  #load.done{display:none}
+  #load .ltop{display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin-bottom:8px}
+  #loadBar{height:6px;border-radius:3px;background:rgba(255,235,205,.16);overflow:hidden;margin-bottom:12px}
+  #loadBar i{display:block;height:100%;width:0;background:#eab873;border-radius:3px;transition:width .25s}
+  .lr{display:flex;justify-content:space-between;gap:12px;padding:4px 0;opacity:.8}
+  .lr.wait{opacity:.45}.lr.ready,.lr.got{opacity:.6}.lr.fail{color:#ff9a7a;opacity:1}
+  .lr span:last-child{white-space:pre}
   #go{margin-top:10px;font:inherit;font-size:18px;font-weight:700;padding:15px 40px;border-radius:999px;border:0;background:#eab873;color:#2a1a0c;box-shadow:0 6px 20px rgba(0,0,0,.35)}
   #hud{position:fixed;left:0;right:0;bottom:calc(18px + env(safe-area-inset-bottom));display:flex;justify-content:center;gap:8px;z-index:2;pointer-events:none;opacity:0;transition:opacity .5s}
   #hud.show{opacity:1}
@@ -60,9 +68,115 @@
 </head>
 <body>
 <div id="start">
+  <div id="load">
+    <div class="ltop"><span>Loading</span><span id="loadPct">0%</span></div>
+    <div id="loadBar"><i></i></div>
+    <div id="loadRows"></div>
+  </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.20</div>
+<div id="ver">v15.21</div>
+<script>
+// ================= loading screen + early downloads (v15.21) =================
+// Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
+// one before it: ~20 MB one after another), and the start screen shows each with its percentage. The module script
+// further down picks them up with BOXLOAD.take(url): the same URL gets the same download, anything not started here
+// is fetched then. take() forgets the file, so no second copy stays in memory.
+window.BOXLOAD = (() => {
+  const MB = 1048576, rows = new Map(), started = new Map();
+  const list = document.getElementById('loadRows'), pctEl = document.getElementById('loadPct');
+  const bar = document.querySelector('#loadBar i');
+  let shown = 0, finished = false, queued = false;
+  function row(label) {
+    let r = rows.get(label);
+    if (!r) {
+      r = { label, got: 0, total: 0, left: 0, state: 'wait', el: document.createElement('div') };
+      r.el.className = 'lr'; r.el.innerHTML = '<span></span><span></span>'; r.el.firstChild.textContent = label;
+      list.appendChild(r.el); rows.set(label, r);
+    }
+    return r;
+  }
+  const mb = v => (v / MB).toFixed(1);
+  function paint() {
+    queued = false;
+    let got = 0, total = 0;
+    for (const r of rows.values()) {
+      got += Math.min(r.got, r.total || r.got); total += Math.max(r.total, r.got);
+      let t;
+      if (r.state === 'load') t = r.total ? mb(r.got) + ' / ' + mb(r.total) + ' MB  ' + Math.min(99, Math.floor(100 * r.got / r.total)) + '%' : (r.got ? mb(r.got) + ' MB' : '…');
+      else t = { wait: 'waiting', got: '100%', start: 'starting…', build: 'building…', ready: '✓', fail: 'didn’t load' }[r.state];
+      r.el.lastChild.textContent = t; r.el.className = 'lr ' + r.state;
+    }
+    // the total only moves forward (a file's real size can arrive after its estimate)
+    const p = finished ? 100 : Math.min(99, total ? 100 * got / total : 0);
+    shown = Math.max(shown, p);
+    pctEl.textContent = Math.floor(shown) + '%'; bar.style.width = shown + '%';
+  }
+  function repaint() { if (!queued) { queued = true; requestAnimationFrame(paint); } }
+  // fetch with progress; `hint` = expected size in bytes (needed where the server compresses: the reader counts
+  // unpacked bytes)
+  async function download(url, label, hint = 0) {
+    const r = row(label);
+    r.left++; if (r.state === 'wait' || r.state === 'got') r.state = 'load';
+    let total = hint, got = 0;
+    r.total += hint; repaint();
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(url + ': HTTP ' + res.status);
+      const len = +res.headers.get('content-length') || 0;
+      if (!hint && len && !res.headers.get('content-encoding')) { r.total += len; total = len; }
+      let out;
+      if (res.body && res.body.getReader) {
+        const reader = res.body.getReader(), parts = [];
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          parts.push(value); got += value.length; r.got += value.length; repaint();
+        }
+        out = new Uint8Array(got); let o = 0;
+        for (const p of parts) { out.set(p, o); o += p.length; }
+      } else { out = new Uint8Array(await res.arrayBuffer()); got = out.length; r.got += got; }
+      r.total += got - total;   // the real size
+      if (--r.left === 0 && r.state === 'load') r.state = 'got';
+      repaint();
+      return out.buffer;
+    } catch (e) {
+      r.left--; r.state = 'fail'; repaint();
+      throw e;
+    }
+  }
+  function start(url, label, hint) {
+    const p = download(url, label, hint); p.catch(() => {});
+    started.set(url, p); return p;
+  }
+  const L = {
+    take(url, label, hint) { const p = started.get(url); if (p) { started.delete(url); return p; } return download(url, label, hint); },
+    state(label, s) { const r = row(label); r.state = s; repaint(); },
+    finish() { finished = true; paint(); document.getElementById('load').classList.add('done'); },
+  };
+  // what the page needs, in the order it's listed; the URLs must match the ones the module script asks for
+  const MJ = 'https://cdn.jsdelivr.net/npm/@mujoco/mujoco@4.0.1/', ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/';
+  row('Page code').state = 'load';
+  start(MJ + 'mujoco.wasm', 'Physics engine', 11201302);
+  start(ORT + 'ort-wasm-simd-threaded.wasm', 'Brain engine', 14848852);
+  // the brain the page will pick: ?model=<id>, else the one picked in Options, else the default (as in the module)
+  start('body/models/index.json', 'Brain').then(buf => {
+    const M = JSON.parse(new TextDecoder().decode(buf));
+    let id = new URLSearchParams(location.search).get('model');
+    if (!id) try { id = localStorage.getItem('thebox.model'); } catch (_) {}
+    const m = M.models.find(x => x.id === id) || M.models.find(x => x.id === M.default) || M.models[0];
+    start(m.dir + 'soma_tracker.json', 'Brain');
+    start(m.dir + 'soma_tracker.onnx', 'Brain', 12610426);
+  }, () => {});
+  let fig = 'female';
+  try { fig = localStorage.getItem('box.figure') || fig; } catch (_) {}
+  const FIGF = { female: 'body/bodychan.glb', male: 'body/bodykun.glb' };   // = FIGS in the module
+  if (FIGF[fig]) start(FIGF[fig] + '?v=' + encodeURIComponent(document.getElementById('ver').textContent), 'Figure');
+  start('body/soma23_humanoid.xml', 'Body');
+  repaint();
+  return L;
+})();
+</script>
 <button id="look" aria-label="Freeze and look around"></button>
 <button id="place" aria-label="The box or an open floor"></button>
 <button id="fig" aria-label="Change the figure"></button>
@@ -380,7 +494,20 @@ function updateEnv() {
 // ================= physics: MuJoCo, in real units =================
 // The body is NVIDIA's SOMA 23-body humanoid (Apache 2.0), loaded as it is from its MJCF file. Metres, kilograms,
 // seconds, g = 9.81: the box is sized around him, and the picture is drawn at S drawing units per metre.
-const mj = await loadMujoco();
+// v15.21: the big files are already downloading, all at once (BOXLOAD, top of <body>); here each is taken over as
+// it arrives, and the two engines start up side by side instead of one after the other.
+const LOAD = window.BOXLOAD;
+LOAD.state('Page code', 'ready');
+const mjP = (async () => {
+  let wasmBinary = null;
+  try { wasmBinary = await LOAD.take('https://cdn.jsdelivr.net/npm/@mujoco/mujoco@4.0.1/mujoco.wasm', 'Physics engine', 11201302); }
+  catch (e) { console.warn('mujoco.wasm preload failed, the engine fetches it itself', e); }
+  LOAD.state('Physics engine', 'start');
+  const m = await loadMujoco(wasmBinary ? { wasmBinary } : {});
+  LOAD.state('Physics engine', 'ready');
+  return m;
+})();
+const bodyP = LOAD.take(BODY_FILE, 'Body').then(b => new TextDecoder().decode(b));
 // figure looks the user can switch between (third round button, top right); all are drawn on the same SOMA bodies
 const FIGS = [
   { id: 'female', label: 'Female', file: 'body/bodychan.glb' },   // Body-chan (vinchau, CC0; the user's file, 10:22)
@@ -396,26 +523,45 @@ async function loadFig(id) {
   if (!f || !f.file) return null;
   if (!(id in figCache)) {
     // the release number in the URL, so a phone never keeps an older figure file from its cache
-    try { figCache[id] = await new GLTFLoader().loadAsync(f.file + '?v=' + encodeURIComponent($('ver').textContent)); }
+    // (the URL, with the release number in it, must stay the one BOXLOAD starts early)
+    try { figCache[id] = await new GLTFLoader().parseAsync(await LOAD.take(f.file + '?v=' + encodeURIComponent($('ver').textContent), 'Figure'), 'body/'); }
     catch (e) { console.warn(f.file + ' did not load', e); figCache[id] = null; }
+    LOAD.state('Figure', figCache[id] ? 'ready' : 'fail');
   }
   return figCache[id];
 }
-let DOLL = await loadFig(FIG);
-const W = new BoxWorld(mj, await (await fetch(BODY_FILE)).text());
-let control = null;
+const figP = loadFig(FIG);
 // the trained brain: NVIDIA's SOMA motion tracker (sim/brain.js, body/soma_tracker.onnx). If it can't load, the
 // hand-written stand (sim/control.js) takes over.
 let brain = null;
 ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/';
 ort.env.wasm.numThreads = 1;
 // which brain (user, 10:29: see each trained model live): ?model=<id>, else the one picked in Options > Brain
+// (BOXLOAD picks the same way to start its download early)
 let MODELS = { default: 'nvidia', models: [{ id: 'nvidia', label: 'NVIDIA original', dir: 'body/' }] };
-try { MODELS = await (await fetch('body/models/index.json')).json(); } catch (_) {}
+try { MODELS = JSON.parse(new TextDecoder().decode(await LOAD.take('body/models/index.json', 'Brain'))); } catch (_) {}
 const modelId = new URLSearchParams(location.search).get('model') || (() => { try { return localStorage.getItem('thebox.model'); } catch (_) { return null; } })() || MODELS.default;
 const MODEL = MODELS.models.find(m => m.id === modelId) || MODELS.models.find(m => m.id === MODELS.default) || MODELS.models[0];
-try { brain = await Brain.create(W, ort, MODEL.dir); brain.setStandPose(BRAIN_STAND); }
-catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; }
+// the brain's network starts up while the physics engine does (= Brain.create, with the files from BOXLOAD)
+const sessionP = (async () => {
+  const [meta, model] = await Promise.all([
+    LOAD.take(MODEL.dir + 'soma_tracker.json', 'Brain').then(b => JSON.parse(new TextDecoder().decode(b))),
+    LOAD.take(MODEL.dir + 'soma_tracker.onnx', 'Brain', 12610426)]);
+  try { ort.env.wasm.wasmBinary = await LOAD.take('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort-wasm-simd-threaded.wasm', 'Brain engine', 14848852); }
+  catch (e) { console.warn('ORT wasm preload failed, ORT fetches it itself', e); }
+  LOAD.state('Brain engine', 'start'); LOAD.state('Brain', 'start');
+  const session = await ort.InferenceSession.create(new Uint8Array(model), { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+  LOAD.state('Brain engine', 'ready'); LOAD.state('Brain', 'ready');
+  return { meta, session };
+})();
+sessionP.catch(() => {});
+const mj = await mjP;
+let DOLL = await figP;
+const W = new BoxWorld(mj, await bodyP);
+LOAD.state('Body', 'ready');
+let control = null;
+try { const { meta, session } = await sessionP; brain = new Brain(W, ort, session, meta); brain.setStandPose(BRAIN_STAND); }
+catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; LOAD.state('Brain', 'fail'); }
 function newController() {
   if (brain) { brain.attach(); brain.told = false; control = brain.control; }
   else { control = makeController(W); control.hz = 240; }
@@ -1133,7 +1279,6 @@ async function frame(now) {
 }
 
 // ================= start =================
-$('go').disabled = false; $('go').textContent = 'Start';
 $('go').onclick = async () => {
   goFull();
   try { actx = new (window.AudioContext || window.webkitAudioContext)(); await actx.resume(); } catch (_) { actx = null; }
@@ -1151,11 +1296,18 @@ $('go').onclick = async () => {
 // a resize (the phone's bars, the address bar) only reshapes the box: he carries on where he is
 let reshapeT = 0;
 addEventListener('resize', () => { resizeAll(); clearTimeout(reshapeT); reshapeT = setTimeout(() => buildBox(), 250); });
+// the room (wood textures baked on the graphics chip) takes a moment and blocks the page: show it as a loading step,
+// let the screen paint it, then build; Start appears only when everything is ready (v15.21)
+LOAD.state('Building the room', 'build');
+await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
 buildOptions();
 buildBox();
 buildFigure();
 standUp();
 applyQuality();
+LOAD.state('Building the room', 'ready');
+LOAD.finish();
+$('go').disabled = false; $('go').textContent = 'Start';
 requestAnimationFrame(frame);
 </script>
 </body>
