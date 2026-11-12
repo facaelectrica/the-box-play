@@ -1,5 +1,18 @@
-{"note": "Brains the page can run (Options > Brain). Each dir holds soma_tracker.onnx + soma_tracker.json. Scores: tools/test/scorecard.mjs.",
+{
+ "note": "Brains the page can run (Options > Brain). Each dir holds soma_tracker.onnx + soma_tracker.json. Scores: tools/test/scorecard.mjs.",
  "default": "nvidia",
  "models": [
-  {"id": "nvidia", "label": "NVIDIA original", "dir": "body/", "about": "NVIDIA's pretrained SOMA tracker, as in v15"}
- ]}
+  {
+   "id": "nvidia",
+   "label": "NVIDIA original",
+   "dir": "body/",
+   "about": "NVIDIA's pretrained SOMA tracker, as in v15"
+  },
+  {
+   "id": "b1_40",
+   "label": "Balance-1 (40 min training)",
+   "dir": "body/models/b1_40/",
+   "about": "First balance training of NVIDIA's SOMA tracker in a tilting box (The Box, train/balance1.py, 40 min on an RTX 4090). Steps instead of stiffening; still walks downhill under steady tilts. Derived from NVIDIA's model (NVIDIA Open Model License, body/soma_tracker_LICENSE.pdf)."
+  }
+ ]
+}

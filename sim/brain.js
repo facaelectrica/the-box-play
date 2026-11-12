@@ -247,12 +247,15 @@ export class Brain {
     const fx = (P[3 * 17] + P[3 * 21]) / 2, fy = (P[3 * 17 + 1] + P[3 * 21 + 1]) / 2;
     if (!this.refXY) { this.refXY = [fx, fy]; this.refYaw = heading(this.rot, 0); this.tRef = 0; }
     this.tRef += dt;
+    // models trained with the reference realigned to him every step (train/balance1.py) get exactly that here:
+    // the standing pose's hips on his hips (x, y), turned the way he faces (meta.realign, set by export_run.py)
+    if (this.meta.realign) { this.refXY = [P[0], P[1]]; this.refYaw = heading(this.rot, 0); this.settled = true; }
     // the spot stays put while he settles (he shuffles back once, ~1.5 s), then moves once to where he ended up;
     // after that it only follows when a push or slope has carried him more than `deadband` from it. A spot that
     // keeps following his feet gets chased: he rises onto his toes (user, v15: "on the tip of his feet").
     const ex = fx - this.refXY[0], ey = fy - this.refXY[1], e = Math.hypot(ex, ey);
     if (this.tRef > this.settleT && !this.settled) { if (this.snap) this.refXY = [fx, fy]; this.settled = true; }
-    else if (this.settled && e > this.deadband) {
+    else if (this.settled && e > this.deadband && !this.meta.realign) {
       const k = (1 - Math.exp(-this.follow * dt)) * (e - this.deadband) / e;
       this.refXY[0] += ex * k; this.refXY[1] += ey * k;
     }
@@ -262,11 +265,13 @@ export class Brain {
     const want = Math.atan2(t[1], t[0]) + Math.PI / 2;   // the body's forward is its -y (semantic_forward_axis 0,-1)
     let dy = want - this.refYaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     let dh = heading(this.rot, 0) - this.refYaw; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
-    this.refYaw += (0.6 * dh + 0.15 * dy) * k * 2 * this.turn;
+    if (!this.meta.realign) this.refYaw += (0.6 * dh + 0.15 * dy) * k * 2 * this.turn;
     const q = [0, 0, Math.sin(this.refYaw / 2), Math.cos(this.refYaw / 2)], R = this.ref;
     const hz = this.ground + s.height;
     // the stand pose's own feet middle, turned like the reference (so its feet land on refXY)
-    const fo = [0, 0, 0]; qrot(q, 0, (s.pos[3 * 17] + s.pos[3 * 21]) / 2, (s.pos[3 * 17 + 1] + s.pos[3 * 21 + 1]) / 2, 0, fo, 0);
+    const fo = [0, 0, 0];
+    if (this.meta.realign) qrot(q, 0, s.pos[0], s.pos[1], 0, fo, 0);   // realigned: hips on hips
+    else qrot(q, 0, (s.pos[3 * 17] + s.pos[3 * 21]) / 2, (s.pos[3 * 17 + 1] + s.pos[3 * 21 + 1]) / 2, 0, fo, 0);
     for (let b = 0; b < NB; b++) {
       qrot(q, 0, s.pos[3 * b], s.pos[3 * b + 1], s.pos[3 * b + 2], t, 0);
       R.pos[3 * b] = this.refXY[0] + t[0] - fo[0]; R.pos[3 * b + 1] = this.refXY[1] + t[1] - fo[1]; R.pos[3 * b + 2] = hz + t[2];
