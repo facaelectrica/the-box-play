@@ -262,7 +262,8 @@ export function lookFromGLTF(THREE, gltf) {
     if (!o.isMesh) return;
     const body = o.parent && o.parent.name && !o.parent.isScene ? o.parent.name : o.name.replace(/_\d+$/, '');
     const geo = o.geometry.clone(); geo.computeVertexNormals();
-    (out[body] || (out[body] = [])).push({ geo, mat: /dark/.test(o.material && o.material.name) ? 'dark' : 'shell' });
+    const mn = (o.material && o.material.name) || '';
+    (out[body] || (out[body] = [])).push({ geo, mat: /dark/.test(mn) ? 'dark' : /joint/.test(mn) ? 'joint' : 'shell' });
   });
   return out;
 }
