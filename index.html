@@ -49,7 +49,7 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.1</div>
+<div id="ver">v15.2</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <div id="note"></div>
 <div id="hud">
@@ -392,7 +392,7 @@ ort.env.wasm.numThreads = 1;
 try { brain = await Brain.create(W, ort, 'body/'); brain.setStandPose(BRAIN_STAND); }
 catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; }
 function newController() {
-  if (brain) { brain.attach(); control = brain.control; }
+  if (brain) { brain.attach(); brain.told = false; control = brain.control; }
   else { control = makeController(W); control.hz = 240; }
 }
 let S = 1;   // drawing units per metre
@@ -868,7 +868,10 @@ async function frame(now) {
   while (acc >= PHYS.dt && n < nMax) {
     if (poke.on) poke.t += PHYS.dt;
     fingerPush();
-    if (brain && control === brain.control && brain.due()) await brain.think();   // the network, 30 times a second
+    if (brain && control === brain.control && brain.due()) {
+      await brain.think();   // the network, 30 times a second
+      if (brain.down && !brain.told) { brain.told = true; note("He can't get up on his own yet. Double-tap to stand him up.", 3500); }
+    }
     W.step(control);
     AUDIT.check();
     acc -= PHYS.dt; n++;

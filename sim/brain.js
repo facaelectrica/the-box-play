@@ -89,11 +89,19 @@ export class Brain {
     this.ref = { pos: new Float64Array(NB * 3), rot: new Float64Array(NB * 4), vel: new Float64Array(NB * 3), ang: new Float64Array(NB * 3) };
     this.stand = null;            // the standing pose's parts relative to the hips (gravity frame, facing +x), from FK
     this.refXY = null; this.refYaw = 0;
-    this.follow = opt.follow ?? 1.2;   // how fast the reference spot follows him (1/s)
+    // how the spot under him follows his feet: slowly (0.15/s, no dead zone). Fast (1.2/s, v15) and he chased it onto his
+    // toes; never (0) and he stands 30 cm from it with one heel up. Measured over 3-14 s: heels 0.4 / 0.0 cm up.
+    this.follow = opt.follow ?? 0.15;
+    this.deadband = opt.deadband ?? 0;
+    this.settleT = opt.settleT ?? 2.0;
+    this.snap = opt.snap ?? false;
     // Known: in MuJoCo this tracker (trained in PhysX) shuffles ~35 cm backwards in its first 1.5 s with the arms down,
     // then stands steadily. Not a balance offset (leaning the reference forward changes nothing). The page starts him
     // that much nearer the glass (settleBack) so he settles in the middle.
     this.settleBack = 0.35;
+    this.turn = opt.turn ?? 1;
+    this.mass = opt.mass ?? 70;          // kg, while the brain drives him (attach/detach)
+    this.turnRate = opt.turnRate ?? 2;          // how much the reference's heading follows his (and turns toward the glass)
     this.lost = 0;                    // seconds he has been far from the reference (fallen)
     this.hz = meta.control_hz;
     this.tNext = 0;
@@ -106,7 +114,15 @@ export class Brain {
 
   // servos get the gains the network was trained with (and give the old ones back on detach)
   attach() {
-    const m = this.W.m;
+    const m = this.W.m, W = this.W;
+    // real adult weight: the body file weighs 42.5 kg (density-1000 shapes); 70 kg reads as a person, not a doll.
+    // The tracker copes (tested: stands, tilts, shoves; heels flatter: 0.2 cm vs 0.6 cm up on average).
+    if (!this.massSaved) {
+      this.massSaved = W.bodyNames.map(n => { const b = W.bodyId[n]; return [m.body_mass[b], m.body_inertia[3 * b], m.body_inertia[3 * b + 1], m.body_inertia[3 * b + 2]]; });
+      const f = this.mass / W.mass;
+      W.bodyNames.forEach(n => { const b = W.bodyId[n]; m.body_mass[b] *= f; for (let k = 0; k < 3; k++) m.body_inertia[3 * b + k] *= f; });
+      this.massWas = W.mass; W.mass = this.mass;
+    }
     this.saved = [];
     for (let i = 0; i < ND; i++) {
       const a = this.actIdx[i], kp = this.meta.kp[i], kd = this.meta.kd[i];
@@ -114,13 +130,13 @@ export class Brain {
       m.actuator_gainprm[10 * a] = kp; m.actuator_biasprm[10 * a + 1] = -kp; m.actuator_biasprm[10 * a + 2] = -kd;
     }
     for (let a = 0; a < m.nu; a++) this.targets[a] = this.W.d.qpos[m.jnt_qposadr[m.actuator_trnid[2 * a]]];
-    this.prev.fill(0); this.refXY = null; this.tNext = 0; this.lost = 0; this.down = false; this.tone = 1;
+    this.prev.fill(0); this.refXY = null; this.settled = false; this.tNext = 0; this.lost = 0; this.down = false; this.tone = 1;
   }
   // muscle tone: 1 = the trained gains, less = looser (when he has fallen and the tracker has given up)
   setTone(f) {
     const m = this.W.m; this.tone = f;
     for (let i = 0; i < ND; i++) {
-      const a = this.actIdx[i], kp = this.meta.kp[i] * f, kd = this.meta.kd[i] * Math.sqrt(f);
+      const a = this.actIdx[i], kp = this.meta.kp[i] * f, kd = this.meta.kd[i] * f;
       m.actuator_gainprm[10 * a] = kp; m.actuator_biasprm[10 * a + 1] = -kp; m.actuator_biasprm[10 * a + 2] = -kd;
     }
   }
@@ -128,6 +144,11 @@ export class Brain {
     const m = this.W.m; if (!this.saved) return;
     for (let i = 0; i < ND; i++) { const a = this.actIdx[i], s = this.saved[i]; m.actuator_gainprm[10 * a] = s[0]; m.actuator_biasprm[10 * a + 1] = s[1]; m.actuator_biasprm[10 * a + 2] = s[2]; }
     this.saved = null;
+    if (this.massSaved) {
+      const W = this.W;
+      W.bodyNames.forEach((n, i) => { const b = W.bodyId[n], s = this.massSaved[i]; m.body_mass[b] = s[0]; for (let k = 0; k < 3; k++) m.body_inertia[3 * b + k] = s[k + 1]; });
+      W.mass = this.massWas; this.massSaved = null;
+    }
   }
 
   // the standing pose (hinge angles by joint name, e.g. physics STAND) measured once by forward kinematics
@@ -190,15 +211,24 @@ export class Brain {
     const P = this.pos, s = this.stand;
     // the reference stands on his feet: the point between his feet (not his hips, which a lean carries away)
     const fx = (P[3 * 17] + P[3 * 21]) / 2, fy = (P[3 * 17 + 1] + P[3 * 21 + 1]) / 2;
-    if (!this.refXY) { this.refXY = [fx, fy]; this.refYaw = heading(this.rot, 0); }
-    const k = 1 - Math.exp(-this.follow * dt);
-    this.refXY[0] += (fx - this.refXY[0]) * k; this.refXY[1] += (fy - this.refXY[1]) * k;
+    if (!this.refXY) { this.refXY = [fx, fy]; this.refYaw = heading(this.rot, 0); this.tRef = 0; }
+    this.tRef += dt;
+    // the spot stays put while he settles (he shuffles back once, ~1.5 s), then moves once to where he ended up;
+    // after that it only follows when a push or slope has carried him more than `deadband` from it. A spot that
+    // keeps following his feet gets chased: he rises onto his toes (user, v15: "on the tip of his feet").
+    const ex = fx - this.refXY[0], ey = fy - this.refXY[1], e = Math.hypot(ex, ey);
+    if (this.tRef > this.settleT && !this.settled) { if (this.snap) this.refXY = [fx, fy]; this.settled = true; }
+    else if (this.settled && e > this.deadband) {
+      const k = (1 - Math.exp(-this.follow * dt)) * (e - this.deadband) / e;
+      this.refXY[0] += ex * k; this.refXY[1] += ey * k;
+    }
+    const k = 1 - Math.exp(-this.turnRate * dt);   // heading: slow
     // face the glass: the glass is at box y = 0, so "toward the viewer" is box -y, in the gravity frame
     const t = [0, 0, 0]; qrot(this.G, 0, 0, -1, 0, t, 0);
     const want = Math.atan2(t[1], t[0]) + Math.PI / 2;   // the body's forward is its -y (semantic_forward_axis 0,-1)
     let dy = want - this.refYaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
     let dh = heading(this.rot, 0) - this.refYaw; dh = Math.atan2(Math.sin(dh), Math.cos(dh));
-    this.refYaw += (0.6 * dh + 0.15 * dy) * k * 2;
+    this.refYaw += (0.6 * dh + 0.15 * dy) * k * 2 * this.turn;
     const q = [0, 0, Math.sin(this.refYaw / 2), Math.cos(this.refYaw / 2)], R = this.ref;
     const hz = this.ground + s.height;
     // the stand pose's own feet middle, turned like the reference (so its feet land on refXY)
@@ -244,7 +274,8 @@ export class Brain {
     this.tNext = this.W.d.time + dt - 1e-9;
     this.readState();
     if (this.down) {
-      // fallen: this tracker can't get up (it was trained to give up), so he goes loose and holds where he lies
+      // fallen: this tracker can't get up (it was trained to give up past 0.5 m), so he goes limp (4% tone, no shape
+      // held): he slumps, and slides and rolls when the box tilts. Getting up needs our own training (plan step 5/6).
       const d = this.W.d;
       for (let i = 0; i < ND; i++) this.targets[this.actIdx[i]] = d.qpos[this.hingeQ[i]];
       return this.targets;
@@ -263,7 +294,7 @@ export class Brain {
     let e = 0; for (let b = 0; b < NB; b++) e = Math.max(e, Math.hypot(this.pos[3 * b] - ref.pos[3 * b], this.pos[3 * b + 1] - ref.pos[3 * b + 1], this.pos[3 * b + 2] - ref.pos[3 * b + 2]));
     this.err = e;
     this.lost = e > 0.5 ? this.lost + dt : Math.max(0, this.lost - dt);
-    if (this.lost > 0.6 && this.pos[2] - this.ground < 0.6) { this.down = true; this.setTone(0.12); }
+    if (this.lost > 0.6 && this.pos[2] - this.ground < 0.6) { this.down = true; this.setTone(0.04); }
     return this.targets;
   }
 }
