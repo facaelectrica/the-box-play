@@ -25,6 +25,9 @@
   .pill{pointer-events:auto;background:rgba(28,18,10,.62);color:#f5e8d6;border:1px solid rgba(255,230,200,.2);border-radius:999px;padding:9px 16px;font:inherit;font-size:14px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
   #note{position:fixed;left:50%;top:calc(22px + env(safe-area-inset-top));transform:translateX(-50%);z-index:2;max-width:82%;text-align:center;font-size:13px;line-height:1.4;background:rgba(28,18,10,.7);border:1px solid rgba(255,230,200,.2);border-radius:14px;padding:9px 14px;opacity:0;transition:opacity .6s;pointer-events:none}
   #note.show{opacity:1}
+  #look{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #look::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:rgba(255,235,205,.9)}
+  #look.on{background:#ffd400;border-color:#ffd400}#look.on::after{background:#111;width:10px;height:10px;border-radius:2px}
   #ver{position:fixed;left:calc(12px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));z-index:6;font-size:16px;font-weight:800;letter-spacing:.5px;color:#111;background:#ffd400;border-radius:8px;padding:4px 10px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #opts{position:fixed;left:0;right:0;bottom:0;z-index:4;max-height:72vh;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;background:rgba(24,16,9,.92);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid rgba(255,230,200,.18);border-radius:18px 18px 0 0;padding:6px 18px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .3s ease}
   #opts.open{transform:none}
@@ -50,7 +53,8 @@
   <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance. Touch him to push him. Double-tap an empty spot to stand him up again.</p>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v13.1</div>
+<div id="ver">v13.2</div>
+<button id="look" aria-label="Freeze and look around"></button>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -2038,6 +2042,7 @@ let drag = null;
 const dragRot = { roll: 0, pitch: 0 }, dragS = { roll: 0, pitch: 0 };
 const el = renderer.domElement;
 el.addEventListener('pointerdown', e => {
+  if (look.on) return;
   const hit = figureAt(e.clientX, e.clientY);
   if (hit && SET.push > 0) {
     Object.assign(poke, { on: true, part: hit.part, local: hit.local, t: 0, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, id: e.pointerId });
@@ -2064,6 +2069,7 @@ el.addEventListener('pointerdown', e => { tapAt = figureAt(e.clientX, e.clientY)
 el.addEventListener('pointerup', e => {
   if (!tapAt || performance.now() - tapAt.t > 300 || Math.hypot(e.clientX - tapAt.x, e.clientY - tapAt.y) > 24) return;
   const now = performance.now();
+  if (look.on) return;
   if (now - lastTap < 350) { standUp(); lastTap = 0; note('Reset', 900); } else lastTap = now;
 });
 el.addEventListener('pointercancel', endDrag);
@@ -2248,6 +2254,38 @@ function updateCamera(dt) {
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 }
 
+// ================= look mode: physics stops, he holds his pose, a finger turns the view around him =================
+const look = { on: false, yaw: 0, pitch: 0.12, dist: 0, tgt: new THREE.Vector3(), drag: null };
+$('look').onclick = e => {
+  e.stopPropagation();
+  look.on = !look.on; $('look').classList.toggle('on', look.on);
+  if (look.on) {
+    const p = B.pelvis.position, h = B.head.position;
+    look.tgt.set(p.x + (h.x - p.x) * 0.25, p.y + (h.y - p.y) * 0.25, p.z + (h.z - p.z) * 0.25);
+    look.yaw = 0; look.pitch = 0.1; look.dist = 1.75 * S * 1.75;
+    poke.on = false; drag = null;
+    note('Paused. Slide to look around him; tap the circle to carry on.', 2600);
+  } else { acc = 0; last = performance.now(); }
+  if (boxGroup) boxGroup.visible = !look.on;
+};
+for (const ev of ['pointerdown', 'pointerup']) $('look').addEventListener(ev, e => e.stopPropagation());
+el.addEventListener('pointerdown', e => { if (look.on) look.drag = { x: e.clientX, y: e.clientY, yaw: look.yaw, pitch: look.pitch, id: e.pointerId }; }, true);
+el.addEventListener('pointermove', e => {
+  if (!look.on || !look.drag || e.pointerId !== look.drag.id) return;
+  const k = Math.PI / Math.min(innerWidth, innerHeight);
+  look.yaw = look.drag.yaw - (e.clientX - look.drag.x) * k * 1.2;
+  look.pitch = clamp(look.drag.pitch + (e.clientY - look.drag.y) * k, -1.2, 1.35);
+}, true);
+el.addEventListener('pointerup', e => { if (look.on) look.drag = null; }, true);
+function lookCamera() {
+  const c = Math.cos(look.pitch);
+  camera.position.set(look.tgt.x + look.dist * c * Math.sin(look.yaw), look.tgt.y + look.dist * Math.sin(look.pitch), look.tgt.z + look.dist * c * Math.cos(look.yaw));
+  camera.up.set(0, 1, 0); camera.lookAt(look.tgt); camera.updateMatrixWorld();
+  const n = 0.05, top = n * Math.tan(25 * DEG), right = top * hw / hh;   // a 50-degree view
+  camera.projectionMatrix.makePerspective(-right, right, top, -top, n, 40);
+  camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+}
+
 // ================= the loop =================
 const STEP = 1 / 60;
 let acc = 0, last = performance.now(), frameN = 0;
@@ -2275,7 +2313,7 @@ function frame(now) {
   lightUp.lerp(lu, Math.min(1, dt * 4)).normalize();
   placeLight();
 
-  acc += dt;
+  acc += look.on ? 0 : dt;
   let n = 0;
   while (acc >= STEP && n < 2) {
     for (const nm in B) B[nm].pull();
@@ -2291,7 +2329,7 @@ function frame(now) {
   sfxUpdate(dt);
   for (const [b, m] of syncs) { m.position.copy(b.position); m.quaternion.copy(b.quaternion); }
 
-  updateCamera(dt);
+  if (look.on) lookCamera(); else updateCamera(dt);
   // bounce light: redrawn only when the light has moved
   frameN++;
   if (envDirty < 2 || (lightUp.angleTo(envUp) > 4 * DEG && frameN - envFrame > 12)) { updateEnv(); envDirty++; envUp.copy(lightUp); envFrame = frameN; }
