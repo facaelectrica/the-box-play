@@ -58,7 +58,7 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.14</div>
+<div id="ver">v15.15</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <button id="place" aria-label="The box or an open floor"></button>
 <button id="fig" aria-label="Change the figure"></button>
@@ -377,13 +377,13 @@ function updateEnv() {
 const mj = await loadMujoco();
 // figure looks the user can switch between (third round button, top right); all are drawn on the same SOMA bodies
 const FIGS = [
-  { id: 'bodychan', label: 'Body-chan', file: 'body/bodychan.glb' },       // the user's Body-chan figure (10:22)
-  { id: 'blender', label: 'Blender female', file: 'body/hbm_female.glb' },  // Blender Studio Human Base Meshes (CC0)
-  { id: 'doll', label: 'Ball-joint doll', file: 'body/doll.glb' },          // the user's ball-joint doll (09:54)
-  { id: 'sculpt', label: 'Mannequin', file: null },                         // code-sculpted (sim/look.js)
+  { id: 'female', label: 'Female', file: 'body/bodychan.glb' },   // Body-chan (vinchau, CC0; the user's file, 10:22)
+  { id: 'male', label: 'Male', file: 'body/bodykun.glb' },        // Body-kun, same file (user, 12:10)
+  { id: 'shapes', label: 'Mannequin (physics shapes)', file: null },  // the SOMA body's own collision shapes + joint balls
 ];
+// (still in the repo, not in the cycle: body/hbm_female.glb, body/doll.glb, sim/look.js buildLook)
 const figCache = {};
-let FIG = 'bodychan';
+let FIG = 'female';
 try { const f = localStorage.getItem('box.figure'); if (FIGS.some(x => x.id === f)) FIG = f; } catch (e) {}
 async function loadFig(id) {
   const f = FIGS.find(x => x.id === id);
@@ -465,8 +465,8 @@ const bodyGroup = [];   // by MuJoCo body id
 function buildFigure() {
   const m = W.m;
   let look = null;
-  // the chosen figure's GLB (FIGS); else the code-sculpted mannequin (sim/look.js); else the MJCF shapes
-  try { look = DOLL ? lookFromGLTF(THREE, DOLL) : buildLook(THREE, mergeGeometries, W); }
+  // the chosen figure's GLB (FIGS); 'shapes' = the MJCF's own shapes; if a GLB fails, the code-sculpted mannequin
+  try { look = DOLL ? lookFromGLTF(THREE, DOLL) : FIG === 'shapes' ? null : buildLook(THREE, mergeGeometries, W); }
   catch (e) { console.warn('figure look failed, drawing the plain shapes', e); }
   for (const g of bodyGroup) if (g) { figRoot.remove(g); g.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); movers.splice(movers.indexOf(g), 1); }
   bodyGroup.length = 0;
