@@ -17,8 +17,6 @@
   canvas{display:block;width:100%;height:100%}
   #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(22,14,8,.74);text-align:center;padding:24px;z-index:5;transition:opacity .4s}
   #start.hide{opacity:0;pointer-events:none}
-  #start h1{margin:0;font-size:28px;font-weight:700;letter-spacing:.2px}
-  #start p{margin:0;max-width:300px;line-height:1.45;opacity:.85;font-size:15px}
   #go{margin-top:10px;font:inherit;font-size:18px;font-weight:700;padding:15px 40px;border-radius:999px;border:0;background:#eab873;color:#2a1a0c;box-shadow:0 6px 20px rgba(0,0,0,.35)}
   #hud{position:fixed;left:0;right:0;bottom:calc(18px + env(safe-area-inset-bottom));display:flex;justify-content:center;gap:8px;z-index:2;pointer-events:none;opacity:0;transition:opacity .5s}
   #hud.show{opacity:1}
@@ -49,11 +47,9 @@
 </head>
 <body>
 <div id="start">
-  <h1>The Box</h1>
-  <p>Your screen is the glass front of a wooden box with a person inside (a new body, in real physics). Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance. Touch him to push him. Double-tap an empty spot to stand him up again.</p>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v14</div>
+<div id="ver">v14.1</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <div id="note"></div>
 <div id="hud">
@@ -123,7 +119,7 @@ renderer.toneMappingExposure = 1.0;
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-const DARK = new THREE.Color(0x1a120b), ROOM = new THREE.Color(0x7d7368);
+const DARK = new THREE.Color(0x1a120b), ROOM = new THREE.Color(0x7d7368), GREY = new THREE.Color(0x808080);
 scene.background = DARK;
 const camera = new THREE.PerspectiveCamera();
 scene.add(camera);
@@ -287,7 +283,7 @@ function updateEnv() {
   for (const m of movers) m.visible = false;
   scene.background = ROOM;   // what comes in through the glass: the room
   cubeCam.update(renderer, scene);
-  scene.background = DARK;
+  scene.background = look.on ? GREY : DARK;
   for (const m of movers) m.visible = true;
   cubeRT.texture.needsPMREMUpdate = true;
 }
@@ -718,6 +714,7 @@ $('look').onclick = e => {
     note('Paused. Slide to look around him; tap the circle to carry on.', 2600);
   } else { acc = 0; last = performance.now(); }
   if (boxGroup) boxGroup.visible = !look.on;
+  scene.background = look.on ? GREY : DARK;   // looking him over: a plain 50% grey behind him
 };
 for (const ev of ['pointerdown', 'pointerup']) $('look').addEventListener(ev, e => e.stopPropagation());
 el.addEventListener('pointerdown', e => { if (look.on) look.drag = { x: e.clientX, y: e.clientY, yaw: look.yaw, pitch: look.pitch, id: e.pointerId }; }, true);
