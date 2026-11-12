@@ -73,10 +73,6 @@
 <script type="module">
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import * as CANNON from 'cannon-es';
 
 const $ = id => document.getElementById(id);
@@ -89,9 +85,8 @@ const OPTS = [
   { grp: 'Gravity and surfaces' },
   { k: 'gravity', label: 'Gravity', min: 5, max: 60, step: 1, def: 25, fmt: v => v.toFixed(0), help: 'How hard things fall toward the real floor.' },
   { k: 'slide', label: 'Slide', min: 0, max: 1, step: 0.01, def: 0.5, fmt: pct, help: 'How easily the figure slides on the wood.' },
-  { k: 'grip', label: 'Foot grip', min: 0, max: 1.5, step: 0.01, def: 0.8, fmt: v => v.toFixed(2), help: 'How well its feet hold the floor.' },
+  { k: 'grip', label: 'Foot grip', min: 0, max: 2, step: 0.01, def: 1.4, fmt: v => v.toFixed(2), help: 'How well its feet hold the floor.' },
   { k: 'bounce', label: 'Bounce', min: 0, max: 0.8, step: 0.01, def: 0.15, fmt: v => v.toFixed(2), help: 'How much things bounce off the walls.' },
-  { k: 'ball', label: 'Ball in the box', tog: true, def: true, help: 'The red ball rolling around with the figure.' },
   { grp: 'The figure' },
   { k: 'muscle', label: 'Muscle strength', min: 0, max: 2, step: 0.01, def: 1, fmt: pct, help: 'How firmly the joints hold their pose. 0 is a limp ragdoll.' },
   { k: 'balance', label: 'Balance', min: 0, max: 2, step: 0.01, def: 1, fmt: pct, help: 'How hard it fights to stay upright over its feet.' },
@@ -104,11 +99,11 @@ const OPTS = [
   { k: 'view', label: 'View depth', min: 0, max: 1.5, step: 0.01, def: 0.3, fmt: pct, help: 'How much the view shifts as you turn the phone.' },
   { k: 'viewReturn', label: 'View re-centre', min: 0.5, max: 12, step: 0.1, def: 3, fmt: v => v.toFixed(1) + ' s', help: 'How fast the view settles back after you turn.' },
   { grp: 'Look and sound' },
-  { k: 'hiQ', label: 'High-quality light', tog: true, def: true, help: 'Soft contact shadows and finer shadows. Off is faster.' },
+  { k: 'hiQ', label: 'High detail', tog: true, def: false, help: 'Sharper picture and shadows. Slower on phones.' },
   { k: 'sound', label: 'Sound', tog: true, def: true, help: 'Knocks when things hit the wood.' },
 ];
 const SET = {};
-const STORE = 'thebox.settings.v1';
+const STORE = 'thebox.settings.v2';
 function loadSettings() {
   for (const o of OPTS) if (o.k) SET[o.k] = o.def;
   try { Object.assign(SET, JSON.parse(localStorage.getItem(STORE) || '{}')); } catch (_) {}
@@ -118,7 +113,7 @@ loadSettings();
 
 // ================= renderer / scene =================
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(1);
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -135,7 +130,6 @@ scene.add(camera);
 // ================= dimensions (world units; the screen's short side = 2) =================
 const D = 0.78;      // box depth (half of the first version)
 const LIP = 0.07;    // wall thickness at the rim
-const R = 0.24;      // ball radius
 const EYE = 5.2;     // viewing distance
 let hw, hh, ix, iy;
 
@@ -242,7 +236,7 @@ function buildBox() {
   bottom.rotation.x = -Math.PI / 2; bottom.position.set(0, -iy, -D / 2);
   const top = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, D), woodMat(woodTexture(2 * ix, D, true, WALL, { bottom: deep, left: side, right: side })));
   top.rotation.x = Math.PI / 2; top.position.set(0, iy, -D / 2);
-  for (const w of [left, right, bottom, top]) { w.receiveShadow = true; w.castShadow = true; boxGroup.add(w); }
+  for (const w of [left, right, bottom, top]) { w.receiveShadow = true; boxGroup.add(w); }
   // the rim (the walls' top edge), flush with the screen
   const shape = new THREE.Shape();
   shape.moveTo(-hw - .01, -hh - .01); shape.lineTo(hw + .01, -hh - .01); shape.lineTo(hw + .01, hh + .01); shape.lineTo(-hw - .01, hh + .01); shape.closePath();
@@ -280,7 +274,8 @@ function placeLight() {
 }
 
 // bounce light: the inside of the box seen from its middle lights the figure and the walls
-const cubeRT = new THREE.WebGLCubeRenderTarget(96, { type: THREE.HalfFloatType });
+const cubeRT = new THREE.WebGLCubeRenderTarget(48, { type: THREE.HalfFloatType });
+const envUp = new THREE.Vector3(); let envFrame = 0;
 const cubeCam = new THREE.CubeCamera(0.02, 30, cubeRT);
 scene.add(cubeCam);
 scene.environment = cubeRT.texture;
@@ -299,19 +294,16 @@ function updateEnv() {
 // ================= physics =================
 const world = new CANNON.World();
 world.broadphase = new CANNON.SAPBroadphase(world);
-world.solver.iterations = 20;
+world.solver.iterations = 12;
 world.allowSleep = false;
 world.gravity.set(0, -SET.gravity, 0);
-const woodPM = new CANNON.Material('wood'), dollPM = new CANNON.Material('doll'), footPM = new CANNON.Material('foot'), ballPM = new CANNON.Material('ball');
+const woodPM = new CANNON.Material('wood'), dollPM = new CANNON.Material('doll'), footPM = new CANNON.Material('foot');
 const CM = {
   wd: new CANNON.ContactMaterial(woodPM, dollPM, {}),
   wf: new CANNON.ContactMaterial(woodPM, footPM, {}),
   dd: new CANNON.ContactMaterial(dollPM, dollPM, {}),
   df: new CANNON.ContactMaterial(dollPM, footPM, {}),
   ff: new CANNON.ContactMaterial(footPM, footPM, {}),
-  wb: new CANNON.ContactMaterial(woodPM, ballPM, {}),
-  db: new CANNON.ContactMaterial(dollPM, ballPM, {}),
-  fb: new CANNON.ContactMaterial(footPM, ballPM, {}),
 };
 for (const c of Object.values(CM)) world.addContactMaterial(c);
 // cannon-es caps friction per step and per contact point (measured: at 1/120 s steps the real grip
@@ -322,8 +314,6 @@ function applySurfaces() {
   CM.wd.friction = GRIP((1 - SET.slide) * 0.7); CM.wd.restitution = b;
   CM.wf.friction = GRIP(SET.grip * 1.6);       CM.wf.restitution = b * 0.5;
   for (const c of [CM.dd, CM.df, CM.ff]) { c.friction = GRIP(0.3); c.restitution = 0.05; }
-  CM.wb.friction = 0.25; CM.wb.restitution = Math.min(0.9, b + 0.35);
-  for (const c of [CM.db, CM.fb]) { c.friction = GRIP(0.4); c.restitution = Math.min(0.9, b + 0.2); }
 }
 applySurfaces();
 
@@ -379,34 +369,8 @@ function removeDyn(body, dispose) {
   if (dispose) mesh.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
 }
 
-// ================= the ball =================
-function ballTexture() {
-  const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
-  const g = c.getContext('2d');
-  g.fillStyle = '#c8312a'; g.fillRect(0, 0, 1024, 512);
-  g.fillStyle = '#f4eee2'; g.fillRect(0, 512 * 0.40, 1024, 512 * 0.20);
-  g.fillStyle = '#1d2a4a';
-  for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(128 + k * 256, 256, 26, 0, Math.PI * 2); g.fill(); }
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-const ballMesh = new THREE.Mesh(new THREE.SphereGeometry(R, 48, 32),
-  new THREE.MeshPhysicalMaterial({ map: ballTexture(), roughness: .32, clearcoat: 1, clearcoatRoughness: .08 }));
-ballMesh.castShadow = true; ballMesh.receiveShadow = true;
-const ballBody = new CANNON.Body({ mass: 1.6, material: ballPM, shape: new CANNON.Sphere(R), linearDamping: 0.08, angularDamping: 0.12 });
-let ballIn = false;
-function setBall(on) {
-  if (on && !ballIn) {
-    addDyn(ballBody, ballMesh); ballIn = true;
-    ballBody.position.set(ix * 0.6, -iy + R + 0.02, -D / 2); ballBody.velocity.setZero(); ballBody.angularVelocity.setZero();
-  } else if (!on && ballIn) {
-    removeDyn(ballBody, false); ballIn = false;
-  }
-}
-
 // ================= the figure: an active ragdoll =================
-const SHELL = new THREE.MeshPhysicalMaterial({ color: 0xebe5da, roughness: 0.42, clearcoat: 0.5, clearcoatRoughness: 0.35, sheen: 0.3, sheenRoughness: 0.6, sheenColor: new THREE.Color(0xfff4e6) });
+const SHELL = new THREE.MeshStandardMaterial({ color: 0xebe5da, roughness: 0.38 });
 const JOINT = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.48, metalness: 0.15 });
 
 // standing pose for a figure 1.75 tall, y up, z forward, feet at y = 0 (scaled to the box when built)
@@ -576,13 +540,22 @@ function wallInfo(n) {   // offset (n.p + off = height above that wall) and the 
   if (n[0]) return { off: ix, room: 2 * ix };
   return n[2] > 0 ? { off: D, room: D } : { off: 0, room: D };
 }
+// It stands on one of the four side walls, upright within the glass's plane: held at a reading angle,
+// gravity also pushes it back into the box and it leans there, like a toy in its packaging.
+// Laid flat (little "up" left within the plane) or turned onto a wall with no room, it can't stand.
+function standUpDir(up) {
+  const m = Math.hypot(up.x, up.y);
+  return m < 0.34 ? null : new CANNON.Vec3(up.x / m, up.y / m, 0);
+}
 function floorWall(up) {
+  const u = standUpDir(up);
+  if (!u) return null;
   let best = null, bd = -2;
-  for (const n of WALLN) { const d = n[0] * up.x + n[1] * up.y + n[2] * up.z; if (d > bd) { bd = d; best = n; } }
-  if (bd < Math.cos(38 * DEG)) return null;
+  for (const n of WALLN) { if (n[2]) continue; const d = n[0] * u.x + n[1] * u.y; if (d > bd) { bd = d; best = n; } }
+  if (bd < Math.cos(42 * DEG)) return null;
   const w = wallInfo(best);
   if (w.room < 1.75 * S * 1.02) return null;   // no room to stand: it stays lying down
-  return { n: best, d: bd, off: w.off, nv: new CANNON.Vec3(...best) };
+  return { n: best, d: bd, off: w.off, nv: new CANNON.Vec3(...best), u };
 }
 const bodyUp = b => b.quaternion.vmult(Y);
 const tiltOf = (b, up) => Math.acos(clamp(bodyUp(b).dot(up), -1, 1));
@@ -593,8 +566,8 @@ function scanContacts(up) {
   for (const c of world.contacts) {
     for (const [f, key] of [[B.footL, 'L'], [B.footR, 'R']]) {
       let n = null;
-      if (c.bj === f && (c.bi.isWall || c.bi === ballBody)) n = c.ni;
-      else if (c.bi === f && (c.bj.isWall || c.bj === ballBody)) n = c.ni.negate();
+      if (c.bj === f && c.bi.isWall) n = c.ni;
+      else if (c.bi === f && c.bj.isWall) n = c.ni.negate();
       if (n && n.dot(up) > Math.cos(45 * DEG)) feetDown[key] = 0;
     }
   }
@@ -620,7 +593,11 @@ function setPose(kind, up) {
 
 const SPRING = ['pelvis', 'chest', 'head'];
 function control(dt) {
-  const up = upNow(), g = world.gravity.length();
+  const real = upNow(), gv = world.gravity;
+  const fl = floorWall(real);
+  const up = fl ? fl.u : real;
+  // the part of gravity that presses it onto its floor
+  const g = Math.max(0, -(gv.x * up.x + gv.y * up.y + gv.z * up.z));
   scanContacts(up);
   stateT += dt;
   if (stun > 0) stun -= dt;
@@ -633,18 +610,17 @@ function control(dt) {
 
   // what is it doing?
   if (stun > 0 && state !== 'down' && state !== 'fall') { state = 'fall'; stateT = 0; }
-  const fl = floorWall(up);
   // off balance: the chest is out past the feet; a moment of it can be caught, a lot of it can't
-  offT = side > 0.45 * S ? offT + dt : Math.max(0, offT - dt);
-  const lost = offT > 0.45 || side > 0.95 * S;
-  if (state === 'stand' && (!fl || tilt > 50 * DEG || ungrounded > 0.25 || lost || SET.balance < 0.02)) { state = 'fall'; stateT = 0; offT = 0; fallWhy = !fl ? 'floor' : tilt > 50 * DEG ? 'tilt' : ungrounded > 0.25 ? 'feet' : lost ? 'side' : 'balance'; }
+  offT = state !== 'stand' ? 0 : side > 0.5 * S ? offT + dt : Math.max(0, offT - dt);
+  const lost = offT > 0.9 || side > 1.25 * S;
+  if (state === 'stand' && (!fl || tilt > 62 * DEG || ungrounded > 0.45 || lost || SET.balance < 0.02)) { state = 'fall'; stateT = 0; offT = 0; fallWhy = !fl ? 'floor' : tilt > 62 * DEG ? 'tilt' : ungrounded > 0.45 ? 'feet' : lost ? 'side' : 'balance'; }
   if (state === 'fall') {
     still = B.pelvis.velocity.length() < 0.5 * S ? still + dt : 0;
     if ((still > 0.35 && stateT > 0.4) || stateT > 3) { state = 'down'; stateT = 0; }
   }
   if (state === 'down' && SET.getUp && stun <= 0 && stateT > SET.getUpDelay && SET.balance > 0.02 && fl) { state = 'getup'; stateT = 0; }
   if (state === 'getup') {
-    if (tilt < 14 * DEG && grounded && stateT > 0.6) { state = 'stand'; stateT = 0; }
+    if (tilt < 14 * DEG && grounded && side < 0.35 * S && stateT > 0.6) { state = 'stand'; stateT = 0; }
     else if (stateT > 3.5 || !fl) { state = 'down'; stateT = 0; }
   }
 
@@ -662,8 +638,8 @@ function control(dt) {
   lift *= Math.min(1, bal);
   if (lift <= 0 || stun > 0 || !fl) return;
   // weight carried only while the feet are on the floor, so it can't float away
-  B.pelvis.force.vadd(up.scale(figMass * g * 0.9 * lift * (grounded ? 1 : 0.25)), B.pelvis.force);
-  const om = 7 * Math.sqrt(bal) * lift;
+  B.pelvis.force.vadd(up.scale(figMass * g * 0.95 * lift * (grounded ? 1 : 0.25)), B.pelvis.force);
+  const om = 9 * Math.sqrt(bal) * lift;
   const back = new CANNON.Vec3();
   // the floor point under its feet: heights are measured from the floor, not from the feet
   const hf = feetC.dot(fl.nv) + fl.off;
@@ -683,7 +659,7 @@ function control(dt) {
   for (const [nm, kk] of [['chest', 1], ['pelvis', 1], ['footL', 0.6], ['footR', 0.6]]) {
     const b = B[nm], want = PARTS[nm].foot ? fl.nv : up;
     const bu = bodyUp(b), ax = bu.cross(want), sn = ax.length(), ang = Math.atan2(sn, bu.dot(want));
-    const I = avgInertia(b) * 3, w0 = 12 * Math.sqrt(bal) * lift * kk;
+    const I = avgInertia(b) * 3, w0 = 14 * Math.sqrt(bal) * lift * kk;
     const t = new CANNON.Vec3();
     if (sn > 1e-5) ax.scale(I * w0 * w0 * ang / sn, t);
     t.vsub(b.angularVelocity.scale(2 * I * w0 * 0.9), t);
@@ -818,37 +794,36 @@ function buildOptions() {
 function changed(k) {
   saveSettings();
   if (k === 'slide' || k === 'grip' || k === 'bounce') applySurfaces();
-  if (k === 'ball') setBall(SET.ball);
   if (k === 'hiQ') applyQuality();
 }
 $('optBtn').onclick = () => $('opts').classList.add('open');
 $('optClose').onclick = () => $('opts').classList.remove('open');
-$('resetFig').onclick = () => { standUp(); if (ballIn) { setBall(false); setBall(true); } };
-$('resetVals').onclick = () => { for (const o of OPTS) if (o.k) SET[o.k] = o.def; saveSettings(); buildOptions(); applySurfaces(); setBall(SET.ball); applyQuality(); };
+$('resetFig').onclick = () => standUp();
+$('resetVals').onclick = () => { for (const o of OPTS) if (o.k) SET[o.k] = o.def; saveSettings(); buildOptions(); applySurfaces(); applyQuality(); };
 for (const ev of ['pointerdown', 'pointermove', 'touchmove']) $('opts').addEventListener(ev, e => e.stopPropagation(), { passive: true });
 
-// ================= picture: render passes =================
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 }));
-const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
-gtao.output = GTAOPass.OUTPUT.Default;
-gtao.blendIntensity = 1.0;
-composer.addPass(new RenderPass(scene, camera));
-composer.addPass(gtao);
-composer.addPass(new OutputPass());
-function resizeAll() {
-  renderer.setSize(innerWidth, innerHeight);
-  composer.setPixelRatio(renderer.getPixelRatio());
-  composer.setSize(innerWidth, innerHeight);
-}
+// ================= picture quality: sharpness follows the frame rate =================
+let dpr = 1, dprMax = 1;
+function resizeAll() { renderer.setPixelRatio(dpr); renderer.setSize(innerWidth, innerHeight); }
 function applyQuality() {
-  gtao.enabled = !!SET.hiQ;
   const size = SET.hiQ ? 2048 : 1024;
   if (spot.shadow.mapSize.x !== size) {
     spot.shadow.mapSize.set(size, size);
     if (spot.shadow.map) { spot.shadow.map.dispose(); spot.shadow.map = null; }
   }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, SET.hiQ ? 2 : 1.25));
+  dprMax = Math.min(window.devicePixelRatio || 1, SET.hiQ ? 2 : 1.5);
+  dpr = dprMax;
   resizeAll();
+}
+// if frames take too long, draw fewer pixels (and more again when there's room)
+let ftSum = 0, ftN = 0, ftT = 0, settleT = 0;
+function adaptSharpness(dt) {
+  ftSum += dt; ftN++; ftT += dt; settleT += dt;
+  if (ftT < 1) return;
+  const avg = ftSum / ftN; ftSum = 0; ftN = 0; ftT = 0;
+  if (settleT < 2) return;
+  if (avg > 1 / 52 && dpr > 0.75) { dpr = Math.max(0.75, dpr - 0.25); resizeAll(); settleT = 0; }
+  else if (avg < 1 / 58 && dpr < dprMax && settleT > 4) { dpr = Math.min(dprMax, dpr + 0.25); resizeAll(); settleT = 0; }
 }
 
 // ================= camera: a window into the box =================
@@ -903,13 +878,16 @@ function frame(now) {
 
   acc += dt;
   let n = 0;
-  while (acc >= STEP && n < 8) { control(STEP); world.step(STEP); acc -= STEP; n++; }
-  if (n === 8) acc = 0;
+  while (acc >= STEP && n < 3) { control(STEP); world.step(STEP); acc -= STEP; n++; }
+  if (n === 3) acc = 0;
   for (const [b, m] of syncs) { m.position.copy(b.position); m.quaternion.copy(b.quaternion); }
 
   updateCamera(dt);
-  if (frameN++ % 6 === 0 || envDirty < 3) { updateEnv(); envDirty++; }
-  composer.render();
+  // bounce light: redrawn only when the light has moved
+  frameN++;
+  if (envDirty < 2 || (lightUp.angleTo(envUp) > 4 * DEG && frameN - envFrame > 12)) { updateEnv(); envDirty++; envUp.copy(lightUp); envFrame = frameN; }
+  renderer.render(scene, camera);
+  adaptSharpness(dt);
   requestAnimationFrame(frame);
 }
 
@@ -928,11 +906,10 @@ $('go').onclick = async () => {
   setTimeout(() => { if (mode !== 'sensor') { mode = 'touch'; note('No motion sensors here, so drag to turn the box.', 4500); } }, 1300);
 };
 
-addEventListener('resize', () => { resizeAll(); buildBox(); buildFigure(); if (ballIn) { setBall(false); setBall(true); } });
+addEventListener('resize', () => { resizeAll(); buildBox(); buildFigure(); });
 buildOptions();
 buildBox();
 buildFigure();
-setBall(SET.ball);
 applyQuality();
 requestAnimationFrame(frame);
 </script>
