@@ -25,7 +25,7 @@
   .pill{pointer-events:auto;background:rgba(28,18,10,.62);color:#f5e8d6;border:1px solid rgba(255,230,200,.2);border-radius:999px;padding:9px 16px;font:inherit;font-size:14px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
   #note{position:fixed;left:50%;top:calc(22px + env(safe-area-inset-top));transform:translateX(-50%);z-index:2;max-width:82%;text-align:center;font-size:13px;line-height:1.4;background:rgba(28,18,10,.7);border:1px solid rgba(255,230,200,.2);border-radius:14px;padding:9px 14px;opacity:0;transition:opacity .6s;pointer-events:none}
   #note.show{opacity:1}
-  #ver{position:fixed;left:calc(10px + env(safe-area-inset-left));top:calc(8px + env(safe-area-inset-top));z-index:6;font-size:11px;letter-spacing:.3px;opacity:.6;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  #ver{position:fixed;left:calc(12px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));z-index:6;font-size:16px;font-weight:800;letter-spacing:.5px;color:#111;background:#ffd400;border-radius:8px;padding:4px 10px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #opts{position:fixed;left:0;right:0;bottom:0;z-index:4;max-height:72vh;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;background:rgba(24,16,9,.92);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid rgba(255,230,200,.18);border-radius:18px 18px 0 0;padding:6px 18px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .3s ease}
   #opts.open{transform:none}
   #opts .head{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;padding:10px 0 8px;background:rgba(24,16,9,.96);z-index:1}
@@ -50,7 +50,7 @@
   <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance.</p>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v7</div>
+<div id="ver">v8</div>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -713,6 +713,24 @@ function plantHand(side, point, strength) {
 }
 function floorUnder(p, n, off) { return p.vsub(n.scale(p.dot(n) + off - 0.035 * S)); }
 
+// The head is the thing people protect: falling, the chin tucks and the face turns from the floor;
+// getting up, the head stays above the chest and lifts first; it is never left lying while the hips go up.
+function headCare(up, n, off, dt) {
+  if (!n || state === 'down' || stun > 0) return;
+  const h = B.head, hH = h.position.dot(n) + off, cH = B.chest.position.dot(n) + off;
+  const r = PARTS.head.head * S;
+  // keep it off the floor: a lift that grows as it nears the floor (neck and shoulders working)
+  const clear = (state === 'fall' ? 1.6 : 2.6) * r;
+  if (hH < clear) {
+    const k = (clear - hH) / clear;
+    h.force.vadd(n.scale(h.mass * 60 * k * S - h.velocity.dot(n) * h.mass * 6), h.force);
+    B.chest.force.vadd(n.scale(B.chest.mass * 18 * k * S), B.chest.force);
+  }
+  // getting up: the head never sinks below the chest
+  if (state === 'getup' && hH < cH) h.force.vadd(n.scale(h.mass * 40 * (cH - hH)), h.force);
+  for (const j of joints) if (j.name === 'head' || j.name === 'chest' || j.name === 'belly') j.boost = Math.max(j.boost, 1.8);
+}
+
 function getupPose(up) {
   // each stage of getting up is a shape the muscles make; the hips are helped up stage by stage
   if (gp === 0) {         // roll: one knee up, the far arm reaching across
@@ -722,8 +740,8 @@ function getupPose(up) {
     bend('thighL', AX, -1.45); bend('thighR', AX, -1.45);
     bend('shinL', AX, 1.75); bend('shinR', AX, 1.75);
     bend('chest', AX, 0.1); bend('belly', AX, 0.1);
-    bend('head', AX, -0.5);
-    armsStrong(2.6);
+    bend('head', AX, -0.7);
+    armsStrong(2.8);
     if (curFloor) for (const sd of ['L', 'R']) plantHand(sd, floorUnder(shoulderOf(sd), curFloor.nv, curFloor.off), 1);
   } else if (gp === 2) {  // kneeling up, pushing off the floor with the hands until upright
     bend('thighL', AX, -0.15); bend('thighR', AX, -0.15);
@@ -920,6 +938,7 @@ function control(dt) {
     }
   }
 
+  if (curFloor) headCare(up, curFloor.nv, curFloor.off, dt);
   driveMuscles(strength);
 
   // ---- carrying its weight on the feet that are down (the help every active ragdoll gets) ----
@@ -985,6 +1004,10 @@ function control(dt) {
         B.chest.torque.vadd(ax.scale(I * 60 / sn), B.chest.torque);
         B.pelvis.torque.vadd(ax.scale(avgInertia(B.pelvis) * 6 * 60 / sn), B.pelvis.torque);
       }
+    }
+    if (gp === 1) {   // the arms hold the chest at shoulder height; a little help while they take the weight
+      const hC = B.chest.position.dot(n) + off, om = 6;
+      B.chest.force.vadd(n.scale(((0.6 * S - hC) * om * om - B.chest.velocity.dot(n) * 2 * om) * B.chest.mass * 0.45 * k), B.chest.force);
     }
     if (gp < 2) return;
   } else return;
