@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="The Box">
+<meta name="theme-color" content="#1a120b">
+<title>The Box</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#1a120b;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+  canvas{display:block;width:100%;height:100%}
+  #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(22,14,8,.74);color:#f5e8d6;text-align:center;padding:24px;z-index:3;transition:opacity .4s}
+  #start.hide{opacity:0;pointer-events:none}
+  #start h1{margin:0;font-size:28px;font-weight:700;letter-spacing:.2px}
+  #start p{margin:0;max-width:290px;line-height:1.45;opacity:.85;font-size:15px}
+  #go{margin-top:10px;font:inherit;font-size:18px;font-weight:700;padding:15px 40px;border-radius:999px;border:0;background:#eab873;color:#2a1a0c;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+  #hud{position:fixed;left:0;right:0;bottom:calc(18px + env(safe-area-inset-bottom));display:flex;justify-content:center;align-items:center;gap:8px;z-index:2;pointer-events:none;opacity:0;transition:opacity .5s}
+  #hud.show{opacity:1}
+  .pill{pointer-events:auto;background:rgba(28,18,10,.62);color:#f5e8d6;border:1px solid rgba(255,230,200,.2);border-radius:999px;padding:8px 14px;font:inherit;font-size:13px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+  #note{position:fixed;left:50%;top:calc(22px + env(safe-area-inset-top));transform:translateX(-50%);z-index:2;max-width:82%;text-align:center;font-size:13px;line-height:1.4;color:#f5e8d6;background:rgba(28,18,10,.7);border:1px solid rgba(255,230,200,.2);border-radius:14px;padding:9px 14px;opacity:0;transition:opacity .6s;pointer-events:none}
+  #note.show{opacity:1}
+</style>
+</head>
+<body>
+<div id="start">
+  <h1>The Box</h1>
+  <p>Your screen is the open top of a box. Tilt your phone to look inside and roll the ball into the corners.</p>
+  <button id="go">Start</button>
+</div>
+<div id="note"></div>
+<div id="hud">
+  <span class="pill" id="mode">Tilt mode</span>
+  <button class="pill" id="level">Level</button>
+  <button class="pill" id="sound">Sound on</button>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// ---------- renderer / scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a120b);
+const pmrem = new THREE.PMREMGenerator(renderer);
+const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environment = envTex;
+
+const camera = new THREE.PerspectiveCamera();
+scene.add(camera);
+
+// ---------- dimensions (world units; shorter screen side = 2) ----------
+const D = 1.55;      // box depth
+const LIP = 0.07;    // wall thickness seen at the rim
+const R = 0.27;      // ball radius
+const EYE = 5.2;     // virtual viewing distance
+let hw, hh, ix, iy;
+
+// ---------- procedural wood ----------
+const PX = 256; // pixels per world unit
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function drawGrain(g, w, h, opt) {
+  g.fillStyle = opt.base;
+  g.fillRect(0, 0, w, h);
+  const bands = opt.planks || 1;
+  const bh = h / bands;
+  for (let p = 0; p < bands; p++) {
+    const y0 = p * bh;
+    g.save();
+    g.beginPath(); g.rect(0, y0, w, bh); g.clip();
+    // per-plank tint
+    g.fillStyle = `rgba(${opt.tint},${rand(0, opt.tintVar)})`;
+    g.fillRect(0, y0, w, bh);
+    if (Math.random() < 0.5) { g.fillStyle = `rgba(255,235,200,${rand(0, 0.08)})`; g.fillRect(0, y0, w, bh); }
+    // grain lines
+    const lines = Math.round(bh * w / 900);
+    for (let i = 0; i < lines; i++) {
+      const yy = y0 + Math.random() * bh;
+      const amp = rand(1, 5), f = rand(0.004, 0.012), ph = rand(0, 6.28), f2 = rand(0.02, 0.05);
+      g.strokeStyle = `rgba(${opt.dark},${rand(0.05, 0.28)})`;
+      g.lineWidth = rand(0.4, 2.4);
+      g.beginPath();
+      for (let x = -10; x <= w + 10; x += 6) {
+        const y = yy + Math.sin(x * f + ph) * amp + Math.sin(x * f2 + ph * 1.7) * amp * 0.25;
+        x < 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+    // a knot now and then
+    if (Math.random() < 0.55) {
+      const kx = rand(0.1, 0.9) * w, ky = y0 + rand(0.3, 0.7) * bh, kr = rand(6, 14);
+      for (let k = 6; k >= 1; k--) {
+        g.strokeStyle = `rgba(${opt.dark},${0.12 + 0.05 * (6 - k)})`;
+        g.lineWidth = 1.4;
+        g.beginPath(); g.ellipse(kx, ky, kr * k * 0.55 * 2.4, kr * k * 0.55, 0, 0, Math.PI * 2); g.stroke();
+      }
+      g.fillStyle = `rgba(${opt.dark},.55)`;
+      g.beginPath(); g.ellipse(kx, ky, kr * 1.1, kr * 0.5, 0, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+    if (bands > 1 && p > 0) { // seam between planks
+      g.fillStyle = 'rgba(40,22,8,.55)'; g.fillRect(0, y0 - 1.2, w, 2.4);
+      g.fillStyle = 'rgba(255,230,190,.12)'; g.fillRect(0, y0 + 1.2, w, 1.2);
+    }
+  }
+  // fine speckle
+  const img = g.getImageData(0, 0, w, h), d = img.data;
+  for (let i = 0; i < d.length; i += 4) { const n = (Math.random() - 0.5) * 14; d[i] += n; d[i + 1] += n; d[i + 2] += n; }
+  g.putImageData(img, 0, 0);
+}
+
+// ao: {top,bottom,left,right} strengths, in canvas orientation (top = +y of the plane)
+function woodTexture(worldW, worldH, alongX, opt, ao) {
+  const w = Math.max(64, Math.round(worldW * PX)), h = Math.max(64, Math.round(worldH * PX));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  if (alongX) drawGrain(g, w, h, opt);
+  else {
+    const t = document.createElement('canvas'); t.width = h; t.height = w;
+    drawGrain(t.getContext('2d'), h, w, opt);
+    g.save(); g.translate(w, 0); g.rotate(Math.PI / 2); g.drawImage(t, 0, 0); g.restore();
+  }
+  const aoW = 0.32 * PX;
+  const edge = (x0, y0, x1, y1, s, rx, ry, rw, rh) => {
+    if (!s) return;
+    const gr = g.createLinearGradient(x0, y0, x1, y1);
+    gr.addColorStop(0, `rgba(20,10,3,${s})`); gr.addColorStop(1, 'rgba(20,10,3,0)');
+    g.fillStyle = gr; g.fillRect(rx, ry, rw, rh);
+  };
+  edge(0, 0, 0, aoW, ao.top, 0, 0, w, aoW);
+  edge(0, h, 0, h - aoW, ao.bottom, 0, h - aoW, w, aoW);
+  edge(0, 0, aoW, 0, ao.left, 0, 0, aoW, h);
+  edge(w, 0, w - aoW, 0, ao.right, w - aoW, 0, aoW, h);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return tex;
+}
+
+const WALL = { base: '#c99a62', tint: '120,70,25', tintVar: 0.12, dark: '92,52,18', planks: 1 };
+const FLOOR = { base: '#ad7642', tint: '90,45,12', tintVar: 0.22, dark: '70,36,10', planks: 4 };
+const RIM = { base: '#ddb57f', tint: '150,95,40', tintVar: 0.1, dark: '120,75,30', planks: 1 };
+
+function woodMat(tex) {
+  const m = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.78, metalness: 0 });
+  m.envMapIntensity = 0.28;
+  return m;
+}
+
+// ---------- the box ----------
+let boxGroup = null;
+function buildBox() {
+  const s = Math.min(innerWidth, innerHeight);
+  hw = innerWidth / s; hh = innerHeight / s;
+  ix = hw - LIP; iy = hh - LIP;
+
+  if (boxGroup) {
+    boxGroup.traverse(o => { if (o.isMesh) { o.geometry.dispose(); o.material.map?.dispose(); o.material.dispose(); } });
+    scene.remove(boxGroup);
+  }
+  boxGroup = new THREE.Group();
+  scene.add(boxGroup);
+
+  // floor (planks run along the long side)
+  const longY = iy >= ix;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, 2 * iy),
+    woodMat(woodTexture(2 * ix, 2 * iy, !longY, FLOOR, { top: .5, bottom: .5, left: .5, right: .5 })));
+  floor.position.z = -D;
+  floor.receiveShadow = true;
+  boxGroup.add(floor);
+
+  const deep = .55, side = .38;
+  // left wall: local +x points into the box (deeper)
+  const left = new THREE.Mesh(new THREE.PlaneGeometry(D, 2 * iy),
+    woodMat(woodTexture(D, 2 * iy, false, WALL, { right: deep, top: side, bottom: side })));
+  left.rotation.y = Math.PI / 2; left.position.set(-ix, 0, -D / 2);
+  // right wall: local -x is deeper
+  const right = new THREE.Mesh(new THREE.PlaneGeometry(D, 2 * iy),
+    woodMat(woodTexture(D, 2 * iy, false, WALL, { left: deep, top: side, bottom: side })));
+  right.rotation.y = -Math.PI / 2; right.position.set(ix, 0, -D / 2);
+  // bottom wall (y = -iy): local +y is deeper
+  const bottom = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, D),
+    woodMat(woodTexture(2 * ix, D, true, WALL, { top: deep, left: side, right: side })));
+  bottom.rotation.x = -Math.PI / 2; bottom.position.set(0, -iy, -D / 2);
+  // top wall (y = +iy): local -y is deeper
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(2 * ix, D),
+    woodMat(woodTexture(2 * ix, D, true, WALL, { bottom: deep, left: side, right: side })));
+  top.rotation.x = Math.PI / 2; top.position.set(0, iy, -D / 2);
+  for (const w of [left, right, bottom, top]) { w.receiveShadow = true; w.castShadow = true; boxGroup.add(w); }
+
+  // rim: the top edge of the walls, flush with the screen
+  const shape = new THREE.Shape();
+  shape.moveTo(-hw - .01, -hh - .01); shape.lineTo(hw + .01, -hh - .01); shape.lineTo(hw + .01, hh + .01); shape.lineTo(-hw - .01, hh + .01); shape.closePath();
+  const hole = new THREE.Path();
+  hole.moveTo(-ix, -iy); hole.lineTo(-ix, iy); hole.lineTo(ix, iy); hole.lineTo(ix, -iy); hole.closePath();
+  shape.holes.push(hole);
+  const rimGeo = new THREE.ShapeGeometry(shape);
+  const uv = rimGeo.attributes.uv, pos = rimGeo.attributes.position;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, (pos.getX(i) + hw) / (2 * hw), (pos.getY(i) + hh) / (2 * hh));
+  const rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({
+    map: woodTexture(2 * hw, 2 * hh, true, RIM, {}), roughness: .7, emissive: 0x2a1a0c, emissiveIntensity: .5
+  }));
+  rim.material.envMapIntensity = .5;
+  boxGroup.add(rim);
+
+  // keep the ball inside the new bounds
+  ball.x = THREE.MathUtils.clamp(ball.x, -ix + R, ix - R);
+  ball.y = THREE.MathUtils.clamp(ball.y, -iy + R, iy - R);
+
+  // light aimed down into the box
+  spot.position.set(-0.3 * hw, 0.3 * hh, 4.2);
+  fill.position.set(0.4 * hw, -0.4 * hh, 2.2);
+  spot.target.position.set(0.1, -0.15 * hh, -D);
+  spot.angle = Math.atan((Math.max(hw, hh) + 0.6) / (4.2 + D));
+  spot.shadow.camera.far = 12;
+  spot.shadow.needsUpdate = true;
+}
+
+// ---------- lights ----------
+const spot = new THREE.SpotLight(0xfff0dc, 95, 0, 0.6, 0.55, 2);
+spot.castShadow = true;
+spot.shadow.mapSize.set(1024, 1024);
+spot.shadow.bias = -0.0004;
+spot.shadow.normalBias = 0.02;
+spot.shadow.radius = 4;
+scene.add(spot, spot.target);
+const fill = new THREE.PointLight(0xffe6c8, 6, 0, 2);
+scene.add(fill);
+scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.55));
+
+// ---------- the ball ----------
+function ballTexture() {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#c8312a'; g.fillRect(0, 0, 1024, 512);
+  g.fillStyle = '#f4eee2'; g.fillRect(0, 512 * 0.40, 1024, 512 * 0.20);
+  g.fillStyle = '#1d2a4a';
+  for (let k = 0; k < 4; k++) { g.beginPath(); g.arc(128 + k * 256, 256, 26, 0, Math.PI * 2); g.fill(); }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
+const ballMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(R, 48, 32),
+  new THREE.MeshPhysicalMaterial({ map: ballTexture(), roughness: .32, clearcoat: 1, clearcoatRoughness: .08 })
+);
+ballMesh.castShadow = true;
+scene.add(ballMesh);
+const ball = { x: 0, y: 0, vx: 0, vy: 0 };
+
+// ---------- input: tilt or drag ----------
+const tilt = { x: 0, y: 0 };     // target, in "sin of tilt" units (-1..1)
+const sm = { x: 0, y: 0 };       // smoothed
+let mode = 'none';               // 'tilt' | 'touch'
+let base = null;
+const MAXA = 50 * Math.PI / 180;
+
+function screenAngle() {
+  const a = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
+  return a * Math.PI / 180;
+}
+function onOrientation(e) {
+  if (e.beta == null || e.gamma == null) return;
+  if (mode !== 'tilt') setMode('tilt');
+  if (!base) base = { b: e.beta, g: e.gamma };
+  let db = e.beta - base.b; db = ((db + 540) % 360) - 180;
+  let dg = e.gamma - base.g;
+  const cl = v => THREE.MathUtils.clamp(v * Math.PI / 180, -MAXA, MAXA);
+  const dx = Math.sin(cl(dg)), dy = -Math.sin(cl(db));
+  const a = screenAngle(), c = Math.cos(a), s = Math.sin(a);
+  tilt.x = dx * c - dy * s;
+  tilt.y = dx * s + dy * c;
+}
+
+let drag = null;
+const el = renderer.domElement;
+el.addEventListener('pointerdown', e => { if (mode === 'tilt') return; drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; el.setPointerCapture(e.pointerId); });
+el.addEventListener('pointermove', e => {
+  if (!drag || e.pointerId !== drag.id) return;
+  const k = Math.min(innerWidth, innerHeight) * 0.38;
+  const m = Math.sin(MAXA);
+  tilt.x = THREE.MathUtils.clamp((e.clientX - drag.x) / k, -1, 1) * m;
+  tilt.y = THREE.MathUtils.clamp(-(e.clientY - drag.y) / k, -1, 1) * m;
+});
+const endDrag = e => { if (drag && e.pointerId === drag.id) { drag = null; tilt.x = 0; tilt.y = 0; } };
+el.addEventListener('pointerup', endDrag);
+el.addEventListener('pointercancel', endDrag);
+
+const $ = id => document.getElementById(id);
+function note(text, ms) {
+  const n = $('note'); n.textContent = text; n.classList.add('show');
+  clearTimeout(note.t); if (ms) note.t = setTimeout(() => n.classList.remove('show'), ms);
+}
+function setMode(m) {
+  mode = m;
+  $('mode').textContent = m === 'tilt' ? 'Tilt mode' : 'Drag to tilt';
+  $('level').style.display = m === 'tilt' ? '' : 'none';
+  if (m === 'tilt') note('Hold the phone how you like, then tilt it. Tap Level to reset.', 4200);
+}
+$('level').onclick = () => { base = null; };
+
+// ---------- sound ----------
+let actx = null, soundOn = true;
+function knock(speed) {
+  if (!actx || !soundOn) return;
+  const v = Math.min(1, speed / 5);
+  const t = actx.currentTime;
+  const o = actx.createOscillator(), og = actx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(85, t + .12);
+  og.gain.setValueAtTime(.55 * v, t); og.gain.exponentialRampToValueAtTime(.001, t + .16);
+  o.connect(og).connect(actx.destination); o.start(t); o.stop(t + .18);
+  const len = Math.floor(actx.sampleRate * .05), buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+  const n = actx.createBufferSource(), f = actx.createBiquadFilter(), ng = actx.createGain();
+  n.buffer = buf; f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = .9; ng.gain.value = .5 * v;
+  n.connect(f).connect(ng).connect(actx.destination); n.start(t);
+  try { navigator.vibrate && navigator.vibrate(Math.round(8 + 22 * v)); } catch (_) {}
+}
+$('sound').onclick = () => { soundOn = !soundOn; $('sound').textContent = soundOn ? 'Sound on' : 'Sound off'; };
+
+// ---------- start ----------
+$('go').onclick = async () => {
+  try { actx = new (window.AudioContext || window.webkitAudioContext)(); await actx.resume(); } catch (_) { actx = null; }
+  try {
+    if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      await DeviceOrientationEvent.requestPermission();
+    }
+  } catch (_) {}
+  window.addEventListener('deviceorientation', onOrientation);
+  $('start').classList.add('hide');
+  $('hud').classList.add('show');
+  setTimeout(() => {
+    if (mode !== 'tilt') {
+      setMode('touch');
+      note("Motion sensors aren't available here, so drag your finger to tilt the box.", 5200);
+    }
+  }, 1300);
+};
+
+// ---------- loop ----------
+const G = 16, REST = 0.52, ROLL_DAMP = 0.55;
+const axis = new THREE.Vector3(), q = new THREE.Quaternion();
+function step(dt) {
+  sm.x += (tilt.x - sm.x) * Math.min(1, dt * 14);
+  sm.y += (tilt.y - sm.y) * Math.min(1, dt * 14);
+
+  ball.vx += G * sm.x * dt;
+  ball.vy += G * sm.y * dt;
+  const damp = Math.exp(-ROLL_DAMP * dt);
+  ball.vx *= damp; ball.vy *= damp;
+  ball.x += ball.vx * dt; ball.y += ball.vy * dt;
+
+  const mx = ix - R, my = iy - R;
+  if (ball.x > mx) { ball.x = mx; if (ball.vx > 0) { if (ball.vx > .35) knock(ball.vx); ball.vx *= -REST; ball.vy *= .96; } }
+  if (ball.x < -mx) { ball.x = -mx; if (ball.vx < 0) { if (-ball.vx > .35) knock(-ball.vx); ball.vx *= -REST; ball.vy *= .96; } }
+  if (ball.y > my) { ball.y = my; if (ball.vy > 0) { if (ball.vy > .35) knock(ball.vy); ball.vy *= -REST; ball.vx *= .96; } }
+  if (ball.y < -my) { ball.y = -my; if (ball.vy < 0) { if (-ball.vy > .35) knock(-ball.vy); ball.vy *= -REST; ball.vx *= .96; } }
+
+  const sp = Math.hypot(ball.vx, ball.vy);
+  if (sp > 1e-5) {
+    axis.set(-ball.vy / sp, ball.vx / sp, 0);
+    q.setFromAxisAngle(axis, sp * dt / R);
+    ballMesh.quaternion.premultiply(q);
+  }
+}
+
+function updateCamera() {
+  // the eye stays put in the room; when the phone tilts, it moves relative to the screen
+  // parallax is softened a little so big tilts still look good
+  const lim = 1.55, gain = EYE * 0.6;
+  const ex = -lim * Math.tanh(gain * sm.x / lim), ey = -lim * Math.tanh(gain * sm.y / lim);
+  const ez = EYE;
+  camera.position.set(ex, ey, ez);
+  camera.quaternion.identity();
+  camera.updateMatrixWorld();
+  const n = 0.05, f = 40, k = n / ez;
+  camera.projectionMatrix.makePerspective((-hw - ex) * k, (hw - ex) * k, (hh - ey) * k, (-hh - ey) * k, n, f);
+  camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+}
+
+let last = performance.now();
+function frame(now) {
+  let dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const sub = Math.ceil(dt / (1 / 120));
+  for (let i = 0; i < sub; i++) step(dt / sub);
+  ballMesh.position.set(ball.x, ball.y, -D + R);
+  updateCamera();
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); buildBox(); });
+buildBox();
+ball.y = -iy * 0.3;
+requestAnimationFrame(frame);
+</script>
+</body>
