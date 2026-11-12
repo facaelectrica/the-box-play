@@ -47,10 +47,10 @@
 <body>
 <div id="start">
   <h1>The Box</h1>
-  <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance. Double-tap to stand it up again.</p>
+  <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance. Touch him to push him. Double-tap an empty spot to stand him up again.</p>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v13</div>
+<div id="ver">v13.1</div>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -96,6 +96,7 @@ const OPTS = [
   { k: 'balance', label: 'Balance', min: 0, max: 2, step: 0.01, def: 1, fmt: pct, help: 'How hard it fights to stay upright over its feet.' },
   { k: 'getUp', label: 'Gets back up', tog: true, def: true, help: 'After a fall it picks itself up.' },
   { k: 'getUpDelay', label: 'Get-up delay', min: 0, max: 6, step: 0.1, def: 1.5, fmt: v => v.toFixed(1) + ' s', help: 'How long it lies there before getting up.' },
+  { k: 'push', label: 'Finger push', min: 0, max: 2, step: 0.05, def: 1, fmt: pct, help: 'How hard your finger pushes him when you touch him.' },
   { k: 'knock', label: 'Knock-out hit', min: 2, max: 20, step: 0.5, def: 7, fmt: v => v.toFixed(1), help: 'How hard a hit must be to knock it limp.' },
   { grp: 'Moving the phone' },
   { k: 'shake', label: 'Shake strength', min: 0, max: 4, step: 0.05, def: 1.5, fmt: v => v.toFixed(2) + 'x', help: 'How much shaking the phone throws things about.' },
@@ -1430,7 +1431,8 @@ function standControl(dt, footDown, up, g) {
   if (gaze.next <= 0) { gaze.glance = gaze.glance > 0 ? 0 : 1.2 + rand() * 1.8; gaze.next = gaze.glance || 4 + rand() * 6; }
   if (gaze.glance > 0) gaze.glance -= dt;
   if (calm > 0.5 && gaze.glance > 0) lookAt(camPoint(), 0.55 * calm);
-  if (urg > 0.1) {
+  if (poke.on && poke.where) lookAt(poke.where.vadd(new CANNON.Vec3(0, 0, 1.2 * S)), 0.7);   // glances at what's pushing him
+  else if (urg > 0.1) {
     // where it's going on the floor; looking a little down along it
     let mv = FL.t.scale(cp[0] - c2[0]).vadd(AZ.scale(cp[1] - c2[1]));
     if (vlen(mv) < 0.04 * S) mv = facing.clone();
@@ -1999,11 +2001,55 @@ function onMotion(e) {
   gRaw.copy(tv);
 }
 
+// ---------- your finger pushes him: touch a part and it is pushed there, into the box and the way you drag ----------
+// (this is the one outside push, and it is yours: a finger against the glass pushing him)
+const poke = { on: false, part: null, local: null, t: 0, x: 0, y: 0, x0: 0, y0: 0, id: null, seen: 0 };
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function figureAt(cx, cy) {
+  ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(syncs.map(s => s[1]), true);
+  if (!hits.length) return null;
+  let o = hits[0].object; while (o && !syncs.find(s => s[1] === o)) o = o.parent;
+  const part = o && syncs.find(s => s[1] === o)[0];
+  if (!part) return null;
+  const p = new CANNON.Vec3(hits[0].point.x, hits[0].point.y, hits[0].point.z);
+  return { part, local: part.quaternion.conjugate().vmult(p.vsub(part.position)), dir: ray.ray.direction.clone() };
+}
+const jrP = new Jolt.RVec3(0, 0, 0), jvF = new Jolt.Vec3(0, 0, 0);
+function fingerPush(dt) {
+  if (!poke.on) return;
+  poke.t += dt; poke.seen = 0;
+  const b = poke.part, at = b.position.vadd(b.quaternion.vmult(poke.local));
+  const W = figMass * Math.max(1, SET.gravity);
+  // into the box: builds up over a moment, like a finger pressing; plus the way the finger has moved on the glass
+  const press = W * 0.4 * Math.min(1, poke.t / 0.15) * SET.push;
+  const k = 2 * Math.min(innerWidth, innerHeight);   // pixels -> box units
+  const dx = (poke.x - poke.x0) / k * 2 * hw, dy = -(poke.y - poke.y0) / k * 2 * hw;
+  const F = new CANNON.Vec3(dx, dy, 0).scale(W * 2.2 * SET.push).vadd(new CANNON.Vec3(0, 0, -press));
+  const lim = W * 1.2; if (vlen(F) > lim) F.scale(lim / vlen(F), F);
+  jvF.Set(F.x, F.y, F.z); jrP.Set(at.x, at.y, at.z);
+  bodies.AddForce(b.id, jvF, jrP, Jolt.EActivation_Activate);
+  poke.where = at;
+}
+
 // finger / mouse: drag to turn the box (back upright when let go)
 let drag = null;
 const dragRot = { roll: 0, pitch: 0 }, dragS = { roll: 0, pitch: 0 };
 const el = renderer.domElement;
-el.addEventListener('pointerdown', e => { if (mode === 'sensor') return; drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; try { el.setPointerCapture(e.pointerId); } catch (_) {} });
+el.addEventListener('pointerdown', e => {
+  const hit = figureAt(e.clientX, e.clientY);
+  if (hit && SET.push > 0) {
+    Object.assign(poke, { on: true, part: hit.part, local: hit.local, t: 0, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, id: e.pointerId });
+    try { el.setPointerCapture(e.pointerId); } catch (_) {}
+    return;
+  }
+  if (mode === 'sensor') return;
+  drag = { x: e.clientX, y: e.clientY, id: e.pointerId }; try { el.setPointerCapture(e.pointerId); } catch (_) {}
+});
+el.addEventListener('pointermove', e => { if (poke.on && e.pointerId === poke.id) { poke.x = e.clientX; poke.y = e.clientY; } });
+const endPoke = e => { if (poke.on && e.pointerId === poke.id) { poke.on = false; poke.lastAt = performance.now(); } };
+el.addEventListener('pointerup', endPoke); el.addEventListener('pointercancel', endPoke);
 el.addEventListener('pointermove', e => {
   if (!drag || e.pointerId !== drag.id) return;
   const k = Math.min(innerWidth, innerHeight) * 0.45;
@@ -2014,7 +2060,7 @@ const endDrag = e => { if (drag && e.pointerId === drag.id) { drag = null; dragR
 el.addEventListener('pointerup', endDrag);
 // a double tap stands it up again
 let lastTap = 0, tapAt = null;
-el.addEventListener('pointerdown', e => { tapAt = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+el.addEventListener('pointerdown', e => { tapAt = figureAt(e.clientX, e.clientY) ? null : { x: e.clientX, y: e.clientY, t: performance.now() }; });
 el.addEventListener('pointerup', e => {
   if (!tapAt || performance.now() - tapAt.t > 300 || Math.hypot(e.clientX - tapAt.x, e.clientY - tapAt.y) > 24) return;
   const now = performance.now();
@@ -2029,46 +2075,36 @@ function note(text, ms) {
 
 // ================= sound =================
 let actx = null;
-// The figure's sounds come from what touches the wood and how: each part's gap to the nearest wall and its speed into
-// and along it. A foot landing is a heel-then-sole step; a foot dragging is a shoe scuff; a hand arriving is a palm
-// pat and dragging is a soft brush; knees and elbows knock; the body lands with a dull thud and rubs with a low rustle.
-// Everything is made from filtered noise and a little wood resonance (no recordings, so nothing to load).
-const SFX = { out: null, wood: null, noise: null, rub: {}, prev: {}, last: {} };
+// The figure's sounds: only when a part meets the wood, soft and muffled, like a person in a wooden box. A foot landing
+// is a soft heel-then-sole step; a hand is a light pat; knees, elbows, head and body land with a dull thump (the
+// heavier and faster, the lower and louder); a foot dragging fast gives a quiet scuff. Nothing sounds while parts move
+// in the air or rest on the wood. Made from filtered noise (no recordings to load).
+const SFX = { out: null, noise: null, st: {}, last: {}, recent: [] };
 function sfxInit() {
   if (!actx || SFX.out) return;
-  SFX.out = actx.createGain(); SFX.out.gain.value = 0.9;
-  // the box: two soft wooden resonances under everything
-  SFX.wood = actx.createGain(); SFX.wood.gain.value = 0.35;
-  for (const [f, q] of [[190, 6], [420, 8], [860, 9]]) { const bq = actx.createBiquadFilter(); bq.type = 'bandpass'; bq.frequency.value = f; bq.Q.value = q; SFX.wood.connect(bq).connect(SFX.out); }
-  SFX.out.connect(actx.destination);
-  const len = actx.sampleRate * 2, buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
-  let pink = 0; for (let i = 0; i < len; i++) { pink = 0.97 * pink + 0.03 * (Math.random() * 2 - 1); d[i] = (Math.random() * 2 - 1) * 0.5 + pink * 3; }
+  // everything through a gentle low-pass and a soft limiter: no harsh highs, no ringing
+  const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600; lp.Q.value = 0.5;
+  const comp = actx.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 4; comp.attack.value = 0.002; comp.release.value = 0.12;
+  SFX.out = actx.createGain(); SFX.out.gain.value = 0.8;
+  SFX.out.connect(lp).connect(comp).connect(actx.destination);
+  const len = actx.sampleRate, buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+  let br = 0; for (let i = 0; i < len; i++) { br = 0.9 * br + 0.1 * (Math.random() * 2 - 1); d[i] = br * 2.5; }   // soft, dark noise
   SFX.noise = buf;
-  // continuous rubs: feet (scuff), hands (brush), body (rustle); their loudness and colour follow the sliding speed
-  for (const [k, f, q, type] of [['feet', 1800, 0.9, 'bandpass'], ['hands', 3200, 0.7, 'bandpass'], ['body', 700, 0.8, 'bandpass']]) {
-    const src = actx.createBufferSource(); src.buffer = buf; src.loop = true;
-    const flt = actx.createBiquadFilter(); flt.type = type; flt.frequency.value = f; flt.Q.value = q;
-    const g = actx.createGain(); g.gain.value = 0;
-    src.connect(flt).connect(g); g.connect(SFX.out); g.connect(SFX.wood); src.start();
-    SFX.rub[k] = { g, flt, f, level: 0 };
-  }
 }
-function burst(t, dur, freq, q, gain, wood = 0.3, type = 'bandpass') {
+function soft(t, dur, cut, gain) {   // a short, muffled noise touch
   const src = actx.createBufferSource(); src.buffer = SFX.noise;
-  const flt = actx.createBiquadFilter(); flt.type = type; flt.frequency.value = freq; flt.Q.value = q;
+  const f = actx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cut; f.Q.value = 0.4;
   const g = actx.createGain();
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  src.connect(flt).connect(g); g.connect(SFX.out);
-  if (wood) { const w = actx.createGain(); w.gain.value = wood; g.connect(w).connect(SFX.wood); }
-  src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.05);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f).connect(g).connect(SFX.out); src.start(t, Math.random() * 0.8); src.stop(t + dur + 0.03);
 }
-function thump(t, f0, dur, gain) {   // a low body in a knock or a step
+function weight(t, f0, dur, gain) {   // the low body of a landing (felt more than heard)
   const o = actx.createOscillator(), g = actx.createGain();
-  o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.55, t + dur);
-  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g).connect(SFX.out); o.start(t); o.stop(t + dur + 0.02);
+  o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.7, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(SFX.out); o.start(t); o.stop(t + dur + 0.03);
 }
-// the wall-ward reach of a part's shape from its centre, along the wall's normal
+// the wall-ward reach of a part's shape from its centre, along a wall's normal
 function reachAlong(b, nrm) {
   const P = b.P, q = b.quaternion;
   if (P.box) { let r = 0; const h = P.box.map(v => v * S / 2); const ax = [new CANNON.Vec3(1, 0, 0), new CANNON.Vec3(0, 1, 0), new CANNON.Vec3(0, 0, 1)]; for (let i = 0; i < 3; i++) r += Math.abs(q.vmult(ax[i]).dot(nrm)) * h[i]; return r; }
@@ -2079,42 +2115,36 @@ const WALLS = () => [[new CANNON.Vec3(-1, 0, 0), ix], [new CANNON.Vec3(1, 0, 0),
 function sfxUpdate(dt) {
   if (!actx || !SET.sound) return;
   sfxInit();
-  const t = actx.currentTime + 0.01, vol = 1;
-  const rub = { feet: 0, hands: 0, body: 0 };
+  const now = performance.now(), t = actx.currentTime + 0.01;
+  SFX.recent = SFX.recent.filter(x => now - x < 120);
   for (const nm in B) {
+    if (nm.startsWith('toe')) continue;            // the foot speaks for the toes
     const b = B[nm];
-    // the nearest wall: n points out of the box (wall plane: p.n = off)
     let best = null, gap = 9;
     for (const [nw, off] of WALLS()) { const g_ = off - b.position.dot(nw) - reachAlong(b, nw); if (g_ < gap) { gap = g_; best = nw; } }
-    const touching = gap < 0.012 * S;
-    const vIn = b.velocity.dot(best), vAlong = vlen(b.velocity.vsub(best.scale(vIn)));
-    const kind = /^(foot|toe)/.test(nm) ? 'feet' : /^hand/.test(nm) ? 'hands' : 'body';
-    const was = SFX.prev[nm];
-    // arriving: an impact sound by part, as loud as it came in
-    if (touching && !was && vIn > 0.25 * S) {
-      const v = clamp(vIn / (3 * S), 0, 1), now = performance.now();
-      if (!(now - (SFX.last[nm] || 0) < 90)) {
-        SFX.last[nm] = now;
-        if (nm.startsWith('foot')) {                       // heel, then the sole a moment later
-          thump(t, 95, 0.09, 0.25 * v * vol); burst(t, 0.05, 900, 1.2, 0.35 * v * vol, 0.5);
-          burst(t + 0.035 + 0.03 * (1 - v), 0.06, 1500, 0.9, 0.18 * v * vol, 0.3);
-        } else if (nm.startsWith('toe')) burst(t, 0.035, 2200, 1.3, 0.12 * v * vol, 0.2);
-        else if (nm.startsWith('hand')) { burst(t, 0.045, 1300, 0.8, 0.32 * v * vol, 0.4); burst(t + 0.008, 0.03, 4000, 1.0, 0.1 * v * vol, 0); }   // a palm pat
-        else if (/^(fArm|uArm|shin|thigh|clav)/.test(nm)) { thump(t, 160, 0.07, 0.22 * v * vol); burst(t, 0.04, 700, 2.5, 0.25 * v * vol, 0.8); }   // a limb knocks
-        else if (nm === 'head') { thump(t, 120, 0.12, 0.3 * v * vol); burst(t, 0.06, 500, 2, 0.3 * v * vol, 0.9); }
-        else { thump(t, 70, 0.18, 0.45 * v * vol); burst(t, 0.12, 380, 0.7, 0.35 * v * vol, 0.6); burst(t + 0.01, 0.15, 2500, 0.6, 0.06 * v * vol, 0); }   // body: a dull thud, cloth
-      }
-    }
-    SFX.prev[nm] = touching;
-    if (touching) rub[kind] = Math.max(rub[kind], vAlong / S);
+    // touching with a little hysteresis, so resting parts that jiggle stay silent
+    const st = SFX.st[nm] || (SFX.st[nm] = { on: true, away: 0 });
+    if (st.on) { if (gap > 0.035 * S) { st.on = false; st.away = 0; } continue; }
+    st.away += dt;
+    if (gap > 0.012 * S) continue;
+    st.on = true;
+    const vIn = b.velocity.dot(best);
+    if (vIn < 0.35 * S || st.away < 0.06 || SFX.recent.length > 4 || now - (SFX.last[nm] || 0) < 120) continue;
+    SFX.last[nm] = now; SFX.recent.push(now);
+    const v = clamp(vIn / (2.5 * S), 0, 1), v2 = Math.sqrt(v);
+    if (nm.startsWith('foot')) {                     // a step on wood: heel, then the sole
+      weight(t, 70, 0.08, 0.10 * v2); soft(t, 0.07, 420 + 300 * v, 0.22 * v2);
+      soft(t + 0.045 + 0.03 * (1 - v), 0.06, 650, 0.10 * v2);
+    } else if (nm.startsWith('hand')) soft(t, 0.05, 900 + 500 * v, 0.16 * v2);        // a palm on the wood
+    else if (/^(fArm|uArm|shin|thigh|clav|neck)/.test(nm)) { weight(t, 90, 0.08, 0.08 * v2); soft(t, 0.07, 500, 0.15 * v2); }
+    else { weight(t, 58, 0.16, 0.22 * v2); soft(t, 0.12, 320 + 200 * v, 0.28 * v2); }   // body or head: a dull thump
   }
-  // sliding: gain and brightness follow the fastest sliding part of each kind; quiet below a walking shuffle
-  for (const k of ['feet', 'hands', 'body']) {
-    const r = SFX.rub[k], sp = rub[k];
-    const target = sp < 0.08 ? 0 : clamp((sp - 0.08) / 1.2, 0, 1) * (k === 'body' ? 0.35 : k === 'feet' ? 0.3 : 0.18);
-    r.level += (target - r.level) * Math.min(1, dt * (target > r.level ? 30 : 10));
-    r.g.gain.setTargetAtTime(r.level * vol, actx.currentTime, 0.02);
-    r.flt.frequency.setTargetAtTime(r.f * (0.7 + 0.6 * clamp(sp / 1.5, 0, 1)), actx.currentTime, 0.05);
+  // a foot dragging fast along the floor: a quiet scuff now and then
+  for (const sd of ['L', 'R']) {
+    const f = B['foot' + sd], st = SFX.st['foot' + sd];
+    if (!st || !st.on) continue;
+    const sp = vlen(along(f.velocity, curFloor ? curFloor.nv : Y));
+    if (sp > 0.6 * S && now - (SFX.last['scuff' + sd] || 0) > 160) { SFX.last['scuff' + sd] = now; soft(t, 0.1, 700, clamp((sp - 0.6 * S) / (2 * S), 0.03, 0.08)); }
   }
 }
 
@@ -2252,6 +2282,7 @@ function frame(now) {
     control(STEP);
     for (const nm in B) B[nm].push();
     EXT.check();
+    fingerPush(STEP);
     jolt.Step(STEP, 1);
     acc -= STEP; n++;
   }
