@@ -50,7 +50,7 @@
   <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance. Double-tap to stand it up again.</p>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v12.1</div>
+<div id="ver">v13</div>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -104,7 +104,7 @@ const OPTS = [
   { k: 'viewReturn', label: 'View re-centre', min: 0.5, max: 12, step: 0.1, def: 3, fmt: v => v.toFixed(1) + ' s', help: 'How fast the view settles back after you turn.' },
   { grp: 'Look and sound' },
   { k: 'hiQ', label: 'High detail', tog: true, def: false, help: 'Sharper picture and shadows. Slower on phones.' },
-  { k: 'sound', label: 'Sound', tog: true, def: true, help: 'Knocks when things hit the wood.' },
+  { k: 'sound', label: 'Sound', tog: true, def: true, help: 'Footsteps, scuffs, hands on the wood, bumps and slides.' },
 ];
 const SET = {};
 const STORE = 'thebox.settings.v3';
@@ -386,19 +386,13 @@ class Part {
   }
 }
 
-// knocks on the wood, and hits hard enough to knock it out: a sudden stop near a wall
-let lastKnock = 0;
+// hits hard enough to knock it out: a sudden stop near a wall (the sounds are in the sound section)
 function hitCheck(part) {
   const dv = part.velocity.vsub(part.prevV).length();
-  if (dv < 1.2) return;
+  if (dv < 1.2 || !part.isCore || dv <= SET.knock) return;
   const p = part.position, r = 0.12 * S;
   const nearWall = ix - Math.abs(p.x) < r || iy - Math.abs(p.y) < r || p.z + D < r || -p.z < r;
-  if (!nearWall) return;
-  if (part.isCore && dv > SET.knock) stun = 0.7;
-  const now = performance.now();
-  if (now - lastKnock < 45) return;
-  lastKnock = now;
-  knock(dv * 0.6);
+  if (nearWall) stun = 0.7;
 }
 
 function applySurfaces() {
@@ -445,6 +439,9 @@ const PARTS = {
 const ORDER = Object.keys(PARTS);   // parents always come before their children
 // Human joints: twist axis (along the bone, or the hinge line for knees, elbows and toes), plane axis,
 // how far it swings each way, how far it twists, joint ball size and muscle strength.
+// Jolt's swing cone is symmetric and its "normal" half angle is the swing toward the normal axis (twist x plane), i.e.
+// the hip's forward/back swing. The hip's cone is centred 45 degrees forward so it allows -27..117 degrees of flexion
+// (people: -20..120); before v13 it stopped at 34 degrees, which made kneeling, squatting and lunging impossible.
 const PI = Math.PI;
 const JOINTS = [
   //  parent    child     where                  twist axis   plane axis  normal, plane cone, twist min, max, ball, muscle
@@ -460,13 +457,13 @@ const JOINTS = [
   ['clavR',  'uArmR',  [ 0.21, 1.36, 0],      [1, 0, 0],  [0, 0, 1],  1.75, 1.75, -1.00, 1.00, 0.05, 0.8],
   ['uArmR',  'fArmR',  [ 0.21, 1.10, 0],      [-1, 0, 0], [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.037, 0.7],
   ['fArmR',  'handR',  [ 0.21, 0.86, 0],      [0, -1, 0], [1, 0, 0],  0.40, 0.55, -0.50, 0.50, 0.024, 0.4],
-  ['pelvis', 'thighL', [-0.09, 0.87, 0],      [0, -1, 0], [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.046, 2.7],
+  ['pelvis', 'thighL', [-0.09, 0.87, 0],      [0, -0.7071, 0.7071], [1, 0, 0],  1.25, 0.70, -0.40, 0.40, 0.046, 2.7],
   ['thighL', 'shinL',  [-0.09, 0.47, 0],      [1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.047, 2.9],    // knee: a hinge
-  ['shinL',  'footL',  [-0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.033, 2.1],
+  ['shinL',  'footL',  [-0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.60, 0.35, -0.20, 0.20, 0.033, 2.1],
   ['footL',  'toeL',   [-0.09, 0.03, 0.075],  [1, 0, 0],  [0, 0, 1],  0.03, 0.03, -1.00, 0.30, 0.02, 0.8],    // toes: a hinge
-  ['pelvis', 'thighR', [ 0.09, 0.87, 0],      [0, -1, 0], [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.046, 2.7],
+  ['pelvis', 'thighR', [ 0.09, 0.87, 0],      [0, -0.7071, 0.7071], [1, 0, 0],  1.25, 0.70, -0.40, 0.40, 0.046, 2.7],
   ['thighR', 'shinR',  [ 0.09, 0.47, 0],      [1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.047, 2.9],
-  ['shinR',  'footR',  [ 0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.033, 2.1],
+  ['shinR',  'footR',  [ 0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.60, 0.35, -0.20, 0.20, 0.033, 2.1],
   ['footR',  'toeR',   [ 0.09, 0.03, 0.075],  [1, 0, 0],  [0, 0, 1],  0.03, 0.03, -1.00, 0.30, 0.02, 0.8],
 ];
 
@@ -541,40 +538,32 @@ function bareGeo(g) { if (g.getAttribute('uv')) g.deleteAttribute('uv'); return 
 function sculpt(nm) {
   const side = nm.endsWith('L') ? -1 : 1, base = nm.replace(/[LR]$/, '');
   switch (base) {
-    case 'chest': return { g: loft([   // a V: broad shoulders over a ribcage that narrows to the waist, trapezius up to the neck
-        [-0.110, 0.104, 0.074], [-0.080, 0.114, 0.082, 0.004], [-0.040, 0.130, 0.090, 0.006], [0.000, 0.146, 0.096, 0.006],
-        [0.040, 0.160, 0.098, 0.004], [0.075, 0.172, 0.094], [0.098, 0.168, 0.084, -0.006], [0.115, 0.130, 0.070, -0.010],
-        [0.128, 0.082, 0.056, -0.012]],
-        { n: 2.6, capB: 0.004, capT: 0.010, seg: 56, sub: 5, bump: (th, y) => {
-          const pec = gau(y - 0.035, y < 0.035 ? 0.022 : 0.05);                                            // a crisp lower edge
-          return 0.016 * (gau(angTo(th, 0.42), 0.3) + gau(angTo(th, -0.42), 0.3)) * pec                   // chest muscles
-            - 0.005 * gau(th, 0.07) * gau(y - 0.02, 0.07)                                                   // breastbone line
-            + 0.010 * (gau(angTo(th, PI - 0.55), 0.33) + gau(angTo(th, -PI + 0.55), 0.33)) * gau(y - 0.045, 0.04) // shoulder blades
-            + 0.006 * (gau(angTo(th, PI / 2 + 0.35), 0.35) + gau(angTo(th, -PI / 2 - 0.35), 0.35)) * gau(y - 0.02, 0.05) // lats
-            - 0.004 * gau(angTo(th, PI), 0.07);                                                             // spine
-        } }) };
-    case 'belly': return { g: loft([[-0.062, 0.110, 0.078], [-0.030, 0.100, 0.074, 0.002], [0.000, 0.097, 0.073, 0.003],
-        [0.030, 0.099, 0.074, 0.003], [0.062, 0.104, 0.075]],
-        { n: 2.3, capB: 0.006, capT: 0.006, seg: 48, bump: (th, y) =>
-          0.004 * (gau(angTo(th, 0.2), 0.13) + gau(angTo(th, -0.2), 0.13)) * (1 - 0.35 * gau(y + 0.005, 0.012))  // stomach muscles
-          - 0.004 * gau(angTo(th, PI), 0.07) }) };
-    case 'pelvis': return { g: loft([   // hips like briefs: a narrow crotch, the hip bones widest, up to the waist
-        [-0.074, 0.050, 0.052, 0.008], [-0.062, 0.088, 0.070, 0.004], [-0.040, 0.122, 0.082, 0.001], [-0.008, 0.134, 0.086, -0.002],
-        [0.030, 0.126, 0.084, -0.002], [0.055, 0.114, 0.079], [0.070, 0.110, 0.078]],
-        { n: 2.4, capB: 0.010, capT: 0.003, seg: 48, sub: 5, bump: (th, y) =>
-          0.013 * (gau(angTo(th, PI - 0.5), 0.38) + gau(angTo(th, -PI + 0.5), 0.38)) * gau(y + 0.03, 0.035)    // seat
-          - 0.006 * gau(angTo(th, PI), 0.06) * gau(y + 0.045, 0.035)
-          - (Math.cos(th) > 0 ? 0.004 * gau(Math.abs(th) - (0.3 + 8 * (y + 0.07)), 0.09) * gau(y + 0.03, 0.04) : 0) }) };  // leg line
-    case 'neck': return { g: loft([[-0.045, 0.050, 0.046], [-0.015, 0.045, 0.043], [0.015, 0.043, 0.042], [0.045, 0.045, 0.044]],
-        { capB: 0.008, capT: 0.008, seg: 28 }), dark: 1 };
+    case 'chest': return { g: loft([
+        [-0.110, 0.122, 0.082], [-0.070, 0.131, 0.088, 0.003], [-0.020, 0.144, 0.096, 0.005], [0.030, 0.156, 0.099, 0.004],
+        [0.065, 0.168, 0.096], [0.090, 0.170, 0.087, -0.004], [0.108, 0.148, 0.074, -0.006], [0.120, 0.090, 0.058, -0.008]],
+        { n: 2.6, capB: 0.004, capT: 0.012, seg: 48, bump: (th, y) =>
+          0.012 * (gau(angTo(th, 0.45), 0.32) + gau(angTo(th, -0.45), 0.32)) * gau(y - 0.02, 0.04)      // chest muscles
+          - 0.004 * gau(th, 0.07) * gau(y - 0.0, 0.07)                                                    // breastbone line
+          + 0.008 * (gau(angTo(th, PI - 0.5), 0.35) + gau(angTo(th, -PI + 0.5), 0.35)) * gau(y - 0.04, 0.045) // shoulder blades
+          - 0.003 * gau(angTo(th, PI), 0.08) }) };                                                          // spine
+    case 'belly': return { g: loft([[-0.060, 0.116, 0.080], [-0.020, 0.110, 0.077], [0.030, 0.113, 0.079], [0.058, 0.120, 0.082]],
+        { n: 2.4, capB: 0.006, capT: 0.006, seg: 44, bump: (th, y) =>
+          0.004 * (gau(angTo(th, 0.2), 0.14) + gau(angTo(th, -0.2), 0.14)) - 0.004 * gau(angTo(th, PI), 0.08) }) };
+    case 'pelvis': return { g: loft([[-0.074, 0.060, 0.064, 0.008], [-0.058, 0.110, 0.084, 0.002], [-0.030, 0.138, 0.090], [0.005, 0.142, 0.092],
+        [0.040, 0.132, 0.087], [0.070, 0.121, 0.082]],
+        { n: 2.4, capB: 0.012, capT: 0.004, seg: 44, bump: (th, y) =>
+          0.011 * (gau(angTo(th, PI - 0.55), 0.4) + gau(angTo(th, -PI + 0.55), 0.4)) * gau(y + 0.025, 0.04)  // seat
+          - 0.006 * gau(angTo(th, PI), 0.06) * gau(y + 0.04, 0.04) }) };
+    case 'neck': return { g: loft([[-0.045, 0.042, 0.040], [-0.015, 0.036, 0.036], [0.015, 0.035, 0.035], [0.045, 0.037, 0.037]],
+        { capB: 0.008, capT: 0.008, seg: 24 }), dark: 1 };
     case 'head': {
       const r = PARTS.head.head;
       const g = loft([
-        [-1.20, 0.18, 0.12, 0.40], [-1.12, 0.38, 0.27, 0.30], [-0.98, 0.56, 0.46, 0.16], [-0.72, 0.66, 0.63, 0.07],
+        [-1.20, 0.16, 0.12, 0.40], [-1.12, 0.34, 0.26, 0.30], [-0.98, 0.52, 0.45, 0.16], [-0.72, 0.66, 0.63, 0.07],
         [-0.40, 0.76, 0.76, 0.02], [-0.05, 0.83, 0.86, -0.02], [0.25, 0.86, 0.90, -0.05], [0.50, 0.835, 0.88, -0.07]],
         { capB: 0.03, capT: 0.52, seg: 64, sub: 6, bump: (th, y) => {
-          const ny = gau(y + 0.32, y > -0.32 ? 0.36 : 0.15);   // a ridge from the brow, rounded at the tip
-          return 0.14 * gau(th, 0.075 + 0.05 * ny) * ny                                   // nose
+          const ny = y > -0.34 ? clamp((0.12 - y) / 0.46, 0, 1) : clamp((y + 0.58) / 0.24, 0, 1);
+          return 0.17 * gau(th, 0.09 + 0.05 * ny) * ny * Math.sqrt(ny)                                   // nose
             + 0.05 * gau(th, 0.6) * gau(y - 0.15, 0.07)                                                     // brow
             - 0.035 * (gau(angTo(th, 0.36), 0.15) + gau(angTo(th, -0.36), 0.15)) * gau(y - 0.0, 0.1)       // eye sockets
             + 0.025 * (gau(angTo(th, 0.75), 0.2) + gau(angTo(th, -0.75), 0.2)) * gau(y + 0.22, 0.12)       // cheekbones
@@ -591,13 +580,13 @@ function sculpt(nm) {
       g.scale(1, 0.8, 0.95); g.rotateZ(-side * 0.55); g.translate(side * 0.118, -0.006, 0);
       return { g, dark: 1, both: 1 };
     }
-    case 'uArm': return { g: loft([[-0.092, 0.030, 0.032], [-0.050, 0.034, 0.037], [0.010, 0.040, 0.044], [0.060, 0.045, 0.046], [0.086, 0.043, 0.043]],
+    case 'uArm': return { g: loft([[-0.092, 0.031, 0.033], [-0.050, 0.035, 0.038], [0.010, 0.040, 0.043], [0.060, 0.043, 0.044], [0.086, 0.040, 0.041]],
         { capB: 0.016, capT: 0.02, bump: (th, y) => 0.004 * gau(th, 0.6) * gau(y - 0.0, 0.04) }) };
     case 'fArm': return { g: loft([[-0.088, 0.023, 0.020], [-0.050, 0.028, 0.026], [0.0, 0.034, 0.033], [0.050, 0.038, 0.036], [0.078, 0.035, 0.034]],
         { capB: 0.012, capT: 0.018 }) };
-    case 'thigh': return { g: loft([[-0.150, 0.040, 0.043], [-0.100, 0.046, 0.050, 0.002], [-0.030, 0.054, 0.059, 0.004], [0.050, 0.061, 0.065, 0.002],
-        [0.120, 0.065, 0.066], [0.150, 0.064, 0.063], [0.178, 0.056, 0.056, 0, side * 0.012]],   // up into the hip, outer side higher
-        { capB: 0.022, capT: 0.018, bump: (th, y) => 0.005 * gau(th, 0.5) * gau(y + 0.02, 0.07) }) };
+    case 'thigh': return { g: loft([[-0.150, 0.043, 0.046], [-0.100, 0.049, 0.053, 0.002], [-0.030, 0.055, 0.060, 0.003], [0.050, 0.061, 0.065],
+        [0.120, 0.065, 0.066], [0.150, 0.063, 0.062]],
+        { capB: 0.022, capT: 0.03, bump: (th, y) => 0.005 * gau(th, 0.5) * gau(y + 0.02, 0.07) }) };
     case 'shin': return { g: loft([[-0.150, 0.026, 0.028], [-0.100, 0.031, 0.034, -0.003], [-0.020, 0.039, 0.045, -0.008], [0.060, 0.044, 0.050, -0.010],
         [0.110, 0.044, 0.045, -0.004], [0.140, 0.041, 0.041]],
         { capB: 0.018, capT: 0.022 }) };
@@ -722,7 +711,7 @@ function buildFigure() {
     let ball;
     if (child === 'belly' || child === 'chest') {   // the torso joints show as a dark band at the waist, not a ball
       ball = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.014 * S, 40), JOINT);
-      ball.scale.set((child === 'chest' ? 0.100 : 0.106) * S, 1, (child === 'chest' ? 0.071 : 0.075) * S);   // a little inside the waist
+      ball.scale.set(0.112 * S, 1, 0.076 * S);
     } else ball = new THREE.Mesh(new THREE.SphereGeometry(jd[9] * S, 20, 14), JOINT);
     ball.position.set(pivotB.x, pivotB.y, pivotB.z); ball.castShadow = true;
     meshes[child].add(ball);
@@ -1131,7 +1120,7 @@ function lookAt(point, weight, roll = 0) {
 // catching steps hips 0.19 knees 0.13.
 const STRENGTH = { belly: 0.27, chest: 0.27, neck: 0.05, head: 0.04, clav: 0.08, uArm: 0.08, fArm: 0.07, hand: 0.02, thigh: 0.27, shin: 0.23, foot: 0.19, toe: 0.04 };
 // stiffness per radian, as a share of body weight x height: legs and trunk firm, neck and arms softer
-const STIFF = { belly: 1.4, chest: 1.4, neck: 0.25, head: 0.18, clav: 0.3, uArm: 0.22, fArm: 0.18, hand: 0.05, thigh: 1.6, shin: 1.6, foot: 1.0, toe: 0.3 };
+const STIFF = { belly: 1.4, chest: 1.4, neck: 0.25, head: 0.18, clav: 0.2, uArm: 0.12, fArm: 0.1, hand: 0.04, thigh: 1.6, shin: 1.6, foot: 1.0, toe: 0.3 };
 const kindOf = nm => nm.replace(/[LR]$/, '');
 
 // ---------- state ----------
@@ -1194,9 +1183,19 @@ function standControl(dt, footDown, up, g) {
   const cpOut = outside(poly, cp), comOut = outside(poly, c2);
   // the box's slope along the floor (+: the floor runs down toward +u)
   const slope = -FL.real.dot(FL.t), slopeZ = -FL.real.z;
+  // resting the back on the back wall (or the front on the glass) when the box is tipped that way: the wall takes
+  // part of the weight, like leaning on a wall (-1: the back wall, +1: the glass)
+  let leanW = 0;
+  {
+    let dBack = 9, dFront = 9;
+    for (const nm of ['pelvis', 'belly', 'chest', 'head']) { const z = B[nm].position.z; dBack = Math.min(dBack, z + D); dFront = Math.min(dFront, -z); }
+    if (slopeZ < -Math.sin(6 * DEG) && dBack < 0.22 * S) leanW = -1;
+    else if (slopeZ > Math.sin(6 * DEG) && dFront < 0.22 * S) leanW = 1;
+  }
   // ---- how far from calm it is (the Euphoria blend): quick to rise, slow to settle ----
   const want = clamp(Math.max((cpOut.d + 0.02 * S) / (0.08 * S), (Math.hypot(slope, slopeZ * 0.6) - 0.08) / 0.18,
-    (Math.hypot(vT[0], vT[1]) - 0.12 * S) / (0.4 * S), step && step.kind === 'catch' ? 1 : 0, wallSide ? 0.8 : 0, rise ? 0.5 : 0), 0, 1);
+    (Math.hypot(vT[0], vT[1]) - 0.12 * S) / (0.4 * S), step && step.kind === 'catch' ? 1 : 0, wallSide ? 0.45 : 0, rise ? 0.5 : 0), 0, 1)
+    * (leanW ? 0.45 : 1);     // resting on a wall it is calmer
   urg += (want - urg) * Math.min(1, dt / (want > urg ? 0.06 : 1.4));
   const calm = 1 - urg;
 
@@ -1218,7 +1217,9 @@ function standControl(dt, footDown, up, g) {
   const facing = unit(FL.t.scale(Math.sin(faceYaw)).vadd(AZ.scale(Math.cos(faceYaw))));
 
   // ---- the pelvis: the recording's tilt on a body kept upright to real gravity ----
-  const upT = unit(FL.real.scale(0.88).vadd(n.scale(0.12)));
+  // upright to real gravity; resting back on a wall, along the wall instead
+  lean.k += ((leanW ? 0.85 : 0.12) - lean.k) * Math.min(1, dt / 0.6);
+  const upT = unit(FL.real.scale(1 - lean.k).vadd(n.scale(lean.k)));
   const qBase = upFwd(upT, facing);
   // the recording's pelvis movements: only a part goes to the pelvis (it's what the legs stand on); the rest is taken
   // up in the lower back, so the trunk above moves as recorded
@@ -1257,6 +1258,8 @@ function standControl(dt, footDown, up, g) {
   // keep the target inside what the feet can hold, unless a hand is on the wall
   if (!wh && poly.length >= 3) { const o = outside(poly, target); if (o.d > -0.015 * S) { const ctr = poly.reduce((a, p) => [a[0] + p[0] / poly.length, a[1] + p[1] / poly.length], [0, 0]); const k = 0.02 * S; const dx = ctr[0] - o.q[0], dy = ctr[1] - o.q[1], dl = Math.hypot(dx, dy) || 1; target = [o.q[0] + dx / dl * k, o.q[1] + dy / dl * k]; } }
 
+  // resting on the back wall / glass: the weight may sit toward that wall, it isn't pulled back over the feet there
+  if (leanW) target = [target[0], c2[1] + leanW * 0.02 * S];
   // ---- move the hips so the centre of mass goes to the target (only the legs' muscles do this) ----
   const kp = TUNE.kp * Math.min(1.5, SET.balance), kd = TUNE.kd * Ts * Math.min(1.5, Math.sqrt(SET.balance));
   const catching = step && step.kind === 'catch';
@@ -1286,6 +1289,7 @@ function standControl(dt, footDown, up, g) {
   for (const sd of ['L', 'R']) {
     const q = idleLocal('shin' + sd, new CANNON.Quaternion());
     knee[sd] = (TUNE.noIdle ? 0.25 : 2 * Math.acos(clamp(Math.abs(q.w), 0, 1))) + STUDY.kneeSoft * urg;
+    if (leanW) knee[sd] = Math.min(knee[sd], 0.12);   // leaning back on a wall: legs nearly straight, like a prop
   }
   // pelvis height: the height that gives the stance legs those knee bends
   const hipOff = { L: J('thighL').pivotA, R: J('thighR').pivotA };
@@ -1326,8 +1330,22 @@ function standControl(dt, footDown, up, g) {
   const both = planted('L') && planted('R');
   if (!step && stepCool <= 0 && !apa) {
     // catching: the capture point has left the feet (Pratt 2006; Hof 2005)
-    const leaning = wh && Math.sign(cp[0] - c2[0]) === Math.sign(wh.u - c2[0]);
-    if (leaning && comOut.d > 0.04 * H && Math.abs(slope) < Math.sin(10 * DEG)) {
+    const leaning = (wh && Math.sign(cp[0] - c2[0]) === Math.sign(wh.u - c2[0])) || (leanW && (cp[1] - cpOut.q[1]) * leanW >= 0 && Math.abs(cp[0] - cpOut.q[0]) < 0.06 * S);
+    // resting on the back wall / glass with the feet too far out or too close: a calm step to ~0.2 statures from it
+    const wallW = leanW < 0 ? -D : 0;
+    const footFromWall = sd => Math.abs(fc[sd][1] - wallW);
+    if (leanW && both && !step) {
+      const far = footFromWall('L') > footFromWall('R') ? 'L' : 'R';
+      const dist = footFromWall(far);
+      const near = far === 'L' ? 'R' : 'L';
+      // bring the far foot back under the body (beside the near one, ~0.12 statures off the wall), standing on the near one
+      if (dist > 0.26 * H && footFromWall(near) < 0.22 * H) {
+        const to = [fc[near][0] + (far === 'R' ? 1 : -1) * 0.08 * H, wallW - leanW * 0.12 * H];
+        step = makeStep(far, to, yawOn(footFwd(far)) * 0.5, 'catch');
+      }
+    }
+    if (step) { /* a resting step was planned above */ }
+    else if (wh && leaning && comOut.d > 0.04 * H && Math.abs(slope) < Math.sin(10 * DEG)) {
       // propped on the wall with the feet out: walk the feet back in under the body, pushing off the wall
       const towardWall = Math.sign(wh.u - c2[0]);
       const dL = Math.abs(fc.L[0] - c2[0]), dR = Math.abs(fc.R[0] - c2[0]);
@@ -1415,11 +1433,11 @@ function standControl(dt, footDown, up, g) {
   // muscle tone: legs and trunk firm; on guard everything firmer
   for (const j of joints) if (/^(thigh|shin|foot|belly|chest)/.test(j.name)) j.boost = Math.max(j.boost, 1 + 0.25 * urg);
   DBG.cp = cp; DBG.c2 = c2; DBG.target = target; DBG.cpOut = cpOut.d; DBG.poly = poly; DBG.fYaw = fYaw; DBG.want = want; DBG.du = [du, dw];
-  return { cpOut, poly, c2, cp, slope };
+  return { cpOut, poly, c2, cp, slope, leanW };
 }
 let P0 = null; const pel0 = () => P0 || (P0 = B.pelvis.position.clone());
-const bal = { iu: 0, iw: 0 };
-const DBG = {}, TUNE = { pelDev: 0.3, ki: 0, damp: 0.1, jt: 0, jtp: 1.0, jtd: 0.5, kmul: 2, kp: 0.8, kd: 0.7, noBal: 0, smooth: 0.04, lean: 0 };
+const bal = { iu: 0, iw: 0 }, lean = { k: 0.12 };
+const DBG = {}, TUNE = { mocapGetUp: 0, pelDev: 0.3, ki: 0, damp: 0.1, jt: 0, jtp: 1.0, jtd: 0.5, kmul: 1.5, kp: 0.8, kd: 0.7, noBal: 0, smooth: 0.04, lean: 0 };
 // a force at point p made by the joints of a leg standing on the floor: each joint turns the part above it one way and the
 // part below it the other way (equal and opposite: a muscle), and the floor pushes back on the foot
 function legForce(sd, F, p) {
@@ -1622,6 +1640,232 @@ function getupControl(dt, footDown) {
   lookAt(tgt, 0.6);
 }
 
+// ======================= getting up, in the stages people use (tools/study: 71 of 85 get-ups go from the front) ==========
+// roll onto the front -> hands and knees -> rock back onto the feet (a crouch, hands still pushing) -> rise.
+// Every stage is a shape the muscles make, with the limbs on the floor placed from the floor up; nothing lifts the body.
+const GU = { phase: null, t: 0, side: 1, tries: 0, h0: 0, h: null };
+function bodyAxes(fresh) {
+  // the way the body points along the floor (pelvis to chest), held fixed through a stage once it's set
+  const n = FL.n;
+  let h = GU.h && !fresh ? along(GU.h, n) : along(B.chest.position.vsub(B.pelvis.position), n);
+  if (vlen(h) < 0.25 * S && (fresh || !GU.h)) {
+    // upright (kneeling, sitting): it will lean forward, so "along" is where the chest faces
+    h = along(B.chest.quaternion.vmult(AZ), n);
+    if (vlen(h) < 1e-3) h = along(B.pelvis.quaternion.vmult(Y), n);
+  }
+  h = unit(h);
+  if (fresh) GU.h = h.clone();
+  return { n, h, lat: n.cross(h), front: B.chest.quaternion.vmult(AZ) };
+}
+function startGetUp2() {
+  const ax = bodyAxes(true);
+  const down = ax.front.dot(ax.n);
+  const kneesUp = FL.h(jointPos('shinL')) > 0.13 * S && FL.h(jointPos('shinR')) > 0.13 * S;
+  const crouched = feetDown.L < 0.1 && feetDown.R < 0.1 && kneesUp && FL.h(B.pelvis.position) > 0.3 * S;
+  const upright = FL.h(B.chest.position) - FL.h(B.pelvis.position) > 0.25 * S;   // sitting or kneeling up
+  GU.phase = crouched ? 'squat' : upright ? 'kneel' : down < -0.45 ? 'quad' : 'roll';
+  GU.t = 0; GU.tries = 0; GU.h0 = FL.h(B.pelvis.position); GU.front = rand() < 0.5 ? 'L' : 'R';
+  // roll toward the side the chest already faces; flat on the back, toward the roomier side
+  const tl = ax.front.dot(ax.lat);
+  if (Math.abs(tl) > 0.2) GU.side = Math.sign(tl);
+  else { const lim = FL.n.x ? iy : ix, u = FL.toF(B.pelvis.position)[0]; GU.side = Math.sign(ax.lat.dot(FL.t) * -u || 1); }
+  state = 'getup'; stateT = 0;
+}
+function kneeTo(qt, sd) {
+  const X = qt.vmult(AX), td = qt.vmult(DOWN), sdn = B['shin' + sd].quaternion.vmult(DOWN);
+  const a = Math.atan2(td.cross(sdn).dot(X), td.dot(sdn));   // + : the shin turned back from the thigh's line
+  return clamp(a, 0.05, 2.3);
+}
+function guNext(ph) { GU.phase = ph; GU.t = 0; GU.h0 = FL.h(B.pelvis.position); if (ph !== 'squat') bodyAxes(true); }
+function getup2(dt) {
+  const Ts = timeScale(), ax = bodyAxes(), n = ax.n, h = ax.h, lat = ax.lat;
+  GU.t += dt;
+  const down = ax.front.dot(n);
+  for (const j of joints) j.boost = /^(clav|uArm|fArm|hand)/.test(j.name) ? 2.0 : 1.5;
+  if (GU.phase === 'roll') {
+    // the top arm reaches across to the floor on the roll side, the top leg swings over, trunk and head lead the turn
+    const sd = GU.side;                       // +: roll so the front turns toward +lat
+    const top = (B.handL.position.vsub(B.handR.position)).dot(lat) * sd < 0 ? 'L' : 'R';   // the arm further from the roll side
+    const far = top, near = far === 'L' ? 'R' : 'L';
+    const reach = B.pelvis.position.vadd(lat.scale(sd * 0.55 * S)).vadd(h.scale(0.45 * S));
+    const p = reach.vsub(n.scale(FL.h(reach) - 0.03 * S));
+    armIK(far, jointPos('uArm' + far), p, unit(n.scale(1).vadd(h.scale(-0.5))), J('uArm' + far).A.quaternion, 1, 1);
+    bend('uArm' + near, AZ, near === 'L' ? -0.4 : 0.4);
+    // the leg on the same side as the reaching arm bends and crosses over
+    const legTop = far;
+    const cross = new CANNON.Quaternion().setFromAxisAngle(AZ, (legTop === 'L' ? 1 : -1) * 0.5).mult(new CANNON.Quaternion().setFromAxisAngle(AX, -1.1));
+    J('thigh' + legTop).target.copy(cross); bend('shin' + legTop, AX, 1.3);
+    // trunk twists toward the roll
+    const tw = new CANNON.Quaternion().setFromAxisAngle(Y, sd * 0.35);
+    J('belly').target.copy(tw); J('chest').target.copy(tw);
+    lookAt(p, 0.8);
+    for (const nm of ['thigh', 'shin']) J(nm + legTop).boost = 2.2;
+    GU.h = null;   // while rolling, the body's axis is read fresh each step
+    if (down < -0.45) guNext('quad');
+    else if (GU.t > 1.6 * Ts) { GU.side = -GU.side; GU.t = 0; if (++GU.tries > 3) { state = 'down'; stateT = SET.getUpDelay * 0.5; } }
+    return;
+  }
+  // a pose for the trunk: the pelvis's long axis rises from along the floor (a) toward upright
+  // (a = 0: lying along h face down, as on hands and knees; a = PI/2: upright, facing h)
+  const trunkQ = a => upFwd(unit(h.scale(Math.cos(a)).vadd(n.scale(Math.sin(a)))), unit(h.scale(Math.sin(a)).vadd(n.scale(-Math.cos(a)))));
+  if (GU.phase === 'quad') {
+    // hands and knees: knees under the hips, hands under the shoulders, back level, head up a little
+    const k = ease(Math.min(1, GU.t / (0.9 * Ts)));
+    const qp = trunkQ(0.12);
+    const hipH = LEG.t + 0.06 * S;
+    const hipOffN = n.dot(qp.vmult(J('thighL').pivotA));
+    const pNow = B.pelvis.position;
+    const pDes = pNow.vadd(n.scale((hipH - hipOffN) - FL.h(pNow)) .scale(k));
+    J('belly').target.setFromAxisAngle(AX, 0.05); J('chest').target.setFromAxisAngle(AX, 0.05);
+    for (const sd of ['L', 'R']) {
+      const hip = pDes.vadd(qp.vmult(J('thigh' + sd).pivotA));
+      const kneeP = hip.vsub(n.scale(FL.h(hip) - 0.05 * S));
+      const qt = segFrame(kneeP.vsub(hip), qp.vmult(AX));
+      setRel('thigh' + sd, qp, qt, 1);
+      bend('shin' + sd, AX, FL.h(jointPos('shin' + sd)) < 0.12 * S ? kneeTo(qt, sd) : 1.6);
+      bend('foot' + sd, AX, -0.35); bend('toe' + sd, AX, -0.9);   // toes tucked under
+    }
+    const ch = chainDown(qp, pDes);
+    for (const sd of ['L', 'R']) {
+      const sh = ch['sh' + sd];
+      const hp = sh.vsub(n.scale(FL.h(sh) - 0.02 * S)).vadd(h.scale(0.06 * S));
+      armIK(sd, sh, hp, unit(h.scale(-1).vadd(qp.vmult(new CANNON.Vec3(sd === 'L' ? -0.6 : 0.6, 0, 0)))), ch['clav' + sd], 1, 1);
+    }
+    lookAt(B.head.position.vadd(h.scale(1.0 * S)).vsub(n.scale(0.8 * S)), 0.7);
+    const ok = FL.h(B.pelvis.position) > 0.75 * (hipH - hipOffN) && FL.h(B.chest.position) > 0.42 * S && down < -0.3;
+    if (ok && GU.t > 0.5 * Ts) guNext('kneel');
+    else if (GU.t > 3.5 * Ts) { if (down > -0.2) guNext('roll'); else { GU.t = 0; if (++GU.tries > 3) { state = 'down'; stateT = SET.getUpDelay * 0.5; } } }
+    return;
+  }
+  const kneelH = LEG.t + 0.05 * S;                     // hip joints over the knees
+  const kneeHold = (sd, qp, pDes, w = 1) => {           // a leg kneeling: thigh straight down to the knee, shin back along the floor
+    const hip = pDes.vadd(qp.vmult(J('thigh' + sd).pivotA));
+    // the knee a little ahead of the hip, so the weight sits back over the shins rather than tipping forward;
+    // the knee's target is taken from the shin as it lies on the floor, so the thigh stands up from the floor (world),
+    // not just at an angle to a shin that could be anywhere
+    const kneeP = hip.vsub(n.scale(FL.h(hip) - 0.05 * S)).vadd(h.scale(0.06 * S));
+    const qt = segFrame(kneeP.vsub(hip), qp.vmult(AX));
+    setRel('thigh' + sd, qp, qt, w);
+    bend('shin' + sd, AX, kneeTo(qt, sd)); bend('foot' + sd, AX, -0.3); bend('toe' + sd, AX, -0.9);
+  };
+  if (GU.phase === 'kneel') {
+    // up onto the knees: the hands push off the floor as the trunk comes upright (as people do from hands and knees)
+    const k = ease(Math.min(1, GU.t / (0.9 * Ts)));
+    const lean = 1.35 * (1 - k) + 0.08;                 // trunk from near level to upright (a little forward)
+    const qp = trunkQ(Math.PI / 2 - lean);
+    const pNow = B.pelvis.position;
+    const hipOffN = n.dot(qp.vmult(J('thighL').pivotA));
+    const pDes = pNow.vadd(n.scale(kneelH - hipOffN - FL.h(pNow)));
+    for (const sd of ['L', 'R']) kneeHold(sd, qp, pDes);
+    J('belly').target.setFromAxisAngle(AX, 0.05); J('chest').target.copy(IDQ);
+    const ch = chainDown(qp, pDes);
+    for (const sd of ['L', 'R']) {
+      if (k < 0.7 && FL.h(B['hand' + sd].position) < 0.12 * S) {
+        const hp = B['hand' + sd].position.vadd(B['hand' + sd].quaternion.vmult(new CANNON.Vec3(0, -0.06 * S, 0)));
+        armIK(sd, ch['sh' + sd], hp, unit(h.scale(-1).vadd(qp.vmult(new CANNON.Vec3(sd === 'L' ? -0.6 : 0.6, 0, 0)))), ch['clav' + sd], 1, 1);
+      } else bend('uArm' + sd, AZ, sd === 'L' ? -0.3 : 0.3);
+    }
+    lookAt(B.head.position.vadd(h.scale(1.5 * S)).vsub(n.scale((0.6 - 0.5 * k) * S)), 0.7);
+    const up_ = bodyUp(B.chest).dot(n) > 0.8 && FL.h(B.pelvis.position) > 0.65 * (kneelH - hipOffN);
+    DBG.kneel = [bodyUp(B.chest).dot(n), FL.h(B.pelvis.position) / S, (kneelH - hipOffN) / S];
+    if (up_ && GU.t > 0.7 * Ts) guNext('half');
+    else if (GU.t > 3 * Ts) { guNext(down < -0.3 ? 'quad' : 'roll'); if (++GU.tries > 4) { state = 'down'; stateT = SET.getUpDelay * 0.5; } }
+    return;
+  }
+  if (GU.phase === 'half' || GU.phase === 'lunge') {
+    // one foot forward (half-kneeling), then up over it; the back knee lifts as the hips rise
+    const fr = GU.front, bk = fr === 'L' ? 'R' : 'L';
+    const qp = trunkQ(Math.PI / 2 - 0.12);
+    const pNow = B.pelvis.position;
+    const hipOffN = n.dot(qp.vmult(J('thighL').pivotA));
+    const sg = fr === 'R' ? 1 : -1;
+    if (GU.phase === 'half') {
+      const k = Math.min(1, GU.t / (0.6 * Ts));
+      const pDes = pNow.vadd(n.scale(kneelH - hipOffN - FL.h(pNow)));
+      kneeHold(bk, qp, pDes);
+      // the front foot comes from behind, up past the side of the knee and down in front of it (a curved path)
+      const e = ease(k);
+      const hipF = pDes.vadd(qp.vmult(J('thigh' + fr).pivotA));
+      if (!GU.from) GU.from = ankleOf(fr).clone();
+      const P0 = GU.from, P2 = hipF.vsub(n.scale(FL.h(hipF) - 0.085 * S)).vadd(h.scale(0.42 * S)).vadd(lat.scale(sg * 0.03 * S));
+      const P1 = hipF.vsub(n.scale(FL.h(hipF) - 0.32 * S)).vadd(lat.scale(sg * 0.12 * S)).vadd(h.scale(0.05 * S));
+      const ank = P0.scale((1 - e) * (1 - e)).vadd(P1.scale(2 * e * (1 - e))).vadd(P2.scale(e * e));
+      legIK(fr, hipF, ank, h, qp, upFwd(n, h));
+      for (const nm of ['thigh', 'shin', 'foot']) J(nm + fr).boost = 2;
+      bend('uArmL', AZ, -0.35); bend('uArmR', AZ, 0.35);
+      lookAt(B.head.position.vadd(h.scale(1.5 * S)).vsub(n.scale(0.3 * S)), 0.6);
+      if (k >= 1 && feetDown[fr] < 0.1 && FL.toF(ankleOf(fr))[0] * 0 + along(ankleOf(fr).vsub(hipF), n).dot(h) > 0.2 * S) { guNext('lunge'); GU.from = null; }
+      else if (GU.t > 2 * Ts) { GU.from = null; GU.front = bk; guNext('kneel'); if (++GU.tries > 4) { state = 'down'; stateT = SET.getUpDelay * 0.5; } }
+      return;
+    }
+    // lunge: rise over the front foot; the hand on that side pushes on the front knee at first
+    const k = ease(Math.min(1, GU.t / (1.3 * Ts)));
+    const aF = ankleOf(fr), ankF = aF.vadd(n.scale(0.085 * S - FL.h(aF)));
+    const over = along(ankF.vsub(pNow), n);
+    const hWant = GU.h0 + (0.80 * S - GU.h0) * k;
+    const pDes = pNow.vadd(over.scale(0.35 * k)).vadd(n.scale(hWant - FL.h(pNow)));
+    const qL = trunkQ(Math.PI / 2 - 0.35 * Math.sin(Math.PI * Math.min(1, k * 1.2)) - 0.08);   // leans over the knee, then up
+    legIK(fr, pDes.vadd(qL.vmult(J('thigh' + fr).pivotA)), ankF, h, qL, upFwd(n, h));
+    if (k < 0.45) kneeHold(bk, qL, pDes, 1 - k / 0.45);
+    else { const aB = ankleOf(bk); legIK(bk, pDes.vadd(qL.vmult(J('thigh' + bk).pivotA)), aB.vadd(n.scale(0.085 * S - FL.h(aB))), h, qL, upFwd(n, h)); }
+    for (const nm of ['thigh', 'shin', 'foot']) { J(nm + fr).boost = 2.2; J(nm + bk).boost = 1.8; }
+    const ch = chainDown(qL, pDes);
+    if (k < 0.6) {
+      const kneeP = jointPos('shin' + fr).vadd(h.scale(0.04 * S)).vadd(n.scale(0.06 * S));
+      armIK(fr, ch['sh' + fr], kneeP, unit(h.scale(-1).vadd(lat.scale(sg))), ch['clav' + fr], 1, 1);
+    }
+    bend('uArm' + bk, AZ, bk === 'L' ? -0.3 : 0.3);
+    lookAt(B.head.position.vadd(h.scale(1.5 * S)).vsub(n.scale(0.2 * S)), 0.6);
+    const fp = footPts(fr).concat(feetDown[bk] < 0.1 ? footPts(bk) : []);
+    const kneesUp = FL.h(jointPos('shinL')) > 0.13 * S && FL.h(jointPos('shinR')) > 0.13 * S;
+    const overFeet = outside(hull(fp), dropF(com)).d < 0.05 * S;
+    // up enough over the front foot, or crouched over both feet (standing's rise takes it from there)
+    const ok = overFeet && (FL.h(B.pelvis.position) > 0.62 * S || (kneesUp && feetDown.L < 0.1 && feetDown.R < 0.1 && FL.h(B.pelvis.position) > 0.3 * S));
+    if (ok && GU.t > 0.6 * Ts) {
+      state = 'stand'; stateT = 0; step = null; stepCool = 0.1; fromGetUp = true; urg = 0.7; apa = null;
+      rise = { t: 0, h0: FL.h(B.pelvis.position) };
+      idleStart(true);
+    } else if (GU.t > 3 * Ts) { GU.front = bk; guNext(FL.h(B.pelvis.position) > 0.3 * S ? 'kneel' : 'quad'); if (++GU.tries > 4) { state = 'down'; stateT = SET.getUpDelay * 0.5; } }
+    return;
+  }
+  if (GU.phase === 'squat') {
+    // rock back onto the feet: the hips go back over the feet and up, the knees lift, the hands keep pushing;
+    // the trunk comes up from level to ~45 degrees forward (measured: up to 83 degrees on the way)
+    const k = ease(Math.min(1, GU.t / (1.1 * Ts)));
+    const qp = trunkQ(0.12 + (0.9 - 0.12) * k);
+    const aL = ankleOf('L'), aR = ankleOf('R');
+    const mid = aL.vadd(aR).scale(0.5);
+    const pNow = B.pelvis.position;
+    const over = along(mid.vsub(pNow), n).vadd(h.scale(0.08 * S));      // hips over the feet, a touch ahead
+    const hWant = GU.h0 + (0.62 * S - GU.h0) * k;
+    const pDes = pNow.vadd(over.scale(0.25 + 0.5 * k)).vadd(n.scale(hWant - FL.h(pNow)));
+    J('belly').target.setFromAxisAngle(AX, 0.15); J('chest').target.setFromAxisAngle(AX, 0.1);
+    for (const sd of ['L', 'R']) {
+      const a0 = ankleOf(sd), ank = a0.vadd(n.scale(0.085 * S - FL.h(a0)));
+      const fq = upFwd(n, h);
+      legIK(sd, pDes.vadd(qp.vmult(J('thigh' + sd).pivotA)), ank, h, qp, fq);
+      for (const nm of ['thigh', 'shin', 'foot']) J(nm + sd).boost = 1.8;
+    }
+    const ch = chainDown(qp, pDes);
+    for (const sd of ['L', 'R']) {
+      if (FL.h(B['hand' + sd].position) < 0.12 * S) {
+        const hp = B['hand' + sd].position.vadd(B['hand' + sd].quaternion.vmult(new CANNON.Vec3(0, -0.06 * S, 0)));
+        armIK(sd, ch['sh' + sd], hp, unit(h.scale(-1).vadd(qp.vmult(new CANNON.Vec3(sd === 'L' ? -0.6 : 0.6, 0, 0)))), ch['clav' + sd], 1, 1);
+      }
+    }
+    lookAt(B.head.position.vadd(h.scale(1.2 * S)).vsub(n.scale((0.9 - 0.6 * k) * S)), 0.7);
+    // ready to stand: both feet down, knees up off the floor, the weight over the feet
+    const kneesUp = FL.h(jointPos('shinL')) > 0.13 * S && FL.h(jointPos('shinR')) > 0.13 * S;
+    const fp = footPts('L').concat(footPts('R'));
+    const over2 = outside(hull(fp), dropF(com)).d;
+    if (feetDown.L < 0.1 && feetDown.R < 0.1 && kneesUp && over2 < 0.04 * S && GU.t > 0.4 * Ts) {
+      state = 'stand'; stateT = 0; step = null; stepCool = 0.2; fromGetUp = true; urg = 0.6; apa = null;
+      rise = { t: 0, h0: FL.h(B.pelvis.position) };
+      idleStart(true);
+    } else if (GU.t > 3.0 * Ts) { if (down > -0.2 && FL.h(B.pelvis.position) < 0.3 * S) guNext('roll'); else guNext('quad'); if (++GU.tries > 4) { state = 'down'; stateT = SET.getUpDelay * 0.5; } }
+  }
+}
+
 // ======================= the whole: what it is doing, and the muscles' pose for it =======================
 // Every push the controller makes is checked: added up over the whole body each step they must come to nothing (forces
 // and turning moments), i.e. only muscles between parts, nothing from outside. Tests read EXT.n (steps where they didn't).
@@ -1656,7 +1900,7 @@ function control(dt) {
       info = standControl(dt, footDown, up, g);
       const H = 1.75 * S;
       const low = FL.h(B.pelvis.position) < 0.45 * PELVIS_H * S && !rise;
-      offT = info.cpOut.d > 0.35 * H && !wallHand() ? offT + dt : Math.max(0, offT - dt);
+      offT = info.cpOut.d > 0.35 * H && !wallHand() && !info.leanW ? offT + dt : Math.max(0, offT - dt);
       const tiltMax = (rise ? 75 : 55) * DEG;
       if (tilt > tiltMax || ungrounded > 0.45 || offT > 0.35 || low) {
         state = 'fall'; stateT = 0; step = null; apa = null; rise = null;
@@ -1668,8 +1912,9 @@ function control(dt) {
     still = B.pelvis.velocity.length() < 0.5 * S ? still + dt : 0;
     if ((still > 0.35 && stateT > 0.4) || stateT > 3) { state = 'down'; stateT = 0; }
   }
-  if (state === 'down' && SET.getUp && stun <= 0 && stateT > SET.getUpDelay && SET.balance > 0.02 && fl) { FL = floorFrame(fl, real); startGetUp(fl); }
-  if (state === 'getup') {
+  if (state === 'down' && SET.getUp && stun <= 0 && stateT > SET.getUpDelay && SET.balance > 0.02 && fl) { FL = floorFrame(fl, real); if (TUNE.mocapGetUp) startGetUp(fl); else startGetUp2(); }
+  if (state === 'getup' && !fl) { state = 'down'; stateT = 0; }
+  if (state === 'getup' && TUNE.mocapGetUp) {
     const Ts = timeScale();
     clipT += dt / Ts * 0.8;
     // hand over to standing only from a real crouch: both feet down, hips up off the floor, weight over the feet
@@ -1695,7 +1940,7 @@ function control(dt) {
     // lying: the neck still holds the head; the limbs rest
     for (const nm of ['neck', 'head']) J(nm).boost = 3;
   }
-  else if (state === 'getup') getupControl(dt, feetDown);
+  else if (state === 'getup') { if (TUNE.mocapGetUp) getupControl(dt, feetDown); else getup2(dt); }
   if (TUNE.statue) for (const j of joints) { j.target.copy(IDQ); if (TUNE.statue > 1 && /^shin/.test(j.name)) j.target.setFromAxisAngle(AX, 0.3); if (TUNE.statue > 1 && /^thigh/.test(j.name)) j.target.setFromAxisAngle(AX, -0.15); if (TUNE.statue > 1 && /^foot/.test(j.name)) j.target.setFromAxisAngle(AX, -0.15); }
   driveMuscles(tone);
 }
@@ -1776,19 +2021,93 @@ function note(text, ms) {
 
 // ================= sound =================
 let actx = null;
-function knock(speed) {
+// The figure's sounds come from what touches the wood and how: each part's gap to the nearest wall and its speed into
+// and along it. A foot landing is a heel-then-sole step; a foot dragging is a shoe scuff; a hand arriving is a palm
+// pat and dragging is a soft brush; knees and elbows knock; the body lands with a dull thud and rubs with a low rustle.
+// Everything is made from filtered noise and a little wood resonance (no recordings, so nothing to load).
+const SFX = { out: null, wood: null, noise: null, rub: {}, prev: {}, last: {} };
+function sfxInit() {
+  if (!actx || SFX.out) return;
+  SFX.out = actx.createGain(); SFX.out.gain.value = 0.9;
+  // the box: two soft wooden resonances under everything
+  SFX.wood = actx.createGain(); SFX.wood.gain.value = 0.35;
+  for (const [f, q] of [[190, 6], [420, 8], [860, 9]]) { const bq = actx.createBiquadFilter(); bq.type = 'bandpass'; bq.frequency.value = f; bq.Q.value = q; SFX.wood.connect(bq).connect(SFX.out); }
+  SFX.out.connect(actx.destination);
+  const len = actx.sampleRate * 2, buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+  let pink = 0; for (let i = 0; i < len; i++) { pink = 0.97 * pink + 0.03 * (Math.random() * 2 - 1); d[i] = (Math.random() * 2 - 1) * 0.5 + pink * 3; }
+  SFX.noise = buf;
+  // continuous rubs: feet (scuff), hands (brush), body (rustle); their loudness and colour follow the sliding speed
+  for (const [k, f, q, type] of [['feet', 1800, 0.9, 'bandpass'], ['hands', 3200, 0.7, 'bandpass'], ['body', 700, 0.8, 'bandpass']]) {
+    const src = actx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const flt = actx.createBiquadFilter(); flt.type = type; flt.frequency.value = f; flt.Q.value = q;
+    const g = actx.createGain(); g.gain.value = 0;
+    src.connect(flt).connect(g); g.connect(SFX.out); g.connect(SFX.wood); src.start();
+    SFX.rub[k] = { g, flt, f, level: 0 };
+  }
+}
+function burst(t, dur, freq, q, gain, wood = 0.3, type = 'bandpass') {
+  const src = actx.createBufferSource(); src.buffer = SFX.noise;
+  const flt = actx.createBiquadFilter(); flt.type = type; flt.frequency.value = freq; flt.Q.value = q;
+  const g = actx.createGain();
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(flt).connect(g); g.connect(SFX.out);
+  if (wood) { const w = actx.createGain(); w.gain.value = wood; g.connect(w).connect(SFX.wood); }
+  src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.05);
+}
+function thump(t, f0, dur, gain) {   // a low body in a knock or a step
+  const o = actx.createOscillator(), g = actx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f0 * 0.55, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(SFX.out); o.start(t); o.stop(t + dur + 0.02);
+}
+// the wall-ward reach of a part's shape from its centre, along the wall's normal
+function reachAlong(b, nrm) {
+  const P = b.P, q = b.quaternion;
+  if (P.box) { let r = 0; const h = P.box.map(v => v * S / 2); const ax = [new CANNON.Vec3(1, 0, 0), new CANNON.Vec3(0, 1, 0), new CANNON.Vec3(0, 0, 1)]; for (let i = 0; i < 3; i++) r += Math.abs(q.vmult(ax[i]).dot(nrm)) * h[i]; return r; }
+  if (P.limb) return P.limb[0] * S + Math.max(0, P.limb[1] * S - P.limb[0] * S) * Math.abs(q.vmult(new CANNON.Vec3(0, 1, 0)).dot(nrm));
+  return P.head * S * 1.06;
+}
+const WALLS = () => [[new CANNON.Vec3(-1, 0, 0), ix], [new CANNON.Vec3(1, 0, 0), ix], [new CANNON.Vec3(0, -1, 0), iy], [new CANNON.Vec3(0, 1, 0), iy], [new CANNON.Vec3(0, 0, -1), 0], [new CANNON.Vec3(0, 0, 1), D]];
+function sfxUpdate(dt) {
   if (!actx || !SET.sound) return;
-  const v = Math.min(1, speed / 5), t = actx.currentTime;
-  const o = actx.createOscillator(), og = actx.createGain();
-  o.type = 'sine'; o.frequency.setValueAtTime(190, t); o.frequency.exponentialRampToValueAtTime(85, t + .12);
-  og.gain.setValueAtTime(.5 * v, t); og.gain.exponentialRampToValueAtTime(.001, t + .16);
-  o.connect(og).connect(actx.destination); o.start(t); o.stop(t + .18);
-  const len = Math.floor(actx.sampleRate * .05), buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
-  for (let i = 0; i < len; i++) d[i] = (rand() * 2 - 1) * Math.pow(1 - i / len, 3);
-  const n = actx.createBufferSource(), f = actx.createBiquadFilter(), ng = actx.createGain();
-  n.buffer = buf; f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = .9; ng.gain.value = .45 * v;
-  n.connect(f).connect(ng).connect(actx.destination); n.start(t);
-  try { navigator.vibrate && navigator.vibrate(Math.round(8 + 20 * v)); } catch (_) {}
+  sfxInit();
+  const t = actx.currentTime + 0.01, vol = 1;
+  const rub = { feet: 0, hands: 0, body: 0 };
+  for (const nm in B) {
+    const b = B[nm];
+    // the nearest wall: n points out of the box (wall plane: p.n = off)
+    let best = null, gap = 9;
+    for (const [nw, off] of WALLS()) { const g_ = off - b.position.dot(nw) - reachAlong(b, nw); if (g_ < gap) { gap = g_; best = nw; } }
+    const touching = gap < 0.012 * S;
+    const vIn = b.velocity.dot(best), vAlong = vlen(b.velocity.vsub(best.scale(vIn)));
+    const kind = /^(foot|toe)/.test(nm) ? 'feet' : /^hand/.test(nm) ? 'hands' : 'body';
+    const was = SFX.prev[nm];
+    // arriving: an impact sound by part, as loud as it came in
+    if (touching && !was && vIn > 0.25 * S) {
+      const v = clamp(vIn / (3 * S), 0, 1), now = performance.now();
+      if (!(now - (SFX.last[nm] || 0) < 90)) {
+        SFX.last[nm] = now;
+        if (nm.startsWith('foot')) {                       // heel, then the sole a moment later
+          thump(t, 95, 0.09, 0.25 * v * vol); burst(t, 0.05, 900, 1.2, 0.35 * v * vol, 0.5);
+          burst(t + 0.035 + 0.03 * (1 - v), 0.06, 1500, 0.9, 0.18 * v * vol, 0.3);
+        } else if (nm.startsWith('toe')) burst(t, 0.035, 2200, 1.3, 0.12 * v * vol, 0.2);
+        else if (nm.startsWith('hand')) { burst(t, 0.045, 1300, 0.8, 0.32 * v * vol, 0.4); burst(t + 0.008, 0.03, 4000, 1.0, 0.1 * v * vol, 0); }   // a palm pat
+        else if (/^(fArm|uArm|shin|thigh|clav)/.test(nm)) { thump(t, 160, 0.07, 0.22 * v * vol); burst(t, 0.04, 700, 2.5, 0.25 * v * vol, 0.8); }   // a limb knocks
+        else if (nm === 'head') { thump(t, 120, 0.12, 0.3 * v * vol); burst(t, 0.06, 500, 2, 0.3 * v * vol, 0.9); }
+        else { thump(t, 70, 0.18, 0.45 * v * vol); burst(t, 0.12, 380, 0.7, 0.35 * v * vol, 0.6); burst(t + 0.01, 0.15, 2500, 0.6, 0.06 * v * vol, 0); }   // body: a dull thud, cloth
+      }
+    }
+    SFX.prev[nm] = touching;
+    if (touching) rub[kind] = Math.max(rub[kind], vAlong / S);
+  }
+  // sliding: gain and brightness follow the fastest sliding part of each kind; quiet below a walking shuffle
+  for (const k of ['feet', 'hands', 'body']) {
+    const r = SFX.rub[k], sp = rub[k];
+    const target = sp < 0.08 ? 0 : clamp((sp - 0.08) / 1.2, 0, 1) * (k === 'body' ? 0.35 : k === 'feet' ? 0.3 : 0.18);
+    r.level += (target - r.level) * Math.min(1, dt * (target > r.level ? 30 : 10));
+    r.g.gain.setTargetAtTime(r.level * vol, actx.currentTime, 0.02);
+    r.flt.frequency.setTargetAtTime(r.f * (0.7 + 0.6 * clamp(sp / 1.5, 0, 1)), actx.currentTime, 0.05);
+  }
 }
 
 // ================= full screen =================
@@ -1930,6 +2249,7 @@ function frame(now) {
   }
   if (n === 2) acc = 0;
   for (const nm in B) { B[nm].pull(); hitCheck(B[nm]); }
+  sfxUpdate(dt);
   for (const [b, m] of syncs) { m.position.copy(b.position); m.quaternion.copy(b.quaternion); }
 
   updateCamera(dt);
