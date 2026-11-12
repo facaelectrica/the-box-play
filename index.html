@@ -25,6 +25,7 @@
   .pill{pointer-events:auto;background:rgba(28,18,10,.62);color:#f5e8d6;border:1px solid rgba(255,230,200,.2);border-radius:999px;padding:9px 16px;font:inherit;font-size:14px;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
   #note{position:fixed;left:50%;top:calc(22px + env(safe-area-inset-top));transform:translateX(-50%);z-index:2;max-width:82%;text-align:center;font-size:13px;line-height:1.4;background:rgba(28,18,10,.7);border:1px solid rgba(255,230,200,.2);border-radius:14px;padding:9px 14px;opacity:0;transition:opacity .6s;pointer-events:none}
   #note.show{opacity:1}
+  #ver{position:fixed;left:calc(10px + env(safe-area-inset-left));top:calc(8px + env(safe-area-inset-top));z-index:6;font-size:11px;letter-spacing:.3px;opacity:.6;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.6)}
   #opts{position:fixed;left:0;right:0;bottom:0;z-index:4;max-height:72vh;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;background:rgba(24,16,9,.92);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid rgba(255,230,200,.18);border-radius:18px 18px 0 0;padding:6px 18px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .3s ease}
   #opts.open{transform:none}
   #opts .head{position:sticky;top:0;display:flex;align-items:center;justify-content:space-between;padding:10px 0 8px;background:rgba(24,16,9,.96);z-index:1}
@@ -49,6 +50,7 @@
   <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance.</p>
   <button id="go">Start</button>
 </div>
+<div id="ver">v4</div>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
