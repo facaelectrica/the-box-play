@@ -53,7 +53,7 @@
   <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance. Touch him to push him. Double-tap an empty spot to stand him up again.</p>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v13.2</div>
+<div id="ver">v13.3</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <div id="note"></div>
 <div id="hud">
@@ -2260,6 +2260,10 @@ $('look').onclick = e => {
   e.stopPropagation();
   look.on = !look.on; $('look').classList.toggle('on', look.on);
   if (look.on) {
+    // paused, he stands in his default standing pose so you can look him over
+    standUp();
+    for (const nm in B) B[nm].pull();
+    for (const [b, m] of syncs) { m.position.copy(b.position); m.quaternion.copy(b.quaternion); }
     const p = B.pelvis.position, h = B.head.position;
     look.tgt.set(p.x + (h.x - p.x) * 0.25, p.y + (h.y - p.y) * 0.25, p.z + (h.z - p.z) * 0.25);
     look.yaw = 0; look.pitch = 0.1; look.dist = 1.75 * S * 1.75;
