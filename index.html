@@ -32,6 +32,10 @@
   #fig::after{content:"";position:absolute;left:50%;top:15px;width:12px;height:9px;margin-left:-6px;border-radius:6px 6px 2px 2px;background:rgba(255,235,205,.9)}
   #dbg{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(144px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #dbg::after{content:"";position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border:1.5px dashed rgba(255,235,205,.95);border-radius:50%;box-sizing:border-box}
+  #pose{display:none;position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(188px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #pose::before{content:"";position:absolute;left:13px;top:6px;width:6px;height:6px;border-radius:50%;background:rgba(255,235,205,.95)}
+  #pose::after{content:"";position:absolute;left:10px;top:13px;width:9px;height:8px;border-left:2px solid rgba(255,235,205,.95);border-bottom:2px solid rgba(255,235,205,.95);transform:skewX(-12deg)}
+  #pose.on{background:#ffd400;border-color:#ffd400}#pose.on::before{background:#111}#pose.on::after{border-color:#111}
   #dbg.on{background:#ffd400;border-color:#ffd400}#dbg.on::after{border-color:#111}
   #place.floor{background:#ffd400;border-color:#ffd400}#place.floor::after{border:0;height:3px;margin-top:2px;background:#111;width:16px;margin-left:-8px;border-radius:2px}
   #look.on{background:#ffd400;border-color:#ffd400}#look.on::after{background:#111;width:10px;height:10px;border-radius:2px}
@@ -58,11 +62,12 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.16</div>
+<div id="ver">v15.17</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <button id="place" aria-label="The box or an open floor"></button>
 <button id="fig" aria-label="Change the figure"></button>
 <button id="dbg" aria-label="Wireframe and skeleton views"></button>
+<button id="pose" aria-label="Test poses (look mode)"></button>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -103,6 +108,7 @@ import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import * as ort from 'onnxruntime-web';
 import { Brain, BRAIN_STAND, makeCalmGravity } from './sim/brain.js';
+import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
@@ -1014,6 +1020,9 @@ const look = { on: false, yaw: 0, pitch: 0.12, dist: 0, tgt: new THREE.Vector3()
 $('look').onclick = e => {
   e.stopPropagation();
   look.on = !look.on; $('look').classList.toggle('on', look.on);
+  $('pose').style.display = look.on ? 'block' : 'none';
+  if (!look.on && poseIdx !== 0) standUp();   // physics carries on from standing, not from a test pose
+  poseIdx = 0; $('pose').classList.remove('on');
   if (look.on) {
     standUp();
     const p = bodyPoint('Hips'), h = bodyPoint('Head');
@@ -1025,6 +1034,22 @@ $('look').onclick = e => {
   applyPlaceVis();   // looking him over: a plain 50% grey behind him, no box or floor
 };
 for (const ev of ['pointerdown', 'pointerup']) $('look').addEventListener(ev, e => e.stopPropagation());
+// test poses in look mode (user, 12:43: "a new button below for poses ... so we can test how it looks in the
+// extremes"): each tap puts him in the next pose of sim/poses.js (sitting, star, bending to pick up, squat, lunge,
+// reaching up twisting, back to standing); physics stays paused
+let poseIdx = 0;
+$('pose').onclick = e => {
+  e.stopPropagation();
+  if (!look.on) return;
+  poseIdx = (poseIdx + 1) % POSES.length;
+  applyPose(W, mj, POSES[poseIdx], brain ? BRAIN_STAND : STAND);
+  syncFigure();
+  const p = bodyPoint('Hips'), h = bodyPoint('Head');
+  look.tgt.copy(p).lerp(h, 0.25);
+  $('pose').classList.toggle('on', poseIdx !== 0);
+  note(POSES[poseIdx].label, 1500);
+};
+for (const ev of ['pointerdown', 'pointerup']) $('pose').addEventListener(ev, e => e.stopPropagation());
 el.addEventListener('pointerdown', e => { if (look.on) look.drag = { x: e.clientX, y: e.clientY, yaw: look.yaw, pitch: look.pitch, id: e.pointerId }; }, true);
 el.addEventListener('pointermove', e => {
   if (!look.on || !look.drag || e.pointerId !== look.drag.id) return;
