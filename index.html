@@ -50,7 +50,7 @@
   <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance.</p>
   <button id="go">Start</button>
 </div>
-<div id="ver">v4</div>
+<div id="ver">v5</div>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -499,7 +499,7 @@ function standUp() {
     b.velocity.setZero(); b.angularVelocity.setZero();
   }
   physWalls();
-  state = 'stand'; stateT = 0; stun = 0; ungrounded = 0;
+  state = 'stand'; stateT = 0; stun = 0; ungrounded = 0; step = null; stepCool = 0.3;
 }
 
 // ---------- muscles and balance (a small take on Euphoria-style active ragdolls) ----------
@@ -562,110 +562,260 @@ function floorWall(up) {
 const bodyUp = b => b.quaternion.vmult(Y);
 const tiltOf = (b, up) => Math.acos(clamp(bodyUp(b).dot(up), -1, 1));
 
-const feetDown = { L: 9, R: 9 };   // seconds since each foot last stood on something
-function scanContacts(up) {
-  feetDown.L += 1 / 120; feetDown.R += 1 / 120;
+// ---------- feet on the floor ----------
+const feetDown = { L: 9, R: 9 };   // seconds since each foot last stood on the floor
+const handOn = { L: 9, R: 9 };     // seconds since each hand last touched a wall
+function scanContacts(n) {
+  feetDown.L += 1 / 120; feetDown.R += 1 / 120; handOn.L += 1 / 120; handOn.R += 1 / 120;
   for (const c of world.contacts) {
-    for (const [f, key] of [[B.footL, 'L'], [B.footR, 'R']]) {
-      let n = null;
-      if (c.bj === f && c.bi.isWall) n = c.ni;
-      else if (c.bi === f && c.bj.isWall) n = c.ni.negate();
-      if (n && n.dot(up) > Math.cos(45 * DEG)) feetDown[key] = 0;
-    }
+    const wall = c.bi.isWall ? c.bi : c.bj.isWall ? c.bj : null;
+    if (!wall) continue;
+    const other = wall === c.bi ? c.bj : c.bi;
+    const nn = wall === c.bi ? c.ni : c.ni.negate();   // from the wall into the body
+    if (other === B.footL && n && nn.dot(n) > 0.85) feetDown.L = 0;
+    else if (other === B.footR && n && nn.dot(n) > 0.85) feetDown.R = 0;
+    else if (other === B.handL) handOn.L = 0;
+    else if (other === B.handR) handOn.R = 0;
   }
 }
 
-function setPose(kind, up) {
-  for (const j of joints) j.target.copy(IDQ);
-  if (kind !== 'brace') return;
-  // brace: arms out toward the fall, chin tucked, knees soft
+// ---------- poses (targets for the muscles) ----------
+const AX = new CANNON.Vec3(1, 0, 0), AZ = new CANNON.Vec3(0, 0, 1), DOWN = new CANNON.Vec3(0, -1, 0);
+const J = name => joints.find(j => j.name === name);
+const qa = new CANNON.Quaternion(), qb = new CANNON.Quaternion();
+function bend(name, axis, ang) { J(name).target.setFromAxisAngle(axis, ang); }
+
+// aim an upper arm at a point (simple IK: the arm points at it, the elbow gives a little)
+function reachFor(side, point, strength) {
+  const ch = B.chest, sh = J('uArm' + side);
+  const shoulder = ch.position.vadd(ch.quaternion.vmult(sh.cons.pivotA));
+  const dirW = point.vsub(shoulder); dirW.normalize();
+  const dirL = ch.quaternion.conjugate().vmult(dirW);
+  sh.target.setFromVectors(DOWN, dirL);
+  bend('fArm' + side, AX, handOn[side] < 0.1 ? -0.55 : -0.25);
+  // and pull the hand there, the way a muscle chain would
+  const hand = B['hand' + side];
+  const om = 13 * strength, m = 2.2;
+  const f = point.vsub(hand.position).scale(m * om * om).vsub(hand.velocity.scale(2 * 0.9 * m * om));
+  const max = 120 * S * strength, l = f.length();
+  if (l > max) f.scale(max / l, f);
+  hand.force.vadd(f, hand.force);
+  return shoulder;
+}
+
+function setBrace(up) {
   const cu = bodyUp(B.chest);
   const fallDir = cu.vsub(up.scale(cu.dot(up)));
   if (fallDir.length() < 1e-3) return;
   fallDir.normalize();
   const local = B.chest.quaternion.conjugate().vmult(fallDir);
   const dir = new CANNON.Vec3(local.x * 0.9, -0.45, local.z * 0.9 + 0.35); dir.normalize();
-  for (const j of joints) {
-    if (j.name === 'uArmL' || j.name === 'uArmR') j.target.setFromVectors(new CANNON.Vec3(0, -1, 0), dir);
-    else if (j.name === 'fArmL' || j.name === 'fArmR') j.target.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -0.35);
-    else if (j.name === 'head') j.target.setFromAxisAngle(new CANNON.Vec3(local.z >= 0 ? 1 : -1, 0, 0), 0.35);
-    else if (j.name === 'shinL' || j.name === 'shinR') j.target.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), 0.4);
-  }
+  J('uArmL').target.setFromVectors(DOWN, dir); J('uArmR').target.setFromVectors(DOWN, dir);
+  bend('fArmL', AX, -0.35); bend('fArmR', AX, -0.35);
+  bend('head', new CANNON.Vec3(local.z >= 0 ? 1 : -1, 0, 0), 0.35);
+  bend('shinL', AX, 0.4); bend('shinR', AX, 0.4);
 }
 
-const SPRING = ['pelvis', 'chest', 'head'];
+// ---------- balance: centre of mass, capture point, steps, hands on walls ----------
+let step = null, stepCool = 0, idleT = 0;
+const com = new CANNON.Vec3(), comV = new CANNON.Vec3();
+function massCentre() {
+  com.set(0, 0, 0); comV.set(0, 0, 0);
+  for (const nm in B) {
+    const b = B[nm];
+    com.x += b.position.x * b.mass; com.y += b.position.y * b.mass; com.z += b.position.z * b.mass;
+    comV.x += b.velocity.x * b.mass; comV.y += b.velocity.y * b.mass; comV.z += b.velocity.z * b.mass;
+  }
+  com.scale(1 / figMass, com); comV.scale(1 / figMass, comV);
+}
+const ease = s => s * s * (3 - 2 * s);
+
 function control(dt) {
   const real = upNow(), gv = world.gravity;
   const fl = floorWall(real);
-  const up = fl ? fl.u : real;
-  // the part of gravity that presses it onto its floor
+  const up = fl ? fl.u : real;               // upright = real up within the glass's plane
   const g = Math.max(0, -(gv.x * up.x + gv.y * up.y + gv.z * up.z));
-  scanContacts(up);
+  scanContacts(fl ? fl.nv : null);
   stateT += dt;
   if (stun > 0) stun -= dt;
-  const grounded = feetDown.L < 0.12 || feetDown.R < 0.12;
+  if (stepCool > 0) stepCool -= dt;
+  const footDown = { L: feetDown.L < 0.1, R: feetDown.R < 0.1 };
+  const grounded = footDown.L || footDown.R;
   ungrounded = grounded ? 0 : ungrounded + dt;
   const tilt = tiltOf(B.chest, up);
-  const feetC = B.footL.position.vadd(B.footR.position).scale(0.5);
-  const off = B.chest.position.vsub(feetC);
-  const side = off.vsub(up.scale(off.dot(up))).length();
+  massCentre();
+
+  // where gravity would put its weight on the floor, and where it would have to step to stop (the capture point)
+  let n, t, off, cpT = 0, supLo = 0, supHi = 0, hCom = 1, fT = { L: 0, R: 0 };
+  if (fl) {
+    n = fl.nv; off = fl.off;
+    t = new CANNON.Vec3(n.y, -n.x, 0);        // along the floor, in the glass's plane
+    hCom = Math.max(0.2 * S, com.dot(n) + off);
+    const drop = com.vsub(up.scale(hCom / Math.max(0.3, up.dot(n))));   // straight down from the centre of mass
+    const vT = comV.dot(t);
+    cpT = drop.dot(t) + vT * Math.sqrt(hCom / Math.max(2, g));
+    fT.L = B.footL.position.dot(t); fT.R = B.footR.position.dot(t);
+    const half = 0.06 * S;
+    const st = [];
+    if (footDown.L && !(step && step.side === 'L')) st.push(fT.L);
+    if (footDown.R && !(step && step.side === 'R')) st.push(fT.R);
+    if (!st.length) st.push((fT.L + fT.R) / 2);
+    supLo = Math.min(...st) - half; supHi = Math.max(...st) + half;
+  }
+  const outBy = cpT > supHi ? cpT - supHi : cpT < supLo ? cpT - supLo : 0;   // how far past its feet
 
   // what is it doing?
-  if (stun > 0 && state !== 'down' && state !== 'fall') { state = 'fall'; stateT = 0; }
-  // off balance: the chest is out past the feet; a moment of it can be caught, a lot of it can't
-  offT = state !== 'stand' ? 0 : side > 0.5 * S ? offT + dt : Math.max(0, offT - dt);
-  const lost = offT > 0.9 || side > 1.25 * S;
-  if (state === 'stand' && (!fl || tilt > 62 * DEG || ungrounded > 0.45 || lost || SET.balance < 0.02)) { state = 'fall'; stateT = 0; offT = 0; fallWhy = !fl ? 'floor' : tilt > 62 * DEG ? 'tilt' : ungrounded > 0.45 ? 'feet' : lost ? 'side' : 'balance'; }
+  if (stun > 0 && state !== 'down' && state !== 'fall') { state = 'fall'; stateT = 0; step = null; }
+  offT = state !== 'stand' ? 0 : Math.abs(outBy) > 0.55 * S && handOn.L > 0.2 && handOn.R > 0.2 ? offT + dt : Math.max(0, offT - dt);
+  if (state === 'stand' && (!fl || tilt > 58 * DEG || ungrounded > 0.5 || offT > 0.7 || SET.balance < 0.02)) {
+    state = 'fall'; stateT = 0; step = null;
+    fallWhy = !fl ? 'floor' : tilt > 58 * DEG ? 'tilt' : ungrounded > 0.5 ? 'feet' : offT > 0.7 ? 'balance lost' : 'balance';
+  }
   if (state === 'fall') {
     still = B.pelvis.velocity.length() < 0.5 * S ? still + dt : 0;
     if ((still > 0.35 && stateT > 0.4) || stateT > 3) { state = 'down'; stateT = 0; }
   }
   if (state === 'down' && SET.getUp && stun <= 0 && stateT > SET.getUpDelay && SET.balance > 0.02 && fl) { state = 'getup'; stateT = 0; }
   if (state === 'getup') {
-    if (tilt < 14 * DEG && grounded && side < 0.35 * S && stateT > 0.6) { state = 'stand'; stateT = 0; }
+    if (tilt < 14 * DEG && grounded && Math.abs(outBy) < 0.05 * S && stateT > 0.6) { state = 'stand'; stateT = 0; }
     else if (stateT > 3.5 || !fl) { state = 'down'; stateT = 0; }
   }
 
-  // muscles
+  // ---- muscles: the pose for what it's doing ----
+  for (const j of joints) j.target.copy(IDQ);
   const M = SET.muscle * (stun > 0 ? 0.04 : 1);
   let strength = M;
-  if (state === 'fall') { setPose('brace', up); strength = M * 0.65; }
-  else if (state === 'down') { setPose('stand', up); strength = M * 0.22; }
-  else setPose('stand', up);
+  const bal = SET.balance;
+  if (state === 'fall') { setBrace(up); strength = M * 0.65; }
+  else if (state === 'down') strength = M * 0.22;
+  else {
+    bend('shinL', AX, 0.12); bend('shinR', AX, 0.12);     // soft knees
+    bend('thighL', AX, -0.06); bend('thighR', AX, -0.06);
+    // head stays level with the room, whatever the body does
+    qa.setFromVectors(bodyUp(B.chest), up);
+    B.chest.quaternion.conjugate(qb); qb.mult(qa, qb); qb.mult(B.chest.quaternion, J('head').target);
+    // arms out a little when it wobbles
+    const wob = clamp(Math.abs(outBy) / (0.3 * S) + Math.abs(comV.dot(t || AX)) / (2 * S), 0, 1);
+    bend('uArmL', AZ, -0.15 - 0.7 * wob); bend('uArmR', AZ, 0.15 + 0.7 * wob);
+    bend('fArmL', AX, -0.2); bend('fArmR', AX, -0.2);
+  }
+
+  if (state === 'stand' && fl && stun <= 0) {
+    // ---- stepping: the capture point has left the feet, so put a foot there ----
+    if (!step && stepCool <= 0 && Math.abs(outBy) > 0.015 * S) {
+      const side = outBy > 0 ? (fT.L > fT.R ? 'L' : 'R') : (fT.L < fT.R ? 'L' : 'R');   // the foot on the falling side
+      const other = side === 'L' ? 'R' : 'L';
+      let to = cpT + Math.sign(outBy) * 0.07 * S;
+      const minGap = 0.13 * S;
+      if (outBy > 0) to = Math.max(to, fT[other] + minGap); else to = Math.min(to, fT[other] - minGap);
+      const lim = (n.x ? iy : ix) - 0.07 * S;
+      to = clamp(to, -lim, lim);
+      if (Math.abs(to - fT[side]) > 0.03 * S) {
+        const foot = B['foot' + side];
+        step = { side, s: 0, T: 0.26 + 0.05 * S, from: foot.position.clone(), to };
+      }
+    }
+    // a wide stance with nothing to catch: bring the other foot back under
+    idleT = !step && Math.abs(outBy) < 0.01 * S ? idleT + dt : 0;
+    if (!step && stepCool <= 0 && idleT > 0.45 && Math.abs(fT.L - fT.R) > 0.32 * S) {
+      const far = Math.abs(fT.L - cpT) > Math.abs(fT.R - cpT) ? 'L' : 'R';
+      const keep = far === 'L' ? 'R' : 'L';
+      const to = fT[keep] + Math.sign(fT[far] - fT[keep]) * 0.18 * S;
+      step = { side: far, s: 0, T: 0.32 + 0.05 * S, from: B['foot' + far].position.clone(), to };
+      idleT = 0;
+    }
+    if (step) {
+      step.s += dt / step.T;
+      const foot = B['foot' + step.side], s = Math.min(1, step.s);
+      // foot path: across to the target, lifted in the middle, depth kept near the middle of the box
+      const along = step.from.dot(t) + (step.to - step.from.dot(t)) * ease(s);
+      const baseN = -off + 0.03 * S;
+      const z = clamp(step.from.z, -D + 0.12 * S, -0.12 * S);
+      const target = t.scale(along).vadd(n.scale(baseN + 0.13 * S * Math.sin(Math.PI * s)));
+      target.z = z;
+      const legM = (PARTS.thighL.mass + PARTS.shinL.mass + PARTS.footL.mass) * 0.8, om = 20 * Math.sqrt(bal);
+      const f = target.vsub(foot.position).scale(legM * om * om).vsub(foot.velocity.scale(2 * 0.85 * legM * om));
+      f.vadd(n.scale(legM * g * 0.9), f);   // carry the leg's weight while it's in the air
+      foot.force.vadd(f, foot.force);
+      // the swinging leg bends: hip forward, knee back
+      bend('thigh' + step.side, AX, -0.5 * Math.sin(Math.PI * s));
+      bend('shin' + step.side, AX, 0.95 * Math.sin(Math.PI * s));
+      if (step.s >= 1) { step = null; stepCool = 0.08; feetDown.L = Math.min(feetDown.L, 0.05); feetDown.R = Math.min(feetDown.R, 0.05); }
+    }
+    // ---- hands: tilted toward a wall it can reach, it puts a hand on it ----
+    const gt = -up.dot(t);                      // how much gravity pulls along the floor (+ toward +t)
+    const towards = Math.abs(gt) > Math.sin(8 * DEG) ? Math.sign(gt) : Math.abs(outBy) > 0.1 * S ? Math.sign(outBy) : 0;
+    if (towards) {
+      const lim = (n.x ? iy : ix);
+      const wallT = towards * lim;              // the wall along the floor in that direction
+      // which hand is on that side?
+      const lT = B.handL.position.dot(t), rT = B.handR.position.dot(t);
+      const side = (towards > 0) === (lT > rT) ? 'L' : 'R';
+      const ch = B.chest, shoulder = ch.position.vadd(ch.quaternion.vmult(J('uArm' + side).cons.pivotA));
+      const dist = Math.abs(wallT - shoulder.dot(t));
+      const armLen = 0.66 * S;
+      if (dist < armLen * 1.35) {
+        const p = shoulder.vadd(t.scale(wallT - towards * 0.035 * S - shoulder.dot(t))).vsub(up.scale(0.12 * S));
+        p.z = clamp(shoulder.z + 0.05 * S, -D + 0.06 * S, -0.06 * S);
+        reachFor(side, p, Math.min(1, M) * clamp((Math.abs(gt) - Math.sin(5 * DEG)) * 6 + (Math.abs(outBy) > 0.1 * S ? 0.6 : 0), 0.3, 1));
+      }
+    }
+  }
+
   if (strength > 0.005) for (const j of joints) muscle(j, strength);
 
-  // balance: carry its weight and keep it stacked over its feet (the help every active ragdoll gets)
-  let lift = state === 'stand' ? 1 : state === 'getup' ? Math.min(1, stateT / 1.0) : 0;
-  const bal = SET.balance;
-  lift *= Math.min(1, bal);
-  if (lift <= 0 || stun > 0 || !fl) return;
-  // weight carried only while the feet are on the floor, so it can't float away
-  B.pelvis.force.vadd(up.scale(figMass * g * 0.95 * lift * (grounded ? 1 : 0.25)), B.pelvis.force);
-  const om = 9 * Math.sqrt(bal) * lift;
-  const back = new CANNON.Vec3();
-  // the floor point under its feet: heights are measured from the floor, not from the feet
-  const hf = feetC.dot(fl.nv) + fl.off;
-  const g0 = feetC.vsub(up.scale(hf / Math.max(0.5, up.dot(fl.nv))));
-  for (const nm of SPRING) {
+  // ---- carrying its weight on the feet that are down (the help every active ragdoll gets) ----
+  if (stun > 0 || !fl || bal < 0.02) return;
+  if (state === 'stand') {
+    const feet = (footDown.L ? 1 : 0) + (footDown.R ? 1 : 0);
+    const carry = feet ? 0.95 : 0.2;
+    B.pelvis.force.vadd(up.scale(figMass * g * carry * Math.min(1, bal)), B.pelvis.force);
+    // hold the hips at standing height over the floor
+    const hP = B.pelvis.position.dot(n) + off, want = PARTS.pelvis.at[1] * S * 0.985;
+    const om = 8 * Math.sqrt(bal);
+    const fh = n.scale((want - hP) * figMass * om * om * 0.5 - B.pelvis.velocity.dot(n) * figMass * om * 0.9);
+    B.pelvis.force.vadd(fh, B.pelvis.force);
+    // ankles and hips: a limited push of the body back over the feet (a bigger push needs a step)
+    const mid = (supLo + supHi) / 2, here = com.dot(t) - (hCom / Math.max(0.3, up.dot(n))) * up.dot(t);
+    const want2 = (mid - here) * figMass * 16 * bal - comV.dot(t) * figMass * 5 * Math.sqrt(bal);
+    const cap = figMass * g * 0.18 * bal;
+    const push = clamp(want2, -cap, cap);
+    B.pelvis.force.vadd(t.scale(push), B.pelvis.force);
+    for (const f of [B.footL, B.footR]) f.force.vsub(t.scale(push / 2), f.force);
+    // keep off the glass and the back unless gravity leans it there
+    const zf = (-D / 2 - B.pelvis.position.z) * figMass * 6 - B.pelvis.velocity.z * figMass * 2;
+    B.pelvis.force.z += zf * 0.5;
+  } else if (state === 'getup') {
+    const lift = Math.min(1, stateT / 1.0) * Math.min(1, bal);
+    B.pelvis.force.vadd(up.scale(figMass * g * 0.95 * lift * (grounded ? 1 : 0.25)), B.pelvis.force);
+    const om = 9 * Math.sqrt(bal) * lift;
+    const feetC = B.footL.position.vadd(B.footR.position).scale(0.5);
+    const hf = feetC.dot(n) + off;
+    const g0 = feetC.vsub(up.scale(hf / Math.max(0.5, up.dot(n))));
+    const back = new CANNON.Vec3();
+    for (const nm of ['pelvis', 'chest', 'head']) {
+      const b = B[nm];
+      const target = g0.vadd(up.scale(PARTS[nm].at[1] * S));
+      const k = b.mass * om * om * (nm === 'pelvis' ? 1.6 : 1), c = 2 * 0.95 * b.mass * om;
+      const f = target.vsub(b.position).scale(k).vsub(b.velocity.scale(c));
+      b.force.vadd(f, b.force);
+      back.vadd(f.vsub(up.scale(f.dot(up))), back);
+    }
+    B.footL.force.vsub(back.scale(0.5), B.footL.force);
+    B.footR.force.vsub(back.scale(0.5), B.footR.force);
+  } else return;
+  // chest and pelvis upright to the room, feet flat on the floor
+  const lift = state === 'stand' ? 1 : Math.min(1, stateT / 1.0);
+  for (const [nm, kk] of [['chest', 1], ['pelvis', 0.8], ['footL', 0.6], ['footR', 0.6]]) {
     const b = B[nm];
-    const target = g0.vadd(up.scale(PARTS[nm].at[1] * S));
-    const k = b.mass * om * om * (nm === 'pelvis' ? 1.6 : 1), c = 2 * 0.95 * b.mass * om;
-    const f = target.vsub(b.position).scale(k).vsub(b.velocity.scale(c));
-    b.force.vadd(f, b.force);
-    // the sideways part pushes back on the feet, so it can't push itself across the box
-    back.vadd(f.vsub(up.scale(f.dot(up))), back);
-  }
-  B.footL.force.vsub(back.scale(0.5), B.footL.force);
-  B.footR.force.vsub(back.scale(0.5), B.footR.force);
-  // chest and pelvis upright, feet flat
-  for (const [nm, kk] of [['chest', 1], ['pelvis', 1], ['footL', 0.6], ['footR', 0.6]]) {
-    const b = B[nm], want = PARTS[nm].foot ? fl.nv : up;
+    if (step && nm === 'foot' + step.side) continue;
+    const want = PARTS[nm].foot ? n : up;
     const bu = bodyUp(b), ax = bu.cross(want), sn = ax.length(), ang = Math.atan2(sn, bu.dot(want));
     const I = avgInertia(b) * 3, w0 = 14 * Math.sqrt(bal) * lift * kk;
-    const t = new CANNON.Vec3();
-    if (sn > 1e-5) ax.scale(I * w0 * w0 * ang / sn, t);
-    t.vsub(b.angularVelocity.scale(2 * I * w0 * 0.9), t);
-    b.torque.vadd(t, b.torque);
+    const tq = new CANNON.Vec3();
+    if (sn > 1e-5) ax.scale(I * w0 * w0 * ang / sn, tq);
+    tq.vsub(b.angularVelocity.scale(2 * I * w0 * 0.9), tq);
+    b.torque.vadd(tq, b.torque);
   }
 }
 
