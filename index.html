@@ -50,7 +50,7 @@
   <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance.</p>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v6</div>
+<div id="ver">v7</div>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -131,7 +131,7 @@ const camera = new THREE.PerspectiveCamera();
 scene.add(camera);
 
 // ================= dimensions (world units; the screen's short side = 2) =================
-const D = 0.78;      // box depth (half of the first version)
+const D = 1.17;      // box depth: room to kneel and get up
 const LIP = 0.07;    // wall thickness at the rim
 const EYE = 5.2;     // viewing distance
 let hw, hh, ix, iy;
@@ -444,12 +444,12 @@ const JOINTS = [
   ['chest',  'uArmR',  [ 0.24, 1.39, 0],  [1, 0, 0],   [0, 0, 1],  1.75, 1.75, -1.00, 1.00, 0.055, 0.7],
   ['uArmR',  'fArmR',  [ 0.24, 1.11, 0],  [-1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.045, 0.6],
   ['fArmR',  'handR',  [ 0.24, 0.85, 0],  [0, -1, 0],  [1, 0, 0],  0.40, 0.55, -0.50, 0.50, 0.035, 0.4],
-  ['pelvis', 'thighL', [-0.09, 0.87, 0],  [0, -1, 0],  [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.07, 1.6],
-  ['thighL', 'shinL',  [-0.09, 0.46, 0],  [1, 0, 0],   [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.058, 1.6],    // knee: a hinge
-  ['shinL',  'footL',  [-0.09, 0.075, 0], [0, -1, 0],  [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.045, 1.2],
-  ['pelvis', 'thighR', [ 0.09, 0.87, 0],  [0, -1, 0],  [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.07, 1.6],
-  ['thighR', 'shinR',  [ 0.09, 0.46, 0],  [1, 0, 0],   [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.058, 1.6],
-  ['shinR',  'footR',  [ 0.09, 0.075, 0], [0, -1, 0],  [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.045, 1.2],
+  ['pelvis', 'thighL', [-0.09, 0.87, 0],  [0, -1, 0],  [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.07, 2.0],
+  ['thighL', 'shinL',  [-0.09, 0.46, 0],  [1, 0, 0],   [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.058, 2.1],    // knee: a hinge
+  ['shinL',  'footL',  [-0.09, 0.075, 0], [0, -1, 0],  [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.045, 1.6],
+  ['pelvis', 'thighR', [ 0.09, 0.87, 0],  [0, -1, 0],  [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.07, 2.0],
+  ['thighR', 'shinR',  [ 0.09, 0.46, 0],  [1, 0, 0],   [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.058, 2.1],
+  ['shinR',  'footR',  [ 0.09, 0.075, 0], [0, -1, 0],  [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.045, 1.6],
 ];
 
 let S = 1;              // figure scale
@@ -557,7 +557,7 @@ function buildFigure() {
     const pivotB = new CANNON.Vec3(at[0] * S - PARTS[child].at[0] * S, at[1] * S - PARTS[child].at[1] * S, at[2] * S - PARTS[child].at[2] * S);
     c.SetSwingMotorState(Jolt.EMotorState_Position);
     c.SetTwistMotorState(Jolt.EMotorState_Position);
-    joints.push({ A, B: C, name: child, cons: c, k: jd[10], target: new CANNON.Quaternion(), pivotA, str: -1 });
+    joints.push({ A, B: C, name: child, cons: c, k: jd[10], target: new CANNON.Quaternion(), pivotA, str: -1, boost: 1 });
     const ball = new THREE.Mesh(new THREE.SphereGeometry(jd[9] * S, 20, 14), JOINT);
     ball.position.set(pivotB.x, pivotB.y, pivotB.z); ball.castShadow = true;
     meshes[child].add(ball);
@@ -570,7 +570,7 @@ function buildFigure() {
 const jtq = new Jolt.Quat(0, 0, 0, 1);
 function driveMuscles(strength) {
   for (const j of joints) {
-    const s = Math.round(strength * 100) / 100;
+    const s = Math.round(strength * j.boost * 100) / 100;
     if (s !== j.str) {
       j.str = s;
       const on = s > 0.005;
@@ -688,41 +688,72 @@ function setBrace(up) {
   const local = B.chest.quaternion.conjugate().vmult(fallDir);
   const dir = new CANNON.Vec3(local.x * 0.9, -0.45, local.z * 0.9 + 0.35); dir.normalize();
   J('uArmL').target.setFromVectors(DOWN, dir); J('uArmR').target.setFromVectors(DOWN, dir);
-  bend('fArmL', AX, -0.35); bend('fArmR', AX, -0.35);
+  bend('fArmL', AX, -0.25); bend('fArmR', AX, -0.25);
+  armsStrong(2.4);
+  // the hands go for the floor where the fall is headed, to catch it
+  if (curFloor) {
+    const armLen = 0.66 * S;
+    for (const sd of ['L', 'R']) {
+      const sh = shoulderOf(sd);
+      const aim = sh.vadd(fallDir.scale(armLen * 0.75)).vsub(up.scale(armLen * 0.75));
+      const fl = floorUnder(aim, curFloor.nv, curFloor.off);
+      reachFor(sd, aim.dot(curFloor.nv) + curFloor.off < 0.04 * S ? fl : aim, 0.9);
+    }
+  }
   bend('head', new CANNON.Vec3(local.z >= 0 ? 1 : -1, 0, 0), 0.35);
   bend('shinL', AX, 0.4); bend('shinR', AX, 0.4);
 }
+
+// the arms as working limbs: a hand planted on a point, the arm made strong for it
+function armsStrong(f) { for (const j of joints) if (/^(uArm|fArm|hand)/.test(j.name)) j.boost = f; }
+function shoulderOf(side) { return B.chest.position.vadd(B.chest.quaternion.vmult(J('uArm' + side).pivotA)); }
+function plantHand(side, point, strength) {
+  reachFor(side, point, strength);
+  bend('fArm' + side, AX, -0.05);   // elbow locked: the arm is a column that takes weight
+}
+function floorUnder(p, n, off) { return p.vsub(n.scale(p.dot(n) + off - 0.035 * S)); }
 
 function getupPose(up) {
   // each stage of getting up is a shape the muscles make; the hips are helped up stage by stage
   if (gp === 0) {         // roll: one knee up, the far arm reaching across
     bend('thighR', AX, -1.0); bend('shinR', AX, 1.4);
     J('uArmR').target.setFromVectors(DOWN, new CANNON.Vec3(-0.7, 0, 0.7));
-  } else if (gp === 1) {  // hands and knees
+  } else if (gp === 1) {  // hands and knees: hands planted under the shoulders, the arms hold the chest up
     bend('thighL', AX, -1.45); bend('thighR', AX, -1.45);
     bend('shinL', AX, 1.75); bend('shinR', AX, 1.75);
     bend('chest', AX, 0.1); bend('belly', AX, 0.1);
-    J('uArmL').target.setFromVectors(DOWN, new CANNON.Vec3(0, 0, 1));
-    J('uArmR').target.setFromVectors(DOWN, new CANNON.Vec3(0, 0, 1));
     bend('head', AX, -0.5);
-  } else if (gp === 2) {  // kneeling up
+    armsStrong(2.6);
+    if (curFloor) for (const sd of ['L', 'R']) plantHand(sd, floorUnder(shoulderOf(sd), curFloor.nv, curFloor.off), 1);
+  } else if (gp === 2) {  // kneeling up, pushing off the floor with the hands until upright
     bend('thighL', AX, -0.15); bend('thighR', AX, -0.15);
     bend('shinL', AX, 1.7); bend('shinR', AX, 1.7);
-    bend('uArmL', AZ, -0.2); bend('uArmR', AZ, 0.2);
-  } else if (gp === 3) {  // one foot forward
+    armsStrong(2.2);
+    if (curFloor && gpT < 0.45) for (const sd of ['L', 'R']) plantHand(sd, floorUnder(shoulderOf(sd), curFloor.nv, curFloor.off), 1 - gpT / 0.45);
+    else { bend('uArmL', AZ, -0.2); bend('uArmR', AZ, 0.2); }
+  } else if (gp === 3) {  // one foot forward, a hand pressing on that knee
     bend('thighR', AX, -1.5); bend('shinR', AX, 1.5);
     bend('thighL', AX, -0.1); bend('shinL', AX, 1.6);
-    bend('uArmL', AZ, -0.3); bend('uArmR', AX, -0.6);
-  } else {                // pushing up to standing
+    bend('uArmL', AZ, -0.35);
+    armsStrong(2.2);
+    const kneeR = B.thighR.position.vadd(B.thighR.quaternion.vmult(new CANNON.Vec3(0, -PARTS.thighR.limb[1] * S, 0)));
+    plantHand('R', kneeR.vadd(up.scale(0.06 * S)), 0.8);
+  } else {                // pushing up to standing, the hand pushing off the knee at first
     const r = 1 - ease(Math.min(1, gpT / 0.9));
     bend('thighR', AX, -1.5 * r); bend('shinR', AX, 1.5 * r);
     bend('thighL', AX, -0.1 * r); bend('shinL', AX, 1.6 * r + 0.1);
-    bend('uArmL', AZ, -0.3); bend('uArmR', AZ, 0.3);
+    bend('uArmL', AZ, -0.3);
+    if (r > 0.4) {
+      armsStrong(2);
+      const kneeR = B.thighR.position.vadd(B.thighR.quaternion.vmult(new CANNON.Vec3(0, -PARTS.thighR.limb[1] * S, 0)));
+      plantHand('R', kneeR.vadd(up.scale(0.06 * S)), r);
+    } else bend('uArmR', AZ, 0.3);
   }
 }
 
 // ---------- balance: centre of mass, capture point, steps, hands on walls ----------
-let step = null, stepCool = 0, idleT = 0, gp = 0, gpT = 0;
+let step = null, stepCool = 0, idleT = 0, gp = 0, gpT = 0, curFloor = null;
+let life = 0, shiftAmt = 0, shiftTo = 0, shiftNext = 4, faceSide = 1, faceNext = 12;
 const com = new CANNON.Vec3(), comV = new CANNON.Vec3();
 function massCentre() {
   com.set(0, 0, 0); comV.set(0, 0, 0);
@@ -738,6 +769,7 @@ const ease = s => s * s * (3 - 2 * s);
 function control(dt) {
   const real = upNow(), gv = gravity;
   const fl = floorWall(real);
+  curFloor = fl;
   const up = fl ? fl.u : real;               // upright = real up within the glass's plane
   const g = Math.max(0, -(gv.x * up.x + gv.y * up.y + gv.z * up.z));
   scanContacts(fl ? fl.nv : null, fl ? fl.off : 0, dt);
@@ -791,12 +823,13 @@ function control(dt) {
     const GP = [0.9, 1.0, 0.8, 0.7, 0.9];  // roll, hands and knees, kneel, one foot forward, rise
     if (gp === 0 && (face.dot(up) < -0.3 || gpT > GP[0] * 2)) { gp = 1; gpT = 0; }
     else if (gp > 0 && gp < 4 && gpT > GP[gp]) { gp++; gpT = 0; }
-    else if (gp === 4 && gpT > GP[4] && tilt < 16 * DEG) { state = 'stand'; stateT = 0; step = null; stepCool = 0.2; }
-    if (!fl || stateT > 7) { state = 'down'; stateT = 0; }
+    // up: standing takes over, and its balance (a step if needed) deals with any lean left
+    else if (gp === 4 && gpT > GP[4] && (tilt < 22 * DEG || (gpT > GP[4] + 0.8 && tilt < 45 * DEG && grounded))) { state = 'stand'; stateT = 0; step = null; stepCool = 0; }
+    if (!fl || stateT > 11) { state = 'down'; stateT = 0; }
   }
 
   // ---- muscles: the pose for what it's doing ----
-  for (const j of joints) j.target.copy(IDQ);
+  for (const j of joints) { j.target.copy(IDQ); j.boost = 1; }
   const M = SET.muscle * (stun > 0 ? 0.04 : 1);
   let strength = M;
   const bal = SET.balance;
@@ -804,8 +837,18 @@ function control(dt) {
   else if (state === 'down') strength = M * 0.22;
   else if (state === 'getup') getupPose(up);
   else {
-    bend('shinL', AX, 0.12); bend('shinR', AX, 0.12);     // soft knees
-    bend('thighL', AX, -0.06); bend('thighR', AX, -0.06);
+    // Quiet standing as measured in people: knees a little bent and holding the weight (about 7-10 degrees,
+    // more on the leg carrying more), hips slightly flexed, the trunk leaning a touch forward to stay over the feet,
+    // breathing, small quick hip movements every couple of seconds, and every so often the weight moves onto one leg.
+    life += dt;
+    const breath = Math.sin(life * 2 * Math.PI / 4.2);
+    const hipSway = 0.02 * Math.sin(life * 2 * Math.PI / 2.3) + 0.012 * Math.sin(life * 2 * Math.PI / 1.7 + 1.3);
+    const load = shiftAmt;                       // -1 on the left leg ... +1 on the right
+    const kneeL = 0.2 + 0.18 * Math.max(0, load), kneeR = 0.2 + 0.18 * Math.max(0, -load);   // the unloaded knee relaxes more
+    bend('shinL', AX, kneeL); bend('shinR', AX, kneeR);
+    bend('thighL', AX, -0.12 - 0.6 * (kneeL - 0.2) + hipSway); bend('thighR', AX, -0.12 - 0.6 * (kneeR - 0.2) + hipSway);
+    bend('footL', AX, -0.09 - 0.5 * (kneeL - 0.2)); bend('footR', AX, -0.09 - 0.5 * (kneeR - 0.2));
+    bend('belly', AX, 0.05 + 0.012 * breath - hipSway * 0.5); bend('chest', AX, 0.03 + 0.02 * breath);
     // head stays level with the room, whatever the body does
     qa.setFromVectors(bodyUp(B.chest), up);
     B.chest.quaternion.conjugate(qb); qb.mult(qa, qb); qb.mult(B.chest.quaternion, J('head').target);
@@ -883,20 +926,44 @@ function control(dt) {
   if (stun > 0 || !fl || bal < 0.02) return;
   if (state === 'stand') {
     const feet = (footDown.L ? 1 : 0) + (footDown.R ? 1 : 0);
-    const carry = feet ? 0.95 : 0.2;
+    const carry = feet ? 0.8 : 0.2;
     B.pelvis.force.vadd(up.scale(figMass * g * carry * Math.min(1, bal)), B.pelvis.force);
     // hold the hips at standing height over the floor
     const hP = B.pelvis.position.dot(n) + off, want = PARTS.pelvis.at[1] * S * 0.985;
     const om = 8 * Math.sqrt(bal);
     const fh = n.scale((want - hP) * figMass * om * om * 0.5 - B.pelvis.velocity.dot(n) * figMass * om * 0.9);
     B.pelvis.force.vadd(fh, B.pelvis.force);
+    // every 5-11 s it moves its weight onto one leg, then back or across (only when calm)
+    shiftNext -= dt;
+    if (shiftNext <= 0) { shiftTo = Math.abs(shiftTo) > 0.2 ? 0 : (Math.random() < 0.5 ? -1 : 1) * (0.55 + 0.35 * Math.random()); shiftNext = 5 + 6 * Math.random(); }
+    if (step || Math.abs(outBy) > 0.03 * S) shiftTo = 0;
+    shiftAmt += (shiftTo - shiftAmt) * Math.min(1, dt * 1.3);
+    // slow drifts over tens of seconds (the ankles), about a degree
+    const drift = (0.018 * Math.sin(life * 2 * Math.PI / 11) + 0.012 * Math.sin(life * 2 * Math.PI / 27 + 2)) * S;
     // ankles and hips: a limited push of the body back over the feet (a bigger push needs a step)
-    const mid = (supLo + supHi) / 2, here = com.dot(t) - (hCom / Math.max(0.3, up.dot(n))) * up.dot(t);
+    const footMid = (fT.L + fT.R) / 2, halfW = Math.abs(fT.R - fT.L) / 2;
+    const mid = (footDown.L && footDown.R ? footMid + Math.sign(fT.R - fT.L) * shiftAmt * halfW * 0.8 : (supLo + supHi) / 2) + drift, here = com.dot(t) - (hCom / Math.max(0.3, up.dot(n))) * up.dot(t);
     const want2 = (mid - here) * figMass * 16 * bal - comV.dot(t) * figMass * 5 * Math.sqrt(bal);
     const cap = figMass * g * 0.18 * bal;
     const push = clamp(want2, -cap, cap);
     B.pelvis.force.vadd(t.scale(push), B.pelvis.force);
     for (const f of [B.footL, B.footR]) f.force.vsub(t.scale(push / 2), f.force);
+    // it stands turned a little toward the glass rather than square on (about 20 degrees), now and then turning
+    // slightly the other way; the turn comes from the hips and chest, the feet pivoting on the floor
+    if (!step) {
+      const want = (faceSide * 0.36 + 0.06 * Math.sin(life * 2 * Math.PI / 13)) ;
+      const dir = new CANNON.Vec3(Math.sin(want), 0, Math.cos(want));
+      const dirP = dir.vsub(up.scale(dir.dot(up))); dirP.normalize();
+      for (const [nm, kk] of [['pelvis', 1], ['chest', 0.7]]) {
+        const b = B[nm], f = b.quaternion.vmult(new CANNON.Vec3(0, 0, 1));
+        const fP = f.vsub(up.scale(f.dot(up))); if (fP.length() < 1e-3) continue; fP.normalize();
+        const yaw = Math.atan2(fP.cross(dirP).dot(up), fP.dot(dirP));
+        const I = avgInertia(b) * 4, w0 = 6 * kk;
+        const tq = up.scale(I * w0 * w0 * yaw - 2 * I * w0 * 0.9 * b.angularVelocity.dot(up));
+        b.torque.vadd(tq, b.torque);
+      }
+      faceNext -= dt; if (faceNext <= 0) { faceSide = Math.random() < 0.65 ? faceSide : -faceSide; faceNext = 9 + 8 * Math.random(); }
+    }
     // keep off the glass and the back unless gravity leans it there
     const zf = (-D / 2 - B.pelvis.position.z) * figMass * 6 - B.pelvis.velocity.z * figMass * 2;
     B.pelvis.force.z += zf * 0.5;
@@ -904,7 +971,7 @@ function control(dt) {
     // the help to get up, matched to each stage: how high the hips go, how upright the chest is
     const k = Math.min(1, gpT / 0.5) * Math.min(1, bal);
     const hipH = [0.2, 0.47, 0.5, 0.55, 0.55 + 0.42 * ease(Math.min(1, gpT / 0.9))][gp] * S;
-    const carry = [0, 0.55, 0.75, 0.85, 0.95][gp];
+    const carry = [0, 0.3, 0.55, 0.75, 0.9][gp];
     B.pelvis.force.vadd(up.scale(figMass * g * carry * k), B.pelvis.force);
     if (gp > 0) {
       const hP = B.pelvis.position.dot(n) + off, om = 7;
@@ -918,10 +985,6 @@ function control(dt) {
         B.chest.torque.vadd(ax.scale(I * 60 / sn), B.chest.torque);
         B.pelvis.torque.vadd(ax.scale(avgInertia(B.pelvis) * 6 * 60 / sn), B.pelvis.torque);
       }
-    }
-    if (gp === 1) {   // chest held level, a little above the hips
-      const hC = B.chest.position.dot(n) + off, om = 6;
-      B.chest.force.vadd(n.scale(((0.55 * S - hC) * om * om - B.chest.velocity.dot(n) * 2 * om) * B.chest.mass * k), B.chest.force);
     }
     if (gp < 2) return;
   } else return;
