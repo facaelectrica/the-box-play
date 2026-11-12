@@ -59,6 +59,25 @@ export function rotvecToXYZ(rx, ry, rz, out, oi) {
 
 const _tq = new Float64Array(4), _t6 = new Float64Array(6);
 
+// The phone's "down" for the physics, calmed: the accelerometer reports hand tremor and its own noise as tiny tilts,
+// and he answered each one with his feet. The direction follows with time constant `tau` (s) (a dead zone made it
+// worse: noise became small steps); the size (shakes, bumps) passes straight through. Tested with 2 degrees of
+// jitter: feet travel 1.5 cm/s instead of 6.
+export function makeCalmGravity(dead = 0, tau = 0.4) {
+  let u = null;
+  return function calm(g, dt) {
+    const n = Math.hypot(g[0], g[1], g[2]) || 1, v = [g[0] / n, g[1] / n, g[2] / n];
+    if (!u) u = v.slice();
+    const a = Math.acos(Math.max(-1, Math.min(1, u[0] * v[0] + u[1] * v[1] + u[2] * v[2])));
+    if (a > dead) {
+      const k = (1 - Math.exp(-dt / tau)) * (a - dead) / a;
+      for (let i = 0; i < 3; i++) u[i] += (v[i] - u[i]) * k;
+      const l = Math.hypot(u[0], u[1], u[2]); u[0] /= l; u[1] /= l; u[2] /= l;
+    }
+    return [u[0] * n, u[1] * n, u[2] * n];
+  };
+}
+
 export class Brain {
   static async create(W, ort, dir = 'body/', opt = {}) {
     const [meta, bytes] = await Promise.all([
@@ -100,7 +119,11 @@ export class Brain {
     // that much nearer the glass (settleBack) so he settles in the middle.
     this.settleBack = 0.35;
     this.turn = opt.turn ?? 1;
-    this.mass = opt.mass ?? 70;          // kg, while the brain drives him (attach/detach)
+    this.mass = opt.mass ?? 70;
+    // his sense of up = the physics' gravity (calmed in the page by makeCalmGravity). Calming it a second time here made
+    // things worse: when what he feels and what pulls him disagree, he steps (tested: 6 vs 1.5 cm/s of foot travel).
+    this.upDeadband = opt.upDeadband ?? 0;
+    this.upLag = opt.upLag ?? 0.02;          // kg, while the brain drives him (attach/detach)
     this.turnRate = opt.turnRate ?? 2;          // how much the reference's heading follows his (and turns toward the glass)
     this.lost = 0;                    // seconds he has been far from the reference (fallen)
     this.hz = meta.control_hz;
@@ -130,7 +153,7 @@ export class Brain {
       m.actuator_gainprm[10 * a] = kp; m.actuator_biasprm[10 * a + 1] = -kp; m.actuator_biasprm[10 * a + 2] = -kd;
     }
     for (let a = 0; a < m.nu; a++) this.targets[a] = this.W.d.qpos[m.jnt_qposadr[m.actuator_trnid[2 * a]]];
-    this.prev.fill(0); this.refXY = null; this.settled = false; this.tNext = 0; this.lost = 0; this.down = false; this.tone = 1;
+    this.prev.fill(0); this.refXY = null; this.settled = false; this.up = null; this.tNext = 0; this.lost = 0; this.down = false; this.tone = 1;
   }
   // muscle tone: 1 = the trained gains, less = looser (when he has fallen and the tracker has given up)
   setTone(f) {
@@ -184,8 +207,19 @@ export class Brain {
   // read the 23 parts and turn them into the gravity frame (about the floor point under the hips)
   readState() {
     const W = this.W, d = W.d, mj = W.mj, xp = d.xpos, xq = d.xquat, O = mj.mjtObj.mjOBJ_XBODY.value;
-    const g = W.m.opt.gravity, gn = Math.hypot(g[0], g[1], g[2]) || 1;
-    qBetween([-g[0] / gn, -g[1] / gn, -g[2] / gn], [0, 0, 1], this.G);
+    // which way is up, as he feels it: the phone's gravity calmed down. The accelerometer also picks up every small
+    // move of the hand and its own noise; seen raw, he answers each wobble with his feet (user, v15.2: "he shakes so
+    // much... moving his feet like crazy even though the phone is not even moving"). The physics still gets the raw
+    // gravity; only his sense of "up" ignores changes under `upDeadband` and follows bigger ones over ~`upLag` s.
+    const g = W.m.opt.gravity, gn = Math.hypot(g[0], g[1], g[2]) || 1, up = [-g[0] / gn, -g[1] / gn, -g[2] / gn];
+    const U = this.up || (this.up = up.slice());
+    const ang = Math.acos(Math.max(-1, Math.min(1, U[0] * up[0] + U[1] * up[1] + U[2] * up[2])));
+    if (ang > this.upDeadband) {
+      const k = (1 - Math.exp(-(1 / this.hz) / this.upLag)) * (ang - this.upDeadband) / ang;
+      for (let i = 0; i < 3; i++) U[i] += (up[i] - U[i]) * k;
+      const l = Math.hypot(U[0], U[1], U[2]); U[0] /= l; U[1] /= l; U[2] /= l;
+    }
+    qBetween(U, [0, 0, 1], this.G);
     const G = this.G, t = [0, 0, 0];
     for (let b = 0; b < NB; b++) {
       const id = this.bodyId[b];

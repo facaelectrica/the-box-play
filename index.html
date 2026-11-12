@@ -49,7 +49,7 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.3</div>
+<div id="ver">v15.4</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <div id="note"></div>
 <div id="hud">
@@ -82,7 +82,8 @@ import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import * as ort from 'onnxruntime-web';
-import { Brain, BRAIN_STAND } from './sim/brain.js';
+import { Brain, BRAIN_STAND, makeCalmGravity } from './sim/brain.js';
+import { buildLook } from './sim/look.js';
 
 const $ = id => document.getElementById(id);
 const DEG = Math.PI / 180;
@@ -406,14 +407,25 @@ const AUDIT = { n: 0, check() {
 const figRoot = new THREE.Group(); figRoot.rotation.x = -Math.PI / 2; scene.add(figRoot);
 const SHELL = new THREE.MeshStandardMaterial({ color: 0xebe5da, roughness: 0.38 });
 const JOINT = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.48, metalness: 0.15 });
+const JOINT2 = JOINT.clone(); JOINT2.side = THREE.DoubleSide;   // open shapes (the shoulder caps)
 const bodyGroup = [];   // by MuJoCo body id
 function buildFigure() {
   const m = W.m;
+  let look = null;
+  try { look = buildLook(THREE, mergeGeometries, W); } catch (e) { console.warn('mannequin look failed, drawing the plain shapes', e); }
   for (const g of bodyGroup) if (g) { figRoot.remove(g); g.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); movers.splice(movers.indexOf(g), 1); }
   bodyGroup.length = 0;
   for (const name of W.bodyNames) {
     const b = W.bodyId[name], grp = new THREE.Group();
     grp.userData.body = b; bodyGroup[b] = grp; figRoot.add(grp); movers.push(grp);
+    // the v12.1 mannequin, re-fitted to SOMA (sim/look.js); the MJCF's own shapes if that fails
+    if (look) {
+      for (const it of look[name] || []) {
+        const mesh = new THREE.Mesh(it.geo, it.mat === 'shell' ? SHELL : it.mat === 'dark2' ? JOINT2 : JOINT);
+        mesh.castShadow = true; mesh.receiveShadow = true; grp.add(mesh);
+      }
+      continue;
+    }
     let rMin = 9;
     for (let g = 0; g < m.ngeom; g++) {
       if (m.geom_bodyid[g] !== b) continue;
@@ -809,6 +821,7 @@ function lookCamera() {
 // ================= the loop =================
 let acc = 0, last = performance.now(), frameN = 0;
 const lu = new THREE.Vector3();
+const calmG = makeCalmGravity();
 async function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
 
@@ -825,7 +838,8 @@ async function frame(now) {
     gz = -Math.sin(dragS.pitch);
   }
   // real gravity, 9.81 m/s2, in MuJoCo's axes (x right, y into the box, z up)
-  W.setGravity([gx * 9.81, -gz * 9.81, gy * 9.81]);
+  // calmed (sim/brain.js makeCalmGravity): the accelerometer's tremor and noise made him shuffle (user, v15.2)
+  W.setGravity(calmG([gx * 9.81, -gz * 9.81, gy * 9.81], dt));
   // the room's light stays up
   const gl = Math.hypot(gx, gy, gz) || 1;
   lu.set(-gx / gl, -gy / gl, -gz / gl);

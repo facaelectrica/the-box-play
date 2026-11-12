@@ -1,0 +1,18 @@
+{
+ "format": "float32 LE; per frame 23x(pos3 quat4 vel3 ang3) then qpos73 then contacts4",
+ "fps": 30,
+ "clips": {
+  "idle_77_02": {
+   "frames": 235,
+   "floats": 376,
+   "source": "77_02.bvh",
+   "licence": "CMU mocap: free for all uses"
+  },
+  "idle_113_21": {
+   "frames": 342,
+   "floats": 376,
+   "source": "113_21.bvh",
+   "licence": "CMU mocap: free for all uses"
+  }
+ }
+}
