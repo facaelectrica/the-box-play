@@ -52,7 +52,7 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.9</div>
+<div id="ver">v15.10</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <button id="place" aria-label="The box or an open floor"></button>
 <div id="note"></div>
@@ -62,12 +62,21 @@
 </div>
 <div id="opts">
   <div class="head"><b>Options</b><button class="pill" id="optClose">Done</button></div>
+  <div class="grp" style="margin:14px 0 2px;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;opacity:.55">Brain and tests</div>
+  <div class="row"><div class="top"><span>Brain</span><span id="brainNow"></span></div>
+    <select id="brainPick" class="pill" style="width:100%;margin-top:8px"></select>
+    <div class="help">Each trained version of his brain. Picking one reloads the page with it.</div></div>
+  <div class="btns">
+    <button class="pill" id="testShove">Shove him</button>
+    <button class="pill" id="testLie">Lay him down</button>
+  </div>
   <div id="optRows"></div>
   <div class="btns">
     <button class="pill" id="resetFig">Stand it up again</button>
     <button class="pill" id="resetVals">Default values</button>
   </div>
   <div class="figs"><div style="margin-top:16px;font-size:13px;opacity:.7">Figure</div><div class="btns" id="figBtns" style="flex-wrap:wrap;margin-top:8px"></div></div>
+
   <div class="btns"><a class="pill" href="v13/" style="text-align:center;text-decoration:none">The old figure (v13)</a></div>
 </div>
 
@@ -387,7 +396,12 @@ let control = null;
 let brain = null;
 ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/';
 ort.env.wasm.numThreads = 1;
-try { brain = await Brain.create(W, ort, 'body/'); brain.setStandPose(BRAIN_STAND); }
+// which brain (user, 10:29: see each trained model live): ?model=<id>, else the one picked in Options > Brain
+let MODELS = { default: 'nvidia', models: [{ id: 'nvidia', label: 'NVIDIA original', dir: 'body/' }] };
+try { MODELS = await (await fetch('body/models/index.json')).json(); } catch (_) {}
+const modelId = new URLSearchParams(location.search).get('model') || (() => { try { return localStorage.getItem('thebox.model'); } catch (_) { return null; } })() || MODELS.default;
+const MODEL = MODELS.models.find(m => m.id === modelId) || MODELS.models.find(m => m.id === MODELS.default) || MODELS.models[0];
+try { brain = await Brain.create(W, ort, MODEL.dir); brain.setStandPose(BRAIN_STAND); }
 catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; }
 function newController() {
   if (brain) { brain.attach(); brain.told = false; control = brain.control; }
@@ -427,7 +441,7 @@ function standUp() {
 // nothing pushes him but his own servos and the walls (and your finger while you touch him): checked every step
 const AUDIT = { n: 0, check() {
   const q = W.d.qfrc_applied; for (let i = 0; i < q.length; i++) if (q[i] !== 0) { this.n++; return; }
-  if (!poke.on) { const x = W.d.xfrc_applied; for (let i = 0; i < x.length; i++) if (x[i] !== 0) { this.n++; return; } }
+  if (!poke.on && !kick) { const x = W.d.xfrc_applied; for (let i = 0; i < x.length; i++) if (x[i] !== 0) { this.n++; return; } }
 } };
 
 // ================= the figure, drawn from the body file's own shapes =================
@@ -778,6 +792,27 @@ function showFigBtns() {
   }
 }
 showFigBtns();
+// the brain picker (body/models/index.json)
+{
+  const sel = $('brainPick');
+  for (const m of MODELS.models) { const o = document.createElement('option'); o.value = m.id; o.textContent = m.label; if (m.id === MODEL.id) o.selected = true; sel.appendChild(o); }
+  $('brainNow').textContent = brain ? MODEL.label : 'hand-written stand';
+  sel.onchange = () => { try { localStorage.setItem('thebox.model', sel.value); } catch (_) {} const u = new URL(location.href); u.searchParams.set('model', sel.value); location.href = u.toString(); };
+}
+// test buttons: the scorecard's situations, one tap away (a shove at the chest from a random side; lying on his back)
+let kick = null;
+$('testShove').onclick = () => { const a = Math.random() * 2 * Math.PI; kick = { t: 0, fx: Math.cos(a) * 900, fy: Math.sin(a) * 900 }; $('opts').classList.remove('open'); };
+$('testLie').onclick = () => {
+  standUp(); const d = W.d, a = -Math.PI / 2;
+  d.qpos[3] = Math.cos(a / 2); d.qpos[4] = Math.sin(a / 2); d.qpos[5] = 0; d.qpos[6] = 0; d.qpos[2] = -W.box.h / 2 + 0.2;
+  mj.mj_forward(W.m, d); if (brain) { brain.attach(); brain.told = false; } syncFigure(); $('opts').classList.remove('open');
+};
+function testKick() {   // 900 N for 0.15 s at the chest (like the scorecard's shove test)
+  if (!kick) return;
+  const c = W.bodyId.Chest, x = W.d.xfrc_applied;
+  if (kick.t < 0.15) { x[6 * c] = kick.fx; x[6 * c + 1] = kick.fy; kick.t += PHYS.dt; }
+  else { x[6 * c] = 0; x[6 * c + 1] = 0; kick = null; }
+}
 $('resetVals').onclick = () => { for (const o of OPTS) if (o.k) SET[o.k] = o.def; saveSettings(); buildOptions(); applyQuality(); };
 for (const ev of ['pointerdown', 'pointermove', 'touchmove']) $('opts').addEventListener(ev, e => e.stopPropagation(), { passive: true });
 
@@ -931,6 +966,7 @@ async function frame(now) {
   while (acc >= PHYS.dt && n < nMax) {
     if (poke.on) poke.t += PHYS.dt;
     fingerPush();
+    testKick();
     if (brain && control === brain.control && brain.due()) {
       await brain.think();   // the network, 30 times a second
       if (brain.down && !brain.told) { brain.told = true; note("He can't get up on his own yet. Double-tap to stand him up.", 3500); }

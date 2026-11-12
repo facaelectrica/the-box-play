@@ -1,0 +1,5 @@
+{"note": "Brains the page can run (Options > Brain). Each dir holds soma_tracker.onnx + soma_tracker.json. Scores: tools/test/scorecard.mjs.",
+ "default": "nvidia",
+ "models": [
+  {"id": "nvidia", "label": "NVIDIA original", "dir": "body/", "about": "NVIDIA's pretrained SOMA tracker, as in v15"}
+ ]}
