@@ -333,7 +333,8 @@ export class Brain {
     let e = 0; for (let b = 0; b < NB; b++) e = Math.max(e, Math.hypot(this.pos[3 * b] - ref.pos[3 * b], this.pos[3 * b + 1] - ref.pos[3 * b + 1], this.pos[3 * b + 2] - ref.pos[3 * b + 2]));
     this.err = e;
     this.lost = e > 0.5 ? this.lost + dt : Math.max(0, this.lost - dt);
-    if (this.lost > 0.6 && this.pos[2] - this.ground < 0.6) { this.down = true; this.setTone(0.04); }
+    // brains trained to get up (meta.getup, train/job_getup1.sh) keep control on the floor; the others go limp
+    if (!this.meta.getup && this.lost > 0.6 && this.pos[2] - this.ground < 0.6) { this.down = true; this.setTone(0.04); }
     return this.targets;
   }
 }

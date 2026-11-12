@@ -40,9 +40,12 @@
   #fig::after{content:"";position:absolute;left:50%;top:15px;width:12px;height:9px;margin-left:-6px;border-radius:6px 6px 2px 2px;background:rgba(255,235,205,.9)}
   #dbg{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(144px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #dbg::after{content:"";position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border:1.5px dashed rgba(255,235,205,.95);border-radius:50%;box-sizing:border-box}
-  #pose{display:none;position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(188px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #pose{display:none;position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(232px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #pose::before{content:"";position:absolute;left:13px;top:6px;width:6px;height:6px;border-radius:50%;background:rgba(255,235,205,.95)}
   #pose::after{content:"";position:absolute;left:10px;top:13px;width:9px;height:8px;border-left:2px solid rgba(255,235,205,.95);border-bottom:2px solid rgba(255,235,205,.95);transform:skewX(-12deg)}
+  #tilt{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(188px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #tilt::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:16px;margin:-8px 0 0 -5px;border:2px solid rgba(255,235,205,.9);border-radius:3px;box-sizing:border-box}
+  #tilt.on{background:#ffd400;border-color:#ffd400}#tilt.on::after{border-color:#111;transform:rotate(-25deg)}
   #pose.on{background:#ffd400;border-color:#ffd400}#pose.on::before{background:#111}#pose.on::after{border-color:#111}
   #dbg.on{background:#ffd400;border-color:#ffd400}#dbg.on::after{border-color:#111}
   #place.floor{background:#ffd400;border-color:#ffd400}#place.floor::after{border:0;height:3px;margin-top:2px;background:#111;width:16px;margin-left:-8px;border-radius:2px}
@@ -75,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.21</div>
+<div id="ver">v15.22</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -182,6 +185,7 @@ window.BOXLOAD = (() => {
 <button id="fig" aria-label="Change the figure"></button>
 <button id="dbg" aria-label="Wireframe and skeleton views"></button>
 <button id="pose" aria-label="Test poses (look mode)"></button>
+<button id="tilt" aria-label="Phone tilt moves the box (off: gravity stays straight down)"></button>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -737,6 +741,9 @@ const qDev = new THREE.Quaternion(), qBase = new THREE.Quaternion(); let haveBas
 // it, v15.18). Each stand-up re-levels: the held angle, averaged over 0.4 s, becomes level; turning away from it tilts.
 const qLevel = new THREE.Quaternion(), DOWN = new THREE.Vector3(0, -1, 0), gL = new THREE.Vector3();
 let levelPending = true, levelT = 0;
+// user 17:45: by default the phone's tilt does NOT change his gravity (he is tested with the finger: touch pushes, drag
+// pulls); the round phone button turns the tilt on (the angle you hold it at then becomes level)
+let tiltOn = false;
 const eul = new THREE.Euler();
 
 function screenAngle() {
@@ -1166,6 +1173,14 @@ $('place').onclick = e => {
   note(place === 'box' ? 'Back in the box.' : 'Open floor: no walls. Double-tap to stand him up again.', 2400);
 };
 for (const ev of ['pointerdown', 'pointerup']) $('place').addEventListener(ev, e => e.stopPropagation());
+$('tilt').onclick = e => {
+  e.stopPropagation();
+  tiltOn = !tiltOn;
+  $('tilt').classList.toggle('on', tiltOn);
+  if (tiltOn) { gS.copy(gRaw); levelPending = true; levelT = 0; }   // the way you hold the phone now = level
+  note(tiltOn ? 'Phone tilt on: tilting the phone tilts the box.' : 'Phone tilt off: touch him to push, drag to pull.', 2400);
+};
+for (const ev of ['pointerdown', 'pointerup']) $('tilt').addEventListener(ev, e => e.stopPropagation());
 
 // ================= look mode: physics stops, he stands in his default pose, a finger turns the view around him =================
 const look = { on: false, yaw: 0, pitch: 0.12, dist: 0, tgt: new THREE.Vector3(), drag: null };
@@ -1228,7 +1243,9 @@ async function frame(now) {
 
   // which way is down? (in g, screen axes; shakes included)
   let gx, gy, gz;
-  if (mode === 'sensor') {
+  if (mode === 'sensor' && !tiltOn) {
+    gx = 0; gy = -1; gz = 0;
+  } else if (mode === 'sensor') {
     gS.lerp(gRaw, 1 - Math.pow(SET.smooth, dt * 60));
     if (levelPending && (levelT += dt) > 0.4) { qLevel.setFromUnitVectors(gL.copy(gS).normalize(), DOWN); levelPending = false; }
     gL.copy(gS).applyQuaternion(qLevel);
