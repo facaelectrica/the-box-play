@@ -58,7 +58,7 @@
 <div id="start">
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.13</div>
+<div id="ver">v15.14</div>
 <button id="look" aria-label="Freeze and look around"></button>
 <button id="place" aria-label="The box or an open floor"></button>
 <button id="fig" aria-label="Change the figure"></button>
@@ -691,6 +691,52 @@ el.addEventListener('pointerup', e => {
 });
 el.addEventListener('pointercancel', endDrag);
 
+// ================= pinch to zoom (user, 11:05). Two fingers: pinch = zoom (1x to 5x) about the point between them,
+// moving them = pan. Zoom magnifies part of the glass, so tilting still gives the same window parallax. In look mode
+// the pinch moves the orbit camera closer or farther. Mouse wheel does the same on a computer. =================
+let zoom = 1; const zoomC = { x: 0, y: 0 };
+const ptrs = new Map(); let pinch = null;
+function glassAt(sx, sy, z, c) { return { x: c.x + (sx / innerWidth * 2 - 1) * hw / z, y: c.y + (1 - sy / innerHeight * 2) * hh / z }; }
+function setZoom(z, anchorGlass, sx, sy) {
+  zoom = clamp(z, 1, 5);
+  // keep the glass point anchorGlass under screen point (sx, sy), then keep the view inside the glass
+  zoomC.x = anchorGlass.x - (sx / innerWidth * 2 - 1) * hw / zoom;
+  zoomC.y = anchorGlass.y - (1 - sy / innerHeight * 2) * hh / zoom;
+  const mx = hw - hw / zoom, my = hh - hh / zoom;
+  zoomC.x = clamp(zoomC.x, -mx, mx); zoomC.y = clamp(zoomC.y, -my, my);
+}
+el.addEventListener('pointerdown', e => {
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (ptrs.size !== 2) return;
+  // a second finger: this is a pinch, so the first finger's push or tilt-drag is cancelled
+  const [a, b] = [...ptrs.values()];
+  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+  pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, z0: zoom, dist0: look.dist, anchor: glassAt(mx, my, zoom, zoomC) };
+  poke.on = false; drag = null; dragRot.roll = 0; dragRot.pitch = 0; look.drag = null; tapAt = null; lastTap = 0;
+  e.stopImmediatePropagation();
+}, true);
+el.addEventListener('pointermove', e => {
+  if (!ptrs.has(e.pointerId)) return;
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (!pinch || ptrs.size < 2) return;
+  const [a, b] = [...ptrs.values()];
+  const r = Math.hypot(a.x - b.x, a.y - b.y) / pinch.d0, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+  if (look.on) look.dist = clamp(pinch.dist0 / r, 0.6 * S, 8 * S);
+  else setZoom(pinch.z0 * r, pinch.anchor, mx, my);
+  e.stopImmediatePropagation();
+}, true);
+const endPtr = e => {
+  ptrs.delete(e.pointerId);
+  if (pinch) { tapAt = null; if (ptrs.size < 2) { pinch = null; drag = null; look.drag = null; } }
+};
+el.addEventListener('pointerup', endPtr, true); el.addEventListener('pointercancel', endPtr, true);
+el.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = Math.exp(-e.deltaY * 0.0015);
+  if (look.on) { look.dist = clamp(look.dist / f, 0.6 * S, 8 * S); return; }
+  setZoom(zoom * f, glassAt(e.clientX, e.clientY, zoom, zoomC), e.clientX, e.clientY);
+}, { passive: false });
+
 function note(text, ms) {
   const n = $('note'); n.textContent = text; n.classList.add('show');
   clearTimeout(note.t); if (ms) note.t = setTimeout(() => n.classList.remove('show'), ms);
@@ -918,7 +964,9 @@ function updateCamera(dt) {
   camera.quaternion.identity();
   camera.updateMatrixWorld();
   const n = 0.05, f = 40, k = n / ez;
-  camera.projectionMatrix.makePerspective((-hw - ex) * k, (hw - ex) * k, (hh - ey) * k, (-hh - ey) * k, n, f);
+  // pinch zoom: the part of the glass that fills the screen (centre zoomC, half size hw/zoom by hh/zoom)
+  const zw = hw / zoom, zh = hh / zoom, cx = zoomC.x, cy = zoomC.y;
+  camera.projectionMatrix.makePerspective((cx - zw - ex) * k, (cx + zw - ex) * k, (cy + zh - ey) * k, (cy - zh - ey) * k, n, f);
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 }
 
