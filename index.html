@@ -50,7 +50,7 @@
   <p>Your screen is the glass front of a wooden box with a little figure inside. Hold the phone upright and it stands. Turn, tilt and shake the box, and watch it try to keep its balance.</p>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v10</div>
+<div id="ver">v11</div>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -75,6 +75,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import * as CANNON from 'cannon-es';
 import initJolt from 'https://cdn.jsdelivr.net/npm/jolt-physics@1.1.1/dist/jolt-physics.wasm-compat.js';
 
@@ -409,6 +410,7 @@ const syncs = [];
 // ================= the figure: an active ragdoll =================
 const SHELL = new THREE.MeshStandardMaterial({ color: 0xebe5da, roughness: 0.38 });
 const JOINT = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.48, metalness: 0.15 });
+const JOINT2 = JOINT.clone(); JOINT2.side = THREE.DoubleSide;
 
 // standing pose for a figure 1.75 tall, y up, z forward (toward the glass), feet at y = 0; scaled to the box when built
 const PARTS = {
@@ -446,19 +448,19 @@ const JOINTS = [
   ['neck',   'head',   [0, 1.49, 0],          [0, 1, 0],  [1, 0, 0],  0.35, 0.45, -0.60, 0.60, 0.035, 0.9],
   ['chest',  'clavL',  [-0.03, 1.37, 0],      [-1, 0, 0], [0, 0, 1],  0.30, 0.30, -0.20, 0.20, 0.03, 1.0],    // collarbone
   ['clavL',  'uArmL',  [-0.21, 1.36, 0],      [-1, 0, 0], [0, 0, 1],  1.75, 1.75, -1.00, 1.00, 0.05, 0.8],
-  ['uArmL',  'fArmL',  [-0.21, 1.10, 0],      [-1, 0, 0], [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.042, 0.7],   // elbow: a hinge
-  ['fArmL',  'handL',  [-0.21, 0.86, 0],      [0, -1, 0], [1, 0, 0],  0.40, 0.55, -0.50, 0.50, 0.032, 0.4],
+  ['uArmL',  'fArmL',  [-0.21, 1.10, 0],      [-1, 0, 0], [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.037, 0.7],   // elbow: a hinge
+  ['fArmL',  'handL',  [-0.21, 0.86, 0],      [0, -1, 0], [1, 0, 0],  0.40, 0.55, -0.50, 0.50, 0.024, 0.4],
   ['chest',  'clavR',  [ 0.03, 1.37, 0],      [1, 0, 0],  [0, 0, 1],  0.30, 0.30, -0.20, 0.20, 0.03, 1.0],
   ['clavR',  'uArmR',  [ 0.21, 1.36, 0],      [1, 0, 0],  [0, 0, 1],  1.75, 1.75, -1.00, 1.00, 0.05, 0.8],
-  ['uArmR',  'fArmR',  [ 0.21, 1.10, 0],      [-1, 0, 0], [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.042, 0.7],
-  ['fArmR',  'handR',  [ 0.21, 0.86, 0],      [0, -1, 0], [1, 0, 0],  0.40, 0.55, -0.50, 0.50, 0.032, 0.4],
-  ['pelvis', 'thighL', [-0.09, 0.87, 0],      [0, -1, 0], [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.065, 2.7],
-  ['thighL', 'shinL',  [-0.09, 0.47, 0],      [1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.055, 2.9],    // knee: a hinge
-  ['shinL',  'footL',  [-0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.042, 2.1],
+  ['uArmR',  'fArmR',  [ 0.21, 1.10, 0],      [-1, 0, 0], [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.037, 0.7],
+  ['fArmR',  'handR',  [ 0.21, 0.86, 0],      [0, -1, 0], [1, 0, 0],  0.40, 0.55, -0.50, 0.50, 0.024, 0.4],
+  ['pelvis', 'thighL', [-0.09, 0.87, 0],      [0, -1, 0], [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.046, 2.7],
+  ['thighL', 'shinL',  [-0.09, 0.47, 0],      [1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.047, 2.9],    // knee: a hinge
+  ['shinL',  'footL',  [-0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.033, 2.1],
   ['footL',  'toeL',   [-0.09, 0.03, 0.075],  [1, 0, 0],  [0, 0, 1],  0.03, 0.03, -1.00, 0.30, 0.02, 0.8],    // toes: a hinge
-  ['pelvis', 'thighR', [ 0.09, 0.87, 0],      [0, -1, 0], [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.065, 2.7],
-  ['thighR', 'shinR',  [ 0.09, 0.47, 0],      [1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.055, 2.9],
-  ['shinR',  'footR',  [ 0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.042, 2.1],
+  ['pelvis', 'thighR', [ 0.09, 0.87, 0],      [0, -1, 0], [1, 0, 0],  0.60, 1.40, -0.40, 0.40, 0.046, 2.7],
+  ['thighR', 'shinR',  [ 0.09, 0.47, 0],      [1, 0, 0],  [0, 0, 1],  0.03, 0.03,  0.00, 2.40, 0.047, 2.9],
+  ['shinR',  'footR',  [ 0.09, 0.085, 0],     [0, -1, 0], [1, 0, 0],  0.25, 0.65, -0.20, 0.20, 0.033, 2.1],
   ['footR',  'toeR',   [ 0.09, 0.03, 0.075],  [1, 0, 0],  [0, 0, 1],  0.03, 0.03, -1.00, 0.30, 0.02, 0.8],
 ];
 
@@ -471,6 +473,148 @@ let state = 'stand', stateT = 0, stun = 0, ungrounded = 0, still = 0, offT = 0, 
 function figureScale() {
   // about 70% of the box's height, fitting its width and depth
   return clamp(Math.min(0.70 * 2 * iy / 1.75, 2 * ix * 0.62 / 0.53, D * 0.85 / 0.26), 0.35, 2.4);
+}
+
+// ---- sculpted look (drawing only: the physics shapes above stay the simple boxes and capsules) ----
+// A smooth body made of stacked superellipse rings [y, half width, half depth, z shift, x shift], domed at the ends.
+// bump(angle, y) pushes the surface out (angle 0 = toward the glass, +PI/2 = +x).
+function loft(secs, o = {}) {
+  const e = 2 / (o.n || 2), seg = o.seg || 36, sub = o.sub || 4;
+  const sec = secs.map(s => [s[0], s[1], s[2], s[3] || 0, s[4] || 0]);
+  const L = sec.length, at = i => sec[Math.max(0, Math.min(L - 1, i))];
+  const cr = (a, b, c, d, t) => 0.5 * (2 * b + (c - a) * t + (2 * a - 5 * b + 4 * c - d) * t * t + (3 * b - a - 3 * c + d) * t * t * t);
+  let rings = [];
+  for (let i = 0; i < L - 1; i++) for (let k = 0; k < sub; k++) {
+    const r = []; for (let c = 0; c < 5; c++) r.push(cr(at(i - 1)[c], at(i)[c], at(i + 1)[c], at(i + 2)[c], k / sub)); rings.push(r);
+  }
+  rings.push(sec[L - 1]);
+  const cap = (r, h, sg) => { const out = []; for (let k = 1; k <= 5; k++) { const a = k / 6 * PI / 2, c = Math.cos(a); out.push([r[0] + sg * h * Math.sin(a), r[1] * c, r[2] * c, r[3], r[4]]); } return out; };
+  const cb = o.capB || 0, ct = o.capT || 0;
+  const r0 = rings[0], r1 = rings[rings.length - 1];
+  if (cb) rings = cap(r0, cb, -1).reverse().concat(rings);
+  if (ct) rings = rings.concat(cap(r1, ct, 1));
+  const pos = [r0[4], r0[0] - cb, r0[3]];
+  for (const [y, w, d, oz, ox] of rings) for (let j = 0; j < seg; j++) {
+    let th = j / seg * 2 * PI; const s = Math.sin(th), c = Math.cos(th); if (th > PI) th -= 2 * PI;
+    const b = o.bump ? o.bump(th, y) : 0;
+    pos.push(ox + w * Math.sign(s) * Math.pow(Math.abs(s), e) + b * s, y, oz + d * Math.sign(c) * Math.pow(Math.abs(c), e) + b * c);
+  }
+  pos.push(r1[4], r1[0] + ct, r1[3]);
+  const idx = [], R = rings.length, top = 1 + R * seg, v = (i, j) => 1 + i * seg + (j % seg);
+  for (let j = 0; j < seg; j++) {
+    idx.push(v(0, j), 0, v(0, j + 1));
+    for (let i = 0; i < R - 1; i++) idx.push(v(i, j), v(i, j + 1), v(i + 1, j), v(i, j + 1), v(i + 1, j + 1), v(i + 1, j));
+    idx.push(v(R - 1, j), v(R - 1, j + 1), top);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+const gau = (x, s) => Math.exp(-(x * x) / (s * s));
+const angTo = (th, a) => { let d = th - a; while (d > PI) d -= 2 * PI; while (d < -PI) d += 2 * PI; return d; };
+// a capsule from point p along direction dir (figure units)
+function seg3(p, dir, len, r) {
+  const g = new THREE.CapsuleGeometry(r, len, 4, 10); g.deleteAttribute('uv');
+  const d = new THREE.Vector3(...dir).normalize();
+  g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d));
+  g.translate(p[0] + d.x * len / 2, p[1] + d.y * len / 2, p[2] + d.z * len / 2);
+  return { g, end: [p[0] + d.x * len, p[1] + d.y * len, p[2] + d.z * len] };
+}
+function finger(base, dir, lens, r, curl) {
+  const out = []; let p = base, d = new THREE.Vector3(...dir).normalize();
+  for (const l of lens) {
+    const s = seg3(p, [d.x, d.y, d.z], l, r); out.push(s.g); p = s.end;
+    d.applyAxisAngle(new THREE.Vector3(1, 0, 0), -curl);     // bends toward the palm (+z before the hand is turned)
+  }
+  return out;
+}
+function bareGeo(g) { if (g.getAttribute('uv')) g.deleteAttribute('uv'); return g; }
+
+// shapes in figure units (1.75 tall), centred on each part's own position
+function sculpt(nm) {
+  const side = nm.endsWith('L') ? -1 : 1, base = nm.replace(/[LR]$/, '');
+  switch (base) {
+    case 'chest': return { g: loft([
+        [-0.110, 0.122, 0.082], [-0.070, 0.131, 0.088, 0.003], [-0.020, 0.144, 0.096, 0.005], [0.030, 0.156, 0.099, 0.004],
+        [0.065, 0.168, 0.096], [0.090, 0.170, 0.087, -0.004], [0.108, 0.148, 0.074, -0.006], [0.120, 0.090, 0.058, -0.008]],
+        { n: 2.6, capB: 0.004, capT: 0.012, seg: 48, bump: (th, y) =>
+          0.012 * (gau(angTo(th, 0.45), 0.32) + gau(angTo(th, -0.45), 0.32)) * gau(y - 0.02, 0.04)      // chest muscles
+          - 0.004 * gau(th, 0.07) * gau(y - 0.0, 0.07)                                                    // breastbone line
+          + 0.008 * (gau(angTo(th, PI - 0.5), 0.35) + gau(angTo(th, -PI + 0.5), 0.35)) * gau(y - 0.04, 0.045) // shoulder blades
+          - 0.003 * gau(angTo(th, PI), 0.08) }) };                                                          // spine
+    case 'belly': return { g: loft([[-0.060, 0.116, 0.080], [-0.020, 0.110, 0.077], [0.030, 0.113, 0.079], [0.058, 0.120, 0.082]],
+        { n: 2.4, capB: 0.006, capT: 0.006, seg: 44, bump: (th, y) =>
+          0.004 * (gau(angTo(th, 0.2), 0.14) + gau(angTo(th, -0.2), 0.14)) - 0.004 * gau(angTo(th, PI), 0.08) }) };
+    case 'pelvis': return { g: loft([[-0.074, 0.060, 0.064, 0.008], [-0.058, 0.110, 0.084, 0.002], [-0.030, 0.138, 0.090], [0.005, 0.142, 0.092],
+        [0.040, 0.132, 0.087], [0.070, 0.121, 0.082]],
+        { n: 2.4, capB: 0.012, capT: 0.004, seg: 44, bump: (th, y) =>
+          0.011 * (gau(angTo(th, PI - 0.55), 0.4) + gau(angTo(th, -PI + 0.55), 0.4)) * gau(y + 0.025, 0.04)  // seat
+          - 0.006 * gau(angTo(th, PI), 0.06) * gau(y + 0.04, 0.04) }) };
+    case 'neck': return { g: loft([[-0.045, 0.042, 0.040], [-0.015, 0.036, 0.036], [0.015, 0.035, 0.035], [0.045, 0.037, 0.037]],
+        { capB: 0.008, capT: 0.008, seg: 24 }), dark: 1 };
+    case 'head': {
+      const r = PARTS.head.head;
+      const g = loft([
+        [-1.20, 0.16, 0.12, 0.40], [-1.12, 0.34, 0.26, 0.30], [-0.98, 0.52, 0.45, 0.16], [-0.72, 0.66, 0.63, 0.07],
+        [-0.40, 0.76, 0.76, 0.02], [-0.05, 0.83, 0.86, -0.02], [0.25, 0.86, 0.90, -0.05], [0.50, 0.835, 0.88, -0.07]],
+        { capB: 0.03, capT: 0.52, seg: 64, sub: 6, bump: (th, y) => {
+          const ny = y > -0.34 ? clamp((0.12 - y) / 0.46, 0, 1) : clamp((y + 0.58) / 0.24, 0, 1);
+          return 0.17 * gau(th, 0.09 + 0.05 * ny) * ny * Math.sqrt(ny)                                   // nose
+            + 0.05 * gau(th, 0.6) * gau(y - 0.15, 0.07)                                                     // brow
+            - 0.035 * (gau(angTo(th, 0.36), 0.15) + gau(angTo(th, -0.36), 0.15)) * gau(y - 0.0, 0.1)       // eye sockets
+            + 0.025 * (gau(angTo(th, 0.75), 0.2) + gau(angTo(th, -0.75), 0.2)) * gau(y + 0.22, 0.12)       // cheekbones
+            + 0.012 * gau(th, 0.3) * gau(y + 0.66, 0.09)                                                    // mouth, barely there
+            + 0.035 * gau(th, 0.28) * gau(y + 1.02, 0.09);                                                  // chin
+        } });
+      g.scale(r, r, r);
+      const ears = [-1, 1].map(sx => { const e = new THREE.SphereGeometry(1, 16, 12); e.deleteAttribute('uv');
+        e.scale(0.11 * r, 0.27 * r, 0.19 * r); e.rotateY(sx * 0.25); e.translate(sx * 0.82 * r, -0.12 * r, -0.10 * r); return e; });
+      return { g: mergeGeometries([g, ...ears]) };
+    }
+    case 'clav': {   // dark shoulder cap over the ball, like the reference figure
+      const g = new THREE.SphereGeometry(0.058, 24, 10, 0, 2 * PI, 0, 0.40 * PI); g.deleteAttribute('uv');
+      g.scale(1, 0.8, 0.95); g.rotateZ(-side * 0.55); g.translate(side * 0.118, -0.006, 0);
+      return { g, dark: 1, both: 1 };
+    }
+    case 'uArm': return { g: loft([[-0.092, 0.031, 0.033], [-0.050, 0.035, 0.038], [0.010, 0.040, 0.043], [0.060, 0.043, 0.044], [0.086, 0.040, 0.041]],
+        { capB: 0.016, capT: 0.02, bump: (th, y) => 0.004 * gau(th, 0.6) * gau(y - 0.0, 0.04) }) };
+    case 'fArm': return { g: loft([[-0.088, 0.023, 0.020], [-0.050, 0.028, 0.026], [0.0, 0.034, 0.033], [0.050, 0.038, 0.036], [0.078, 0.035, 0.034]],
+        { capB: 0.012, capT: 0.018 }) };
+    case 'thigh': return { g: loft([[-0.150, 0.043, 0.046], [-0.100, 0.049, 0.053, 0.002], [-0.030, 0.055, 0.060, 0.003], [0.050, 0.061, 0.065],
+        [0.120, 0.065, 0.066], [0.150, 0.063, 0.062]],
+        { capB: 0.022, capT: 0.03, bump: (th, y) => 0.005 * gau(th, 0.5) * gau(y + 0.02, 0.07) }) };
+    case 'shin': return { g: loft([[-0.150, 0.026, 0.028], [-0.100, 0.031, 0.034, -0.003], [-0.020, 0.039, 0.045, -0.008], [0.060, 0.044, 0.050, -0.010],
+        [0.110, 0.044, 0.045, -0.004], [0.140, 0.041, 0.041]],
+        { capB: 0.018, capT: 0.022 }) };
+    case 'hand': {
+      // palm toward +z, fingers down, thumb on the side that ends up toward the glass; then turned so the palm faces the leg
+      const sx = side;
+      const parts = [loft([[0.046, 0.019, 0.012], [0.030, 0.026, 0.0140], [0.004, 0.029, 0.0145], [-0.008, 0.028, 0.0135]],
+        { n: 3, capB: 0.004, capT: 0.007, seg: 28 })];
+      const fx = [-0.0195, -0.0066, 0.0066, 0.0195], fl = [0.034, 0.042, 0.046, 0.043];   // little finger to index (thumb side last)
+      fx.forEach((x, i) => parts.push(...finger([sx * x, -0.008, 0.001], [0.02 * sx * Math.sign(x), -1, 0], [fl[i] * 0.48, fl[i] * 0.32, fl[i] * 0.22], 0.0071, 0.22)));
+      parts.push(...finger([sx * 0.021, 0.012, 0.011], [sx * 0.04, -0.95, 0.3], [0.018, 0.015], 0.0078, 0.12));
+      const g = mergeGeometries(parts.map(bareGeo));
+      g.rotateY(-sx * PI / 2);
+      return { g, dark: 1 };
+    }
+    case 'foot': {   // the shoe: loft from heel to ball of the foot, then laid along z
+      const g = loft([[-0.070, 0.028, 0.025, 0.004], [-0.040, 0.034, 0.029, 0.0], [0.0, 0.038, 0.030, 0.0], [0.040, 0.041, 0.025, 0.005], [0.075, 0.042, 0.020, 0.010]],
+        { n: 3, capB: 0.012, seg: 32 });
+      g.rotateX(PI / 2);
+      return { g, dark: 1 };
+    }
+    case 'toe': {
+      const g = loft([[-0.035, 0.041, 0.020, 0.002], [0.0, 0.040, 0.018, 0.0045], [0.024, 0.035, 0.0135, 0.009]], { n: 3, capT: 0.012, seg: 32 });
+      g.rotateX(PI / 2);
+      return { g, dark: 1 };
+    }
+  }
+}
+function partMesh(nm) {
+  const sc = sculpt(nm);
+  sc.g.scale(S, S, S);
+  return new THREE.Mesh(sc.g, sc.both ? JOINT2 : sc.dark ? JOINT : SHELL);
 }
 
 function buildFigure() {
@@ -498,23 +642,15 @@ function buildFigure() {
     if (P.box) {
       const [w, h, d] = P.box.map(v => v * S);
       shape = new Jolt.BoxShape(new Jolt.Vec3(w / 2, h / 2, d / 2), Math.min(w, h, d) * 0.35);
-      mesh = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 4, Math.min(w, h, d) * 0.42), SHELL);
     } else if (P.limb) {
       const r = P.limb[0] * S, h = P.limb[1] * S;
       shape = new Jolt.CapsuleShape(Math.max(0.005, h - r), r);
-      mesh = new THREE.Mesh(new THREE.CapsuleGeometry(r, Math.max(0.01, 2 * h * 0.86 - 2 * r), 6, 16), SHELL);
     } else {
       const r = P.head * S;
       shape = new Jolt.SphereShape(r * 1.06);
-      const g = new THREE.SphereGeometry(r, 32, 24); g.scale(0.92, 1.25, 1.0);
-      mesh = new THREE.Mesh(g, SHELL);
-      for (const sx of [-1, 1]) {
-        const eye = new THREE.Mesh(new THREE.SphereGeometry(r * 0.12, 12, 8), JOINT);
-        eye.position.set(sx * r * 0.36, r * 0.12, r * 0.93); eye.scale.z = 0.4;
-        mesh.add(eye);
-      }
     }
     part.SetShape(shape);
+    mesh = partMesh(nm);
     part.mPosition = new Jolt.RVec3(P.at[0] * S, P.at[1] * S, P.at[2] * S);
     part.mRotation = new Jolt.Quat(0, 0, 0, 1);
     part.mMotionType = Jolt.EMotionType_Dynamic;
@@ -568,7 +704,11 @@ function buildFigure() {
     c.SetSwingMotorState(Jolt.EMotorState_Position);
     c.SetTwistMotorState(Jolt.EMotorState_Position);
     joints.push({ A, B: C, name: child, cons: c, k: jd[10], target: new CANNON.Quaternion(), pivotA, str: -1, boost: 1 });
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(jd[9] * S, 20, 14), JOINT);
+    let ball;
+    if (child === 'belly' || child === 'chest') {   // the torso joints show as a dark band at the waist, not a ball
+      ball = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 0.014 * S, 40), JOINT);
+      ball.scale.set(0.112 * S, 1, 0.076 * S);
+    } else ball = new THREE.Mesh(new THREE.SphereGeometry(jd[9] * S, 20, 14), JOINT);
     ball.position.set(pivotB.x, pivotB.y, pivotB.z); ball.castShadow = true;
     meshes[child].add(ball);
   }
