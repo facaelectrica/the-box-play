@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.28</div>
+<div id="ver">v15.29</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -554,6 +554,7 @@ const sessionP = (async () => {
   // brains trained on idle recordings (train/relax1.py, meta.idle = the clip's name) follow that recording, played back
   // and forth, instead of the frozen standing pose (user 23:23: "people are always moving because they're breathing")
   let idle = null;
+  if (MODEL.idle) meta.idle = MODEL.idle;   // a picker entry can give any brain a recording to follow
   if (meta.idle) try { idle = await LOAD.take('body/clips/' + meta.idle + '.bin', 'Brain', 514368); } catch (e) { console.warn('idle clip', e); }
   try { ort.env.wasm.wasmBinary = await LOAD.take('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort-wasm-simd-threaded.wasm', 'Brain engine', 14848852); }
   catch (e) { console.warn('ORT wasm preload failed, ORT fetches it itself', e); }

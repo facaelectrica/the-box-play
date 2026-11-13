@@ -31,6 +31,19 @@
    "about": "BONES-SEED recording (Bones Studio, bones.studio; SOMA uniform, loaded with NVIDIA ProtoMotions) played straight onto the body: no physics, no brain. Test only."
   },
   {
+   "id": "nv_seed_idle",
+   "label": "NVIDIA brain + physics, following BONES neutral idle",
+   "dir": "body/",
+   "idle": "seed_idle_A121",
+   "about": "NVIDIA original tracker (trained on BONES-SEED in IsaacLab) following the BONES idle recording, with physics."
+  },
+  {
+   "id": "nv_seed_rightleg",
+   "label": "NVIDIA brain + physics, following BONES weight-on-one-leg idle",
+   "dir": "body/",
+   "idle": "seed_idle_rightleg_A419"
+  },
+  {
    "id": "nvidia",
    "label": "NVIDIA original",
    "dir": "body/",
