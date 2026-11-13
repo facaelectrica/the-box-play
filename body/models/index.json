@@ -16,7 +16,7 @@
   },
   {
    "id": "live",
-   "label": "Live training (b2s, saved 20:25)",
+   "label": "Live training (relax1, saved 01:13)",
    "dir": "body/models/live/",
    "about": "The newest checkpoint of the training that is running now (updated every ~10 min). Derived from NVIDIA's model (NVIDIA Open Model License)."
   }
