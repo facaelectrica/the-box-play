@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.27</div>
+<div id="ver">v15.28</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -885,7 +885,7 @@ el.addEventListener('pointerdown', e => {
   // a second finger: this is a pinch, so the first finger's push or tilt-drag is cancelled
   const [a, b] = [...ptrs.values()];
   const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-  pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, z0: zoom, dist0: look.dist, anchor: glassAt(mx, my, zoom, zoomC) };
+  pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, z0: zoom, dist0: look.dist, anchor: glassAt(mx, my, zoom, zoomC), mx, my, tgt0: look.tgt.clone() };
   poke.on = false; drag = null; dragRot.roll = 0; dragRot.pitch = 0; look.drag = null; tapAt = null; lastTap = 0;
   e.stopImmediatePropagation();
 }, true);
@@ -895,7 +895,13 @@ el.addEventListener('pointermove', e => {
   if (!pinch || ptrs.size < 2) return;
   const [a, b] = [...ptrs.values()];
   const r = Math.hypot(a.x - b.x, a.y - b.y) / pinch.d0, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-  if (look.on) look.dist = clamp(pinch.dist0 / r, 0.6 * S, 8 * S);
+  if (look.on) {
+    look.dist = clamp(pinch.dist0 / r, 0.6 * S, 8 * S);
+    // two fingers moving together pan the view (user, Nov 13 09:47): the point under them moves with them
+    const k = 2 * look.dist * Math.tan(camera.fov * Math.PI / 360) / innerHeight;
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    look.tgt.copy(pinch.tgt0).addScaledVector(right, -(mx - pinch.mx) * k).addScaledVector(up, (my - pinch.my) * k);
+  }
   else setZoom(pinch.z0 * r, pinch.anchor, mx, my);
   e.stopImmediatePropagation();
 }, true);
@@ -1195,7 +1201,7 @@ $('look').onclick = e => {
   if (!look.on && poseIdx !== 0) standUp();   // physics carries on from standing, not from a test pose
   poseIdx = 0; $('pose').classList.remove('on');
   if (look.on) {
-    standUp();
+    if (!PLAY) standUp();
     const p = bodyPoint('Hips'), h = bodyPoint('Head');
     look.tgt.copy(p).lerp(h, 0.25);
     look.yaw = 0; look.pitch = 0.1; look.dist = 1.75 * S * 1.75;
@@ -1270,7 +1276,7 @@ async function frame(now) {
   lightUp.lerp(lu, Math.min(1, dt * 4)).normalize();
   placeLight();
 
-  if (PLAY && !look.on) { playRecording(dt); acc = 0; } else gaze(dt);
+  if (PLAY) { playRecording(dt); acc = 0; } else gaze(dt);
   // physics in real time, in small steps
   acc += (look.on || PLAY) ? 0 : dt;
   let n = 0;
