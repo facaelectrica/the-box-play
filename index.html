@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.31</div>
+<div id="ver">v15.32</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -461,13 +461,15 @@ spot.shadow.normalBias = 0.02;
 scene.add(spot, spot.target);
 scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12));
 const lightUp = new THREE.Vector3(0, 1, 0);
+// open floor: the view (and the key light with it) pans sideways to follow him (user 14:58); 0 in the box
+let camPan = 0; const _panV = new THREE.Vector3();
 function placeLight() {
   const dir = new THREE.Vector3(lightUp.x * 0.75, lightUp.y * 0.75, 0.85);
   if (dir.z < 0.55) dir.z = 0.55;
   dir.normalize();
   const dist = 4.6;
-  spot.position.set(dir.x * dist, dir.y * dist, -D / 2 + dir.z * dist);
-  spot.target.position.set(0, 0, -D * 0.7);
+  spot.position.set(dir.x * dist + camPan, dir.y * dist, -D / 2 + dir.z * dist);
+  spot.target.position.set(camPan, 0, -D * 0.7);
   spot.angle = Math.atan((Math.max(hw, hh) + 0.4) / dist) + 0.12;
 }
 
@@ -1178,7 +1180,9 @@ function updateCamera(dt) {
   const lim = 1.4, gain = EYE * SET.view;
   ex = lim * Math.tanh(gain * ex / lim); ey = lim * Math.tanh(gain * ey / lim);
   const ez = EYE;
-  camera.position.set(ex, ey, ez);
+  const panTo = place === 'floor' ? bodyPoint('Hips', _panV).x : 0;
+  camPan += (panTo - camPan) * (1 - Math.exp(-dt / 0.5));
+  camera.position.set(ex + camPan, ey, ez);
   camera.quaternion.identity();
   camera.updateMatrixWorld();
   const n = 0.05, f = 40, k = n / ez;
