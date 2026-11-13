@@ -1,7 +1,7 @@
 // The Box - physics layer (MuJoCo). Shared by the page and the Node tests.
 //
 // Rules (claude/plan-humanoid-body-nov12.md):
-//  - the body comes from an MJCF file (body/soma23_humanoid.xml); swapping bodies = swapping that file + GAINS below
+//  - the body comes from an MJCF file (body/soma23_box.xml); swapping bodies = swapping that file + GAINS below
 //  - real units: metres, kilograms, seconds, g = 9.81. The box is sized around the person, never the person to the box
 //  - one call turns the phone's tilt into gravity: setGravity(vec)
 //  - joints are PD position servos with torque limits (what trained policies output), as ProtoMotions sets them up:
@@ -10,7 +10,7 @@
 //
 // MuJoCo frame: z up, x to the right of the screen, y into the box (away from you). The glass is the plane y = 0.
 
-export const BODY_FILE = 'body/soma23_humanoid.xml';
+export const BODY_FILE = 'body/soma23_box.xml';   // v15.31: the body training uses too (see the file's header)
 
 // torque limits by joint (ProtoMotions robot_configs/soma23.py, override_control_info)
 export const EFFORT = [
@@ -28,12 +28,12 @@ export const PHYS = {
   T: 0.5,               // wall slab half-thickness
 };
 
-// walls: thick static slabs, sized once (huge in their plane) and moved when the box changes shape
+// walls: thick static slabs (contact margin 0, as training's floor: the body's geoms bring the 1 mm), sized once (huge in their plane) and moved when the box changes shape
 const WALLS = ['glass', 'back', 'left', 'right', 'floor', 'ceil'];
 function wallXML() {
   const T = PHYS.T, L = 20, rgba = 'rgba="0 0 0 0"';
   // each wall is a mocap body (moved by us, never by the physics), so the box can change shape while he is in it
-  const g = (n, sx, sy, sz) => `<body name="wall_${n}" mocap="true"><geom name="wall_${n}" type="box" size="${sx} ${sy} ${sz}" ${rgba} friction="${PHYS.wallFriction} 0.005 0.0001" contype="1" conaffinity="7" condim="3"/></body>`;
+  const g = (n, sx, sy, sz) => `<body name="wall_${n}" mocap="true"><geom name="wall_${n}" type="box" size="${sx} ${sy} ${sz}" ${rgba} friction="${PHYS.wallFriction} 0.005 0.0001" contype="1" conaffinity="7" condim="3" margin="0"/></body>`;
   return [g('glass', L, T, L), g('back', L, T, L), g('left', T, L, L), g('right', T, L, L), g('floor', L, L, T), g('ceil', L, L, T)].join('\n');
 }
 
@@ -44,7 +44,8 @@ export function sceneXML(bodyXml) {
   x = x.replace(/<light[^>]*\/>/g, '');
   x = x.replace('</worldbody>', wallXML() + '\n</worldbody>');
   // the neck's capsule sits inside the collarbones' at rest: let them overlap (they'd shove each other forever)
-  x = x.replace('<contact>', `<contact>
+  // (the body file says this itself since v15.31, so training reads the same rule; older files get it here)
+  if (!x.includes("body1='Neck1' body2='RightShoulder'")) x = x.replace('<contact>', `<contact>
       <exclude body1='Neck1' body2='RightShoulder'/>
       <exclude body1='Neck1' body2='LeftShoulder'/>`);
   const opt = `<option timestep="${PHYS.dt}" gravity="0 0 -9.81" integrator="implicitfast"/>`;

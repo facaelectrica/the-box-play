@@ -1,6 +1,6 @@
 // Test poses for look mode (user, 12:43: "a sitting pose, a star pose, a bending to pick up something pose ... so we
 // can test how it looks in the extremes"). Joint values are SOMA hinge angles in radians (`<Body>_<x|y|z>`); a pose
-// gives the right side and the middle, and the left side is mirrored (left = -right on every axis, as in BRAIN_STAND).
+// gives the right side and the middle, and the left side is mirrored (x axis: left = right; y, z: left = -right).
 // root: the whole body's lean, degrees forward (pitch) and to his left (roll). Drawing only: physics is paused in look mode.
 //
 // Signs (T-pose frame: x = his left, -y = forward, z = up):
@@ -12,7 +12,9 @@ function mirror(right) {
   const out = {};
   for (const [k, v] of Object.entries(right)) {
     out[k] = v;
-    if (k.startsWith('Right')) out['Left' + k.slice(5)] = -v;
+    // mirror across his middle: turns about x (his left-right axis) keep their sign, about y and z flip. Since v15.31
+    // the left x hinges point +x like the right ones (body/soma23_box.xml); before, they pointed -x and got -v.
+    if (k.startsWith('Right')) out['Left' + k.slice(5)] = k.endsWith('_x') ? v : -v;
   }
   return out;
 }
@@ -35,7 +37,7 @@ export const POSES = [
       RightArm_y: -0.2, RightArm_z: 1.3 }) },
   { id: 'lunge', label: 'Lunge', root: [0, 0], joints: {
       RightLeg_x: -1.35, RightShin_x: 1.45, RightFoot_x: 0.0,
-      LeftLeg_x: -0.35, LeftShin_x: -1.2, LeftFoot_x: -0.5, LeftToeBase_x: 0.6,
+      LeftLeg_x: 0.35, LeftShin_x: 1.2, LeftFoot_x: 0.5, LeftToeBase_x: -0.6,   // v15.31: left x hinges point +x now
       RightArm_y: -1.2, LeftArm_y: 1.2, RightArm_z: 0.5, LeftArm_z: -0.5, RightForeArm_z: 0.5, LeftForeArm_z: -0.5 } },
   { id: 'reach', label: 'Reaching up, twisting', root: [0, 0], joints: {
       RightArm_y: 1.45, LeftArm_y: -1.3, RightForeArm_z: 0.15, LeftForeArm_z: -0.3,

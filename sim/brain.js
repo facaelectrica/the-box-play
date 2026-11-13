@@ -138,14 +138,7 @@ export class Brain {
   // servos get the gains the network was trained with (and give the old ones back on detach)
   attach() {
     const m = this.W.m, W = this.W;
-    // real adult weight: the body file weighs 42.5 kg (density-1000 shapes); 70 kg reads as a person, not a doll.
-    // The tracker copes (tested: stands, tilts, shoves; heels flatter: 0.2 cm vs 0.6 cm up on average).
-    if (!this.massSaved) {
-      this.massSaved = W.bodyNames.map(n => { const b = W.bodyId[n]; return [m.body_mass[b], m.body_inertia[3 * b], m.body_inertia[3 * b + 1], m.body_inertia[3 * b + 2]]; });
-      const f = this.mass / W.mass;
-      W.bodyNames.forEach(n => { const b = W.bodyId[n]; m.body_mass[b] *= f; for (let k = 0; k < 3; k++) m.body_inertia[3 * b + k] *= f; });
-      this.massWas = W.mass; W.mass = this.mass;
-    }
+    // 70 kg comes from the body file itself (v15.31): scaling masses here left MuJoCo's contact constants at 42.5 kg
     this.saved = [];
     for (let i = 0; i < ND; i++) {
       const a = this.actIdx[i], kp = this.meta.kp[i], kd = this.meta.kd[i];
@@ -167,11 +160,6 @@ export class Brain {
     const m = this.W.m; if (!this.saved) return;
     for (let i = 0; i < ND; i++) { const a = this.actIdx[i], s = this.saved[i]; m.actuator_gainprm[10 * a] = s[0]; m.actuator_biasprm[10 * a + 1] = s[1]; m.actuator_biasprm[10 * a + 2] = s[2]; }
     this.saved = null;
-    if (this.massSaved) {
-      const W = this.W;
-      W.bodyNames.forEach((n, i) => { const b = W.bodyId[n], s = this.massSaved[i]; m.body_mass[b] = s[0]; for (let k = 0; k < 3; k++) m.body_inertia[3 * b + k] = s[k + 1]; });
-      W.mass = this.massWas; this.massSaved = null;
-    }
   }
 
   // the standing pose (hinge angles by joint name, e.g. physics STAND) measured once by forward kinematics
@@ -221,6 +209,9 @@ export class Brain {
   // read the 23 parts and turn them into the gravity frame (about the floor point under the hips)
   readState() {
     const W = this.W, d = W.d, mj = W.mj, xp = d.xpos, xq = d.xquat, O = mj.mjtObj.mjOBJ_XBODY.value;
+    // fresh body motion from the current joint state (v15.31): after mj_step, xpos/cvel still describe the start of
+    // that step (2 ms old); training reads the current state (pipeline test T4/closed loop)
+    mj.mj_kinematics(W.m, d); mj.mj_comPos(W.m, d); mj.mj_comVel(W.m, d);
     // which way is up, as he feels it: the phone's gravity calmed down. The accelerometer also picks up every small
     // move of the hand and its own noise; seen raw, he answers each wobble with his feet (user, v15.2: "he shakes so
     // much... moving his feet like crazy even though the phone is not even moving"). The physics still gets the raw

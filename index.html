@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.30</div>
+<div id="ver">v15.31</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -175,7 +175,7 @@ window.BOXLOAD = (() => {
   try { fig = localStorage.getItem('box.figure') || fig; } catch (_) {}
   const FIGF = { female: 'body/bodychan.glb', male: 'body/bodykun.glb' };   // = FIGS in the module
   if (FIGF[fig]) start(FIGF[fig] + '?v=' + encodeURIComponent(document.getElementById('ver').textContent), 'Figure');
-  start('body/soma23_humanoid.xml', 'Body');
+  start('body/soma23_box.xml', 'Body');
   repaint();
   return L;
 })();
