@@ -204,6 +204,20 @@ export class Brain {
     d2.delete();
   }
 
+  // user 23:23: "I would expect him to be in an idle, relaxed pose like a normal person ... people are always moving
+  // because they're breathing". Instead of the frozen stand pose, the reference plays a recording of a person standing
+  // idle (body/clips, 30 fps, 376 floats per frame), back and forth (ping-pong: the recordings don't loop), placed
+  // where the stand pose would be. NVIDIA's tracker was trained to follow exactly such recordings.
+  setIdleClip(buf, fps = 30) {
+    const F = 376, n = Math.floor(buf.length / F);
+    if (n < 2) { this.idle = null; return; }
+    const f0 = buf.subarray(0, F), r0 = new Float64Array(4);
+    for (let i = 0; i < 4; i++) r0[i] = f0[3 + i];
+    // frame 0's middle of the feet (Foot bodies 17 and 21) on the floor is the clip's spot; its hips' heading its facing
+    const mid = [(f0[13 * 17] + f0[13 * 21]) / 2, (f0[13 * 17 + 1] + f0[13 * 21 + 1]) / 2];
+    this.idle = { buf, n, fps, mid, h0: heading(r0, 0), t: 0 };
+  }
+
   // read the 23 parts and turn them into the gravity frame (about the floor point under the hips)
   readState() {
     const W = this.W, d = W.d, mj = W.mj, xp = d.xpos, xq = d.xquat, O = mj.mjtObj.mjOBJ_XBODY.value;
@@ -272,6 +286,26 @@ export class Brain {
     const fo = [0, 0, 0];
     if (this.meta.realign) qrot(q, 0, s.pos[0], s.pos[1], 0, fo, 0);   // realigned: hips on hips
     else qrot(q, 0, (s.pos[3 * 17] + s.pos[3 * 21]) / 2, (s.pos[3 * 17 + 1] + s.pos[3 * 21 + 1]) / 2, 0, fo, 0);
+    if (this.idle && !this.meta.realign) {
+      const I = this.idle; I.t += dt;
+      // ping-pong through the recording; going backwards, the velocities turn round
+      const L = (I.n - 1) / I.fps, u = I.t % (2 * L), fwd = u < L, x = (fwd ? u : 2 * L - u) * I.fps;
+      const i0 = Math.min(I.n - 2, Math.floor(x)), w = x - i0, sg = fwd ? 1 : -1, A = I.buf, F = 376;
+      const qc = [0, 0, Math.sin((this.refYaw - I.h0) / 2), Math.cos((this.refYaw - I.h0) / 2)], c = [0, 0, 0, 1];
+      for (let b = 0; b < NB; b++) {
+        const a = i0 * F + 13 * b, e = a + F, lp = k => A[a + k] + (A[e + k] - A[a + k]) * w;
+        qrot(qc, 0, lp(0) - I.mid[0], lp(1) - I.mid[1], 0, t, 0);
+        R.pos[3 * b] = this.refXY[0] + t[0]; R.pos[3 * b + 1] = this.refXY[1] + t[1]; R.pos[3 * b + 2] = this.ground + lp(2);
+        // nlerp between the two frames' rotations (same hemisphere)
+        const dot = A[a + 3] * A[e + 3] + A[a + 4] * A[e + 4] + A[a + 5] * A[e + 5] + A[a + 6] * A[e + 6], s2 = dot < 0 ? -1 : 1;
+        for (let k = 0; k < 4; k++) c[k] = A[a + 3 + k] * (1 - w) + s2 * A[e + 3 + k] * w;
+        const l = Math.hypot(c[0], c[1], c[2], c[3]); for (let k = 0; k < 4; k++) c[k] /= l;
+        qmul(qc, 0, c, 0, R.rot, 4 * b);
+        qrot(qc, 0, sg * lp(7), sg * lp(8), sg * lp(9), R.vel, 3 * b);
+        qrot(qc, 0, sg * lp(10), sg * lp(11), sg * lp(12), R.ang, 3 * b);
+      }
+      return;
+    }
     for (let b = 0; b < NB; b++) {
       qrot(q, 0, s.pos[3 * b], s.pos[3 * b + 1], s.pos[3 * b + 2], t, 0);
       R.pos[3 * b] = this.refXY[0] + t[0] - fo[0]; R.pos[3 * b + 1] = this.refXY[1] + t[1] - fo[1]; R.pos[3 * b + 2] = hz + t[2];

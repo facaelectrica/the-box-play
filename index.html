@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.22</div>
+<div id="ver">v15.23</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -551,12 +551,16 @@ const sessionP = (async () => {
   const [meta, model] = await Promise.all([
     LOAD.take(MODEL.dir + 'soma_tracker.json', 'Brain').then(b => JSON.parse(new TextDecoder().decode(b))),
     LOAD.take(MODEL.dir + 'soma_tracker.onnx', 'Brain', 12610426)]);
+  // brains trained on idle recordings (train/relax1.py, meta.idle = the clip's name) follow that recording, played back
+  // and forth, instead of the frozen standing pose (user 23:23: "people are always moving because they're breathing")
+  let idle = null;
+  if (meta.idle) try { idle = await LOAD.take('body/clips/' + meta.idle + '.bin', 'Brain', 514368); } catch (e) { console.warn('idle clip', e); }
   try { ort.env.wasm.wasmBinary = await LOAD.take('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort-wasm-simd-threaded.wasm', 'Brain engine', 14848852); }
   catch (e) { console.warn('ORT wasm preload failed, ORT fetches it itself', e); }
   LOAD.state('Brain engine', 'start'); LOAD.state('Brain', 'start');
   const session = await ort.InferenceSession.create(new Uint8Array(model), { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
   LOAD.state('Brain engine', 'ready'); LOAD.state('Brain', 'ready');
-  return { meta, session };
+  return { meta, session, idle };
 })();
 sessionP.catch(() => {});
 const mj = await mjP;
@@ -564,7 +568,7 @@ let DOLL = await figP;
 const W = new BoxWorld(mj, await bodyP);
 LOAD.state('Body', 'ready');
 let control = null;
-try { const { meta, session } = await sessionP; brain = new Brain(W, ort, session, meta); brain.setStandPose(BRAIN_STAND); }
+try { const { meta, session, idle } = await sessionP; brain = new Brain(W, ort, session, meta); brain.setStandPose(BRAIN_STAND); if (idle) brain.setIdleClip(new Float32Array(idle)); }
 catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; LOAD.state('Brain', 'fail'); }
 function newController() {
   if (brain) { brain.attach(); brain.told = false; control = brain.control; }
