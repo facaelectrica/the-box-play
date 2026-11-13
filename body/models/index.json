@@ -10,47 +10,6 @@
    "about": "Stage 1 training (relaxed idle on BONES idles), checkpoint saved 14:48. Beat NVIDIA's brain 60 s on both idle recordings in the game physics. Derived from NVIDIA's model (NVIDIA Open Model License)."
   },
   {
-   "id": "seed_idle_A121",
-   "label": "BONES: neutral standing idle (no physics)",
-   "dir": "body/",
-   "playback": "seed_idle_A121",
-   "about": "BONES-SEED recording (Bones Studio, bones.studio; SOMA uniform, loaded with NVIDIA ProtoMotions) played straight onto the body: no physics, no brain. Test only."
-  },
-  {
-   "id": "seed_idle_rightleg_A419",
-   "label": "BONES: idle, weight on one leg (no physics)",
-   "dir": "body/",
-   "playback": "seed_idle_rightleg_A419",
-   "about": "BONES-SEED recording (Bones Studio, bones.studio; SOMA uniform, loaded with NVIDIA ProtoMotions) played straight onto the body: no physics, no brain. Test only."
-  },
-  {
-   "id": "seed_walk_fwd_A028",
-   "label": "BONES: walking forward (no physics)",
-   "dir": "body/",
-   "playback": "seed_walk_fwd_A028",
-   "about": "BONES-SEED recording (Bones Studio, bones.studio; SOMA uniform, loaded with NVIDIA ProtoMotions) played straight onto the body: no physics, no brain. Test only."
-  },
-  {
-   "id": "seed_walk_side_A028",
-   "label": "BONES: walking sideways (no physics)",
-   "dir": "body/",
-   "playback": "seed_walk_side_A028",
-   "about": "BONES-SEED recording (Bones Studio, bones.studio; SOMA uniform, loaded with NVIDIA ProtoMotions) played straight onto the body: no physics, no brain. Test only."
-  },
-  {
-   "id": "nv_seed_idle",
-   "label": "NVIDIA brain + physics, following BONES neutral idle",
-   "dir": "body/",
-   "idle": "seed_idle_A121",
-   "about": "NVIDIA original tracker (trained on BONES-SEED in IsaacLab) following the BONES idle recording, with physics."
-  },
-  {
-   "id": "nv_seed_rightleg",
-   "label": "NVIDIA brain + physics, following BONES weight-on-one-leg idle",
-   "dir": "body/",
-   "idle": "seed_idle_rightleg_A419"
-  },
-  {
    "id": "nvidia",
    "label": "NVIDIA original",
    "dir": "body/",
