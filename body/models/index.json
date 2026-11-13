@@ -15,10 +15,10 @@
    "about": "First balance training of NVIDIA's SOMA tracker in a tilting box (The Box, train/balance1.py, 40 min on an RTX 4090). Steps instead of stiffening; still walks downhill under steady tilts. Derived from NVIDIA's model (NVIDIA Open Model License, body/soma_tracker_LICENSE.pdf)."
   },
   {
-   "id": "relax1_0118",
-   "label": "Relaxed standing (01:18, best so far)",
-   "dir": "body/models/relax1_0118/",
-   "about": "relax-1 checkpoint of 06:18 UTC (20 min, MuJoCo training with the game physics): steadiest in tools/test/idle_test.mjs (feet 2.9 cm/s, shake 10). Derived from NVIDIA's model (NVIDIA Open Model License)."
+   "id": "relax1_0148",
+   "label": "Relaxed standing (01:48, best so far)",
+   "dir": "body/models/relax1_0148/",
+   "about": "relax-1 checkpoint of 06:48 UTC (MuJoCo training with the game physics), read as hinge angles (meta.direct, v15.26): steadiest in tools/test/idle_test.mjs (feet 5.8/8.4 cm/s on the two idle clips). Derived from NVIDIA's model (NVIDIA Open Model License)."
   },
   {
    "id": "live",

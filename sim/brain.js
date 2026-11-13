@@ -392,8 +392,16 @@ export class Brain {
     const a = r.action.data;
     this.out.set(a); this.prev.set(a);
     const s = this.meta.scale, T = _hinge;
-    for (let j = 0; j < ND; j += 3) rotvecToXYZ(s * Math.tanh(a[j]), s * Math.tanh(a[j + 1]), s * Math.tanh(a[j + 2]), T, j);
-    for (let i = 0; i < ND; i++) this.targets[this.actIdx[i]] = T[i] * this.sign[i];
+    if (this.meta.direct) {
+      // brains trained in MuJoCo (ProtoMotions' Newton backend, train/relax1.py+): each output is that hinge's own angle
+      // (x pi), exactly as the training physics applies it. The rotation-vector reading below is IsaacLab's (its
+      // 3-axis joints take a rotation): reading a MuJoCo-trained brain that way was the training/game mismatch that
+      // made later relax-1 brains shuffle in the game while improving in training (Nov 13, 02:05).
+      for (let i = 0; i < ND; i++) this.targets[this.actIdx[i]] = s * Math.tanh(a[i]);
+    } else {
+      for (let j = 0; j < ND; j += 3) rotvecToXYZ(s * Math.tanh(a[j]), s * Math.tanh(a[j + 1]), s * Math.tanh(a[j + 2]), T, j);
+      for (let i = 0; i < ND; i++) this.targets[this.actIdx[i]] = T[i] * this.sign[i];
+    }
     // how far he is from where the reference wants him (the tracker was trained to give up past 0.5 m)
     let e = 0; for (let b = 0; b < NB; b++) e = Math.max(e, Math.hypot(this.pos[3 * b] - ref.pos[3 * b], this.pos[3 * b + 1] - ref.pos[3 * b + 1], this.pos[3 * b + 2] - ref.pos[3 * b + 2]));
     this.err = e;
