@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.33</div>
+<div id="ver">v15.34</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -597,7 +597,7 @@ function keepInside() {
   mj.mj_forward(W.m, d);
 }
 function standUp() {
-  levelPending = true; levelT = 0;   // the phone's angle right now becomes "level" (see qLevel)
+  levelPending = true; levelT = 0;   // the phone's angle right now becomes "level" (see setLevel)
   W.standAt(brain ? BRAIN_STAND : STAND); W.started = true; W.tControl = 0;
   if (brain) { W.d.qpos[1] = Math.max(0.3, W.d.qpos[1] - brain.settleBack); mj.mj_forward(W.m, W.d); }   // he settles back
   newController();
@@ -784,8 +784,33 @@ const qDev = new THREE.Quaternion(), qBase = new THREE.Quaternion(); let haveBas
 // "level" = the way you hold the phone when he stands up (user, 13:40): people hold a phone tilted back 30-60 deg to
 // look at it; measured from true vertical that was a 30-60 deg slope toward the back wall (he slid back and leaned on
 // it, v15.18). Each stand-up re-levels: the held angle, averaged over 0.4 s, becomes level; turning away from it tilts.
-const qLevel = new THREE.Quaternion(), DOWN = new THREE.Vector3(0, -1, 0), gL = new THREE.Vector3();
+const gL = new THREE.Vector3();
 let levelPending = true, levelT = 0;
+// v15.34 (user 16:58): the held angle is taken out the same way whichever end of the phone points down. It used to be
+// one fixed turn of the phone's own axes (qLevel): fine upright, but upside down it ADDED the held angle, so at 45 deg
+// he fell onto the back wall instead of the ceiling. Now level = (how far the screen leans back, its sideways roll):
+// the lean is subtracted from gravity's angle out of the screen in whatever direction "down" points on the screen,
+// fading to nothing when the phone lies flat (screen up = back wall, screen down = glass), and the roll is undone.
+const LEVEL = { lean: 0, roll: 0 };
+function setLevel(g) {
+  const n = Math.hypot(g.x, g.y, g.z) || 1, pm = Math.hypot(g.x, g.y) / n;
+  LEVEL.lean = clamp(Math.asin(clamp(-g.z / n, -1, 1)), -80 * DEG, 80 * DEG);
+  LEVEL.roll = pm > 0.3 ? Math.atan2(g.x, -g.y) : 0;
+}
+function levelG(g, out) {
+  const n = Math.hypot(g.x, g.y, g.z) || 1, ux = g.x / n, uy = g.y / n, uz = g.z / n;
+  const e = Math.asin(clamp(-uz, -1, 1)), L = LEVEL.lean;   // e: how far down points into the box (+) or out (-)
+  // how much of the lean to take off: all of it at the held angle, none when flat (keeps flat poses well defined)
+  const h = e >= L ? Math.cos(Math.PI / 2 * Math.min(1, (e - L) / (Math.PI / 2 - L)))
+                   : Math.cos(Math.PI / 2 * Math.min(1, (L - e) / (Math.PI / 2 + L)));
+  const e2 = e - L * h;
+  let pm = Math.hypot(ux, uy), dx = 0, dy = -1;
+  if (pm > 1e-6) {
+    const c = Math.cos(LEVEL.roll), s = -Math.sin(LEVEL.roll);
+    dx = (ux * c - uy * s) / pm; dy = (ux * s + uy * c) / pm;   // the screen's "down" direction, roll undone
+  }
+  return out.set(dx * Math.cos(e2) * n, dy * Math.cos(e2) * n, -Math.sin(e2) * n);
+}
 // user 17:45: by default the phone's tilt does NOT change his gravity (he is tested with the finger: touch pushes, drag
 // pulls); the round phone button turns the tilt on (the angle you hold it at then becomes level)
 let tiltOn = false;
@@ -1299,8 +1324,8 @@ async function frame(now) {
     gx = 0; gy = -1; gz = 0;
   } else if (mode === 'sensor') {
     gS.lerp(gRaw, 1 - Math.pow(SET.smooth, dt * 60));
-    if (levelPending && (levelT += dt) > 0.4) { qLevel.setFromUnitVectors(gL.copy(gS).normalize(), DOWN); levelPending = false; }
-    gL.copy(gS).applyQuaternion(qLevel);
+    if (levelPending && (levelT += dt) > 0.4) { setLevel(gS); levelPending = false; }
+    levelG(gS, gL);
     gx = gL.x; gy = gL.y; gz = gL.z;
   } else {
     const a = Math.min(1, dt * 10);
