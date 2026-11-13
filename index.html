@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.24</div>
+<div id="ver">v15.25</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -1333,9 +1333,10 @@ function gaze(dt) {
     want = GZ.state === 'floor' ? GZ.floor : you;
   }
   if (!want) { brain.lookW = 0; return; }
-  // the eyes lead, the head follows: the point moves there over ~0.25 s (faster when falling)
+  // the eyes lead, the head follows: the point moves there over ~0.25 s; toward a fall it snaps there (user 01:46:
+  // "should be a fast turn")
   if (!GZ.pt) GZ.pt = want.slice();
-  const k = 1 - Math.exp(-dt / (GZ.state === 'fall' ? 0.12 : 0.25));
+  const k = 1 - Math.exp(-dt / (GZ.state === 'fall' ? 0.03 : 0.25));
   for (let i = 0; i < 3; i++) GZ.pt[i] += (want[i] - GZ.pt[i]) * k;
   brain.lookAt = GZ.pt; brain.lookW = 1;
 }
