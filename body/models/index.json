@@ -3,6 +3,34 @@
  "default": "live",
  "models": [
   {
+   "id": "seed_idle_A121",
+   "label": "BONES: neutral standing idle (no physics)",
+   "dir": "body/",
+   "playback": "seed_idle_A121",
+   "about": "BONES-SEED recording (Bones Studio, bones.studio; SOMA uniform, loaded with NVIDIA ProtoMotions) played straight onto the body: no physics, no brain. Test only."
+  },
+  {
+   "id": "seed_idle_rightleg_A419",
+   "label": "BONES: idle, weight on one leg (no physics)",
+   "dir": "body/",
+   "playback": "seed_idle_rightleg_A419",
+   "about": "BONES-SEED recording (Bones Studio, bones.studio; SOMA uniform, loaded with NVIDIA ProtoMotions) played straight onto the body: no physics, no brain. Test only."
+  },
+  {
+   "id": "seed_walk_fwd_A028",
+   "label": "BONES: walking forward (no physics)",
+   "dir": "body/",
+   "playback": "seed_walk_fwd_A028",
+   "about": "BONES-SEED recording (Bones Studio, bones.studio; SOMA uniform, loaded with NVIDIA ProtoMotions) played straight onto the body: no physics, no brain. Test only."
+  },
+  {
+   "id": "seed_walk_side_A028",
+   "label": "BONES: walking sideways (no physics)",
+   "dir": "body/",
+   "playback": "seed_walk_side_A028",
+   "about": "BONES-SEED recording (Bones Studio, bones.studio; SOMA uniform, loaded with NVIDIA ProtoMotions) played straight onto the body: no physics, no brain. Test only."
+  },
+  {
    "id": "nvidia",
    "label": "NVIDIA original",
    "dir": "body/",
@@ -28,42 +56,42 @@
   },
   {
    "id": "playback",
-   "label": "Recording only: 113_21 standing still (no physics)",
+   "label": "CMU (old conversion): 113_21 standing still (no physics)",
    "dir": "body/",
    "playback": "idle_113_21",
    "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."
   },
   {
    "id": "play_140_06",
-   "label": "Recording only: 140_06 idle (no physics)",
+   "label": "CMU (old conversion): 140_06 idle (no physics)",
    "dir": "body/",
    "playback": "idle_140_06",
    "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."
   },
   {
    "id": "play_137_28",
-   "label": "Recording only: 137_28 normal wait (no physics)",
+   "label": "CMU (old conversion): 137_28 normal wait (no physics)",
    "dir": "body/",
    "playback": "idle_137_28",
    "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."
   },
   {
    "id": "play_111_28",
-   "label": "Recording only: 111_28 standing still (no physics)",
+   "label": "CMU (old conversion): 111_28 standing still (no physics)",
    "dir": "body/",
    "playback": "idle_111_28",
    "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."
   },
   {
    "id": "play_141_20",
-   "label": "Recording only: 141_20 waiting (no physics)",
+   "label": "CMU (old conversion): 141_20 waiting (no physics)",
    "dir": "body/",
    "playback": "idle_141_20",
    "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."
   },
   {
    "id": "play_83_33",
-   "label": "Recording only: 83_33 sidestep right, then left (no physics)",
+   "label": "CMU (old conversion): 83_33 sidestep right, then left (no physics)",
    "dir": "body/",
    "playback": "step_83_33",
    "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."

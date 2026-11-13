@@ -43,6 +43,34 @@
    "floats": 376,
    "source": "83_33.bvh",
    "licence": "CMU mocap: free for all uses"
+  },
+  "seed_idle_A121": {
+   "frames": 379,
+   "floats": 376,
+   "source": "BONES-SEED soma_uniform neutral_idle_loop_002__A121",
+   "licence": "BONES-SEED license (private use; raw data not public)",
+   "floor_shift_cm": -1.66
+  },
+  "seed_idle_rightleg_A419": {
+   "frames": 435,
+   "floats": 376,
+   "source": "BONES-SEED soma_uniform idle_right_R_001__A419",
+   "licence": "BONES-SEED license (private use; raw data not public)",
+   "floor_shift_cm": -1.49
+  },
+  "seed_walk_fwd_A028": {
+   "frames": 493,
+   "floats": 376,
+   "source": "BONES-SEED soma_uniform walk_forward_loop_001__A028",
+   "licence": "BONES-SEED license (private use; raw data not public)",
+   "floor_shift_cm": -0.8
+  },
+  "seed_walk_side_A028": {
+   "frames": 164,
+   "floats": 376,
+   "source": "BONES-SEED soma_uniform walk_sideway_090_loop_001__A028",
+   "licence": "BONES-SEED license (private use; raw data not public)",
+   "floor_shift_cm": -0.45
   }
  }
 }
