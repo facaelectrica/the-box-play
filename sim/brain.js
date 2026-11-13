@@ -57,7 +57,7 @@ export function rotvecToXYZ(rx, ry, rz, out, oi) {
   out[oi] = Math.atan2(-R12, R22); out[oi + 1] = Math.asin(Math.max(-1, Math.min(1, R02))); out[oi + 2] = Math.atan2(-R01, R00);
 }
 
-const _tq = new Float64Array(4), _t6 = new Float64Array(6);
+const _tq = new Float64Array(4), _t6 = new Float64Array(6), _lq = new Float64Array(4);
 
 // The phone's "down" for the physics, calmed: the accelerometer reports hand tremor and its own noise as tiny tilts,
 // and he answered each one with his feet. The direction follows with time constant `tau` (s) (a dead zone made it
@@ -304,6 +304,7 @@ export class Brain {
         qrot(qc, 0, sg * lp(7), sg * lp(8), sg * lp(9), R.vel, 3 * b);
         qrot(qc, 0, sg * lp(10), sg * lp(11), sg * lp(12), R.ang, 3 * b);
       }
+      this.applyLook(R);
       return;
     }
     for (let b = 0; b < NB; b++) {
@@ -312,6 +313,36 @@ export class Brain {
       qmul(q, 0, s.rot, 4 * b, R.rot, 4 * b);
       R.vel[3 * b] = R.vel[3 * b + 1] = R.vel[3 * b + 2] = 0; R.ang[3 * b] = R.ang[3 * b + 1] = R.ang[3 * b + 2] = 0;
     }
+    this.applyLook(R);
+  }
+
+  // Where he looks (user, Nov 13 01:26): the page decides the point (at you; down at the floor now and then; where he
+  // is falling) and sets this.lookAt = [x, y, z] in the box's frame, with this.lookW 0..1. The reference's neck and head
+  // turn toward it (neck 30 %, upper neck 30 %, head 40 % of the turn, at most 70 degrees), and the brain turns his real
+  // neck and head to follow: a goal, not a drawn-on head.
+  applyLook(R) {
+    const w = this.lookW ?? 0;
+    if (!this.lookAt || w <= 0) return;
+    const t = [0, 0, 0], H = 6;
+    qrot(this.G, 0, this.lookAt[0], this.lookAt[1], this.lookAt[2], t, 0);
+    const hp = [R.pos[3 * H], R.pos[3 * H + 1], R.pos[3 * H + 2]];
+    let d = [t[0] - hp[0], t[1] - hp[1], t[2] - hp[2]]; const dl = Math.hypot(d[0], d[1], d[2]); if (dl < 1e-3) return;
+    d = d.map(v => v / dl);
+    const f = [0, 0, 0]; qrot(R.rot, 4 * H, 0, -1, 0, f, 0);    // the head's forward is its -y
+    let ax = [f[1] * d[2] - f[2] * d[1], f[2] * d[0] - f[0] * d[2], f[0] * d[1] - f[1] * d[0]];
+    const sn = Math.hypot(ax[0], ax[1], ax[2]), cs = f[0] * d[0] + f[1] * d[1] + f[2] * d[2];
+    if (sn < 1e-6) return;
+    ax = ax.map(v => v / sn);
+    const ang = Math.min(Math.atan2(sn, cs), 70 * Math.PI / 180) * w;
+    const turn = (body, a) => {   // rotate this body and every one after it in the chain (Neck1 -> Neck2 -> Head) about it
+      const c = [R.pos[3 * body], R.pos[3 * body + 1], R.pos[3 * body + 2]], q = [ax[0] * Math.sin(a / 2), ax[1] * Math.sin(a / 2), ax[2] * Math.sin(a / 2), Math.cos(a / 2)];
+      for (let b = body; b <= H; b++) {
+        qrot(q, 0, R.pos[3 * b] - c[0], R.pos[3 * b + 1] - c[1], R.pos[3 * b + 2] - c[2], t, 0);
+        R.pos[3 * b] = c[0] + t[0]; R.pos[3 * b + 1] = c[1] + t[1]; R.pos[3 * b + 2] = c[2] + t[2];
+        qmul(q, 0, R.rot, 4 * b, _lq, 0); R.rot.set(_lq, 4 * b);
+      }
+    };
+    turn(4, 0.3 * ang); turn(5, 0.3 * ang); turn(6, 0.4 * ang);
   }
 
   // the 961 inputs, exactly as in training

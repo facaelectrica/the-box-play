@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.23</div>
+<div id="ver">v15.24</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -1270,6 +1270,7 @@ async function frame(now) {
   lightUp.lerp(lu, Math.min(1, dt * 4)).normalize();
   placeLight();
 
+  gaze(dt);
   // physics in real time, in small steps
   acc += look.on ? 0 : dt;
   let n = 0;
@@ -1297,6 +1298,46 @@ async function frame(now) {
   renderer.render(scene, camera);
   adaptSharpness(dt);
   requestAnimationFrame(frame);
+}
+
+// ================= where he looks (user, Nov 13 01:26) =================
+// "The character is always looking at us, unless they are losing balance. Then they look at the direction that they're
+// going to fall into. Every once in a while [when idle] they look down on the floor and then back at you."
+// The page only picks the point; the brain turns his real neck and head toward it (sim/brain.js applyLook).
+const GZ = { pt: null, state: 'you', t: 0, next: 6 + Math.random() * 8, floor: null };
+const _eye = new THREE.Vector3();
+function gaze(dt) {
+  if (!brain || look.on) return;
+  const d = W.d, hips = W.bodyId.Hips, head = W.bodyId.Head, fl = W.bodyId.LeftFoot, fr = W.bodyId.RightFoot;
+  const fz = -W.box.h / 2, mx = (d.xpos[3 * fl] + d.xpos[3 * fr]) / 2, my = (d.xpos[3 * fl + 1] + d.xpos[3 * fr + 1]) / 2;
+  // you: the camera, in the box's frame
+  figRoot.updateMatrixWorld(); _eye.copy(camera.position); figRoot.worldToLocal(_eye);
+  const you = [_eye.x, _eye.y, _eye.z];
+  // losing balance: hips moving fast, or his head well outside his feet
+  const vx = d.qvel[0], vy = d.qvel[1], sp = Math.hypot(vx, vy);
+  const hx = d.xpos[3 * head] - mx, hy = d.xpos[3 * head + 1] - my, lean = Math.hypot(hx, hy);
+  let want;
+  if (brain.down) want = null;
+  else if (sp > 0.35 || lean > 0.22) {
+    // where he is going: the way he moves, or the way he leans; the floor ~1.2 m out that way
+    const ux = sp > 0.15 ? vx / sp : hx / (lean || 1), uy = sp > 0.15 ? vy / sp : hy / (lean || 1);
+    want = [d.xpos[3 * hips] + ux * 1.2, d.xpos[3 * hips + 1] + uy * 1.2, fz];
+    GZ.state = 'fall'; GZ.t = 0; GZ.next = 3 + Math.random() * 6;
+  } else {
+    GZ.t += dt;
+    if (GZ.state === 'fall') GZ.state = 'you';
+    if (GZ.state === 'you' && GZ.t > GZ.next) {   // a glance at the floor in front of him
+      GZ.state = 'floor'; GZ.t = 0; GZ.dur = 1.0 + Math.random() * 1.2;
+      GZ.floor = [mx + (Math.random() - 0.5) * 0.6, my - 0.6 - Math.random() * 0.4, fz];
+    } else if (GZ.state === 'floor' && GZ.t > GZ.dur) { GZ.state = 'you'; GZ.t = 0; GZ.next = 6 + Math.random() * 10; }
+    want = GZ.state === 'floor' ? GZ.floor : you;
+  }
+  if (!want) { brain.lookW = 0; return; }
+  // the eyes lead, the head follows: the point moves there over ~0.25 s (faster when falling)
+  if (!GZ.pt) GZ.pt = want.slice();
+  const k = 1 - Math.exp(-dt / (GZ.state === 'fall' ? 0.12 : 0.25));
+  for (let i = 0; i < 3; i++) GZ.pt[i] += (want[i] - GZ.pt[i]) * k;
+  brain.lookAt = GZ.pt; brain.lookW = 1;
 }
 
 // ================= start =================
