@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.32</div>
+<div id="ver">v15.33</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -169,7 +169,7 @@ window.BOXLOAD = (() => {
     if (!id) try { id = localStorage.getItem('thebox.model'); } catch (_) {}
     const m = M.models.find(x => x.id === id) || M.models.find(x => x.id === M.default) || M.models[0];
     start(m.dir + 'soma_tracker.json', 'Brain');
-    start(m.dir + 'soma_tracker.onnx', 'Brain', 12610426);
+    start(m.dir + 'soma_tracker.onnx', 'Brain', m.onnx_bytes || 0);   // real size from the picker list (0: the server's)
   }, () => {});
   let fig = 'female';
   try { fig = localStorage.getItem('box.figure') || fig; } catch (_) {}
@@ -538,7 +538,7 @@ ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/di
 ort.env.wasm.numThreads = 1;
 // which brain (user, 10:29: see each trained model live): ?model=<id>, else the one picked in Options > Brain
 // (BOXLOAD picks the same way to start its download early)
-let MODELS = { default: 'nvidia', models: [{ id: 'nvidia', label: 'NVIDIA original', dir: 'body/' }] };
+let MODELS = { default: 'nvidia', models: [{ id: 'nvidia', label: 'NVIDIA original', dir: 'body/', onnx_bytes: 12610426 }] };
 try { MODELS = JSON.parse(new TextDecoder().decode(await LOAD.take('body/models/index.json', 'Brain'))); } catch (_) {}
 const modelId = new URLSearchParams(location.search).get('model') || (() => { try { return localStorage.getItem('thebox.model'); } catch (_) { return null; } })() || MODELS.default;
 const MODEL = MODELS.models.find(m => m.id === modelId) || MODELS.models.find(m => m.id === MODELS.default) || MODELS.models[0];
@@ -546,7 +546,7 @@ const MODEL = MODELS.models.find(m => m.id === modelId) || MODELS.models.find(m 
 const sessionP = (async () => {
   const [meta, model] = await Promise.all([
     LOAD.take(MODEL.dir + 'soma_tracker.json', 'Brain').then(b => JSON.parse(new TextDecoder().decode(b))),
-    LOAD.take(MODEL.dir + 'soma_tracker.onnx', 'Brain', 12610426)]);
+    LOAD.take(MODEL.dir + 'soma_tracker.onnx', 'Brain', MODEL.onnx_bytes || 0)]);
   // brains trained on idle recordings (train/relax1.py, meta.idle = the clip's name) follow that recording, played back
   // and forth, instead of the frozen standing pose (user 23:23: "people are always moving because they're breathing")
   let idle = null;
