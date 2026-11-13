@@ -13,6 +13,36 @@
    "floats": 376,
    "source": "113_21.bvh",
    "licence": "CMU mocap: free for all uses"
+  },
+  "idle_140_06": {
+   "frames": 450,
+   "floats": 376,
+   "source": "140_06.bvh",
+   "licence": "CMU mocap: free for all uses"
+  },
+  "idle_137_28": {
+   "frames": 450,
+   "floats": 376,
+   "source": "137_28.bvh",
+   "licence": "CMU mocap: free for all uses"
+  },
+  "idle_111_28": {
+   "frames": 450,
+   "floats": 376,
+   "source": "111_28.bvh",
+   "licence": "CMU mocap: free for all uses"
+  },
+  "idle_141_20": {
+   "frames": 191,
+   "floats": 376,
+   "source": "141_20.bvh",
+   "licence": "CMU mocap: free for all uses"
+  },
+  "step_83_33": {
+   "frames": 323,
+   "floats": 376,
+   "source": "83_33.bvh",
+   "licence": "CMU mocap: free for all uses"
   }
  }
 }

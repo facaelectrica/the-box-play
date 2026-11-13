@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.26</div>
+<div id="ver">v15.27</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -225,7 +225,7 @@ import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import * as ort from 'onnxruntime-web';
-import { Brain, BRAIN_STAND, makeCalmGravity } from './sim/brain.js';
+import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -1270,9 +1270,9 @@ async function frame(now) {
   lightUp.lerp(lu, Math.min(1, dt * 4)).normalize();
   placeLight();
 
-  gaze(dt);
+  if (PLAY && !look.on) { playRecording(dt); acc = 0; } else gaze(dt);
   // physics in real time, in small steps
-  acc += look.on ? 0 : dt;
+  acc += (look.on || PLAY) ? 0 : dt;
   let n = 0;
   const nMax = Math.round(0.034 / PHYS.dt);
   while (acc >= PHYS.dt && n < nMax) {
@@ -1298,6 +1298,37 @@ async function frame(now) {
   renderer.render(scene, camera);
   adaptSharpness(dt);
   requestAnimationFrame(frame);
+}
+
+// ================= "Recording only (no physics)" (user, Nov 13 09:26: "This is extremely far from anything remotely
+// natural"). The baseline we never showed him: the real person's idle recording played straight onto the body, no
+// physics, no brain, like a game animation. If this looks natural, the brain is the problem; if not, the body, the
+// conversion of the recordings or the figure is. Picker entry with "playback": "<clip>". =================
+let PLAY = null;
+if (MODEL.playback) try {
+  const buf = new Float32Array(await LOAD.take('body/clips/' + MODEL.playback + '.bin', 'Brain', 514368));
+  const F = 376, n = Math.floor(buf.length / F), q0 = buf.subarray(299, 372);
+  // turn it so frame 0's hips face the glass (body forward = its -y), and put frame 0's hips mid-box on the floor
+  const qr = [q0[4], q0[5], q0[6], q0[3]], f = [0, 0, 0];
+  qrot(qr, 0, 0, -1, 0, f, 0);
+  const yaw = -Math.PI / 2 - Math.atan2(f[1], f[0]);
+  PLAY = { buf, n, t: 0, yaw, q: [0, 0, Math.sin(yaw / 2), Math.cos(yaw / 2)], x0: q0[0], y0: q0[1] };
+} catch (e) { console.warn('playback clip', e); }
+function playRecording(dt) {
+  const P = PLAY, d = W.d, F = 376, L = (P.n - 1) / 30;
+  P.t += dt;
+  const u = P.t % (2 * L), x = (u < L ? u : 2 * L - u) * 30, i = Math.min(P.n - 2, Math.floor(x)), w = x - i;
+  const a = P.buf.subarray(i * F + 299, i * F + 372), b = P.buf.subarray((i + 1) * F + 299, (i + 1) * F + 372);
+  for (let k = 7; k < 73; k++) d.qpos[k] = a[k] + (b[k] - a[k]) * w;
+  const t = [0, 0, 0]; qrot(P.q, 0, a[0] + (b[0] - a[0]) * w - P.x0, a[1] + (b[1] - a[1]) * w - P.y0, 0, t, 0);
+  d.qpos[0] = t[0]; d.qpos[1] = W.box.D / 2 + t[1]; d.qpos[2] = -W.box.h / 2 + a[2] + (b[2] - a[2]) * w;
+  const s = (a[3] * b[3] + a[4] * b[4] + a[5] * b[5] + a[6] * b[6]) < 0 ? -1 : 1, c = [0, 0, 0, 0];
+  for (let k = 0; k < 4; k++) c[k] = a[3 + k] * (1 - w) + s * b[3 + k] * w;   // w x y z
+  const l = Math.hypot(...c), hq = [c[1] / l, c[2] / l, c[3] / l, c[0] / l], o = [0, 0, 0, 0];
+  qmul(P.q, 0, hq, 0, o, 0);
+  d.qpos[3] = o[3]; d.qpos[4] = o[0]; d.qpos[5] = o[1]; d.qpos[6] = o[2];
+  for (let k = 0; k < d.qvel.length; k++) d.qvel[k] = 0;
+  mj.mj_forward(W.m, d);
 }
 
 // ================= where he looks (user, Nov 13 01:26) =================

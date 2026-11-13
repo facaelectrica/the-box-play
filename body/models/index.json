@@ -25,6 +25,48 @@
    "label": "Live training (relax1, saved 02:28)",
    "dir": "body/models/live/",
    "about": "The newest checkpoint of the training that is running now (updated every ~10 min). Derived from NVIDIA's model (NVIDIA Open Model License)."
+  },
+  {
+   "id": "playback",
+   "label": "Recording only: 113_21 standing still (no physics)",
+   "dir": "body/",
+   "playback": "idle_113_21",
+   "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."
+  },
+  {
+   "id": "play_140_06",
+   "label": "Recording only: 140_06 idle (no physics)",
+   "dir": "body/",
+   "playback": "idle_140_06",
+   "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."
+  },
+  {
+   "id": "play_137_28",
+   "label": "Recording only: 137_28 normal wait (no physics)",
+   "dir": "body/",
+   "playback": "idle_137_28",
+   "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."
+  },
+  {
+   "id": "play_111_28",
+   "label": "Recording only: 111_28 standing still (no physics)",
+   "dir": "body/",
+   "playback": "idle_111_28",
+   "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."
+  },
+  {
+   "id": "play_141_20",
+   "label": "Recording only: 141_20 waiting (no physics)",
+   "dir": "body/",
+   "playback": "idle_141_20",
+   "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."
+  },
+  {
+   "id": "play_83_33",
+   "label": "Recording only: 83_33 sidestep right, then left (no physics)",
+   "dir": "body/",
+   "playback": "step_83_33",
+   "about": "The CMU recording played straight onto the body: no physics, no brain (baseline for naturalness, user Nov 13 09:26)."
   }
  ]
 }
