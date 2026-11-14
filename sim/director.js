@@ -5,6 +5,9 @@
 // Trigger: his hips move faster than `vTrig` m/s horizontally (calm idle sway is ~0.02 m/s). Direction: that motion
 // relative to where he faces (0 = forward, +90 = to his left). Strong (> `vStep`): a recording with a real step;
 // weaker: one where the person absorbs it in place. No recordings of pushes toward his back yet: those keep the idle.
+// v15.37 (A5): the switch in and out is eased over brain.blendT (0.4 s) instead of a one-frame jump (brain.applyBlend);
+// push test, 56 pushes: falls 2 -> 1, steps 74 -> 100, biggest target jump per frame 123 -> 4.5 cm. vTrig/lead re-tuned:
+// 0.30 m/s and +4 frames stay best (0.22/0.38 m/s, 0/+8 frames no better).
 export class Director {
   constructor(brain, clips, opt = {}) {
     this.brain = brain; this.clips = clips;          // [{buf: Float32Array, ang, kind, push_frame}]

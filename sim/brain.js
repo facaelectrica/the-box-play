@@ -119,6 +119,8 @@ export class Brain {
     // that much nearer the glass (settleBack) so he settles in the middle.
     this.settleBack = 0.35;
     this.turn = opt.turn ?? 1;
+    this.blendT = opt.blendT ?? 0.4;     // v15.37: seconds to ease into/out of a recovery recording (0 = jump); push test: 0.4 best
+    this.blend = null; this.lastRef = null;
     this.mass = opt.mass ?? 70;
     // his sense of up = the physics' gravity (calmed in the page by makeCalmGravity). Calming it a second time here made
     // things worse: when what he feels and what pulls him disagree, he steps (tested: 6 vs 1.5 cm/s of foot travel).
@@ -147,6 +149,7 @@ export class Brain {
     }
     for (let a = 0; a < m.nu; a++) this.targets[a] = this.W.d.qpos[m.jnt_qposadr[m.actuator_trnid[2 * a]]];
     this.prev.fill(0); this.refXY = null; this.react = null; this.settled = false; this.up = null; this.tNext = 0; this.lost = 0; this.down = false; this.tone = 1;
+    this.blend = null; this.lastRef = null;
   }
   // muscle tone: 1 = the trained gains, less = looser (when he has fallen and the tracker has given up)
   setTone(f) {
@@ -273,6 +276,46 @@ export class Brain {
     for (let i = 0; i < 4; i++) r0[i] = f0[3 + i];
     const mid = [(f0[13 * 17] + f0[13 * 21]) / 2, (f0[13 * 17 + 1] + f0[13 * 21 + 1]) / 2], P = this.pos;
     this.react = { buf, n, fps, mid, h0: heading(r0, 0), t: t0, xy: [(P[3 * 17] + P[3 * 21]) / 2, (P[3 * 17 + 1] + P[3 * 21 + 1]) / 2], yaw: heading(this.rot, 0) };
+    this.blendStart();
+  }
+
+  // v15.37 (A5): the switch into and out of a recovery recording eases over `blendT` s instead of jumping in one frame.
+  // At the switch the gap between the old reference (where the idle had him) and the new one (the recording, anchored
+  // at his feet) is stored per body part and faded to zero with a smoothstep, so the reference keeps its position and
+  // speed at the switch and lands exactly on the new recording after blendT. The recording itself plays unchanged
+  // underneath (its steps keep their timing); only the gap is faded ("inertialization", as games do it).
+  blendStart() { if (this.blendT > 0 && this.lastRef) this.blend = { pending: true, tau: 0 }; }
+  applyBlend(dt) {
+    const R = this.ref, B = this.blend, L = this.lastRef;
+    if (B && B.pending) {
+      B.pending = false; B.dp = new Float64Array(NB * 3); B.dv = new Float64Array(NB * 3); B.da = new Float64Array(NB * 3);
+      B.dq = new Float64Array(NB * 4); B.rv = new Float64Array(NB * 3);
+      for (let i = 0; i < NB * 3; i++) { B.dp[i] = L.pos[i] - R.pos[i]; B.dv[i] = L.vel[i] - R.vel[i]; B.da[i] = L.ang[i] - R.ang[i]; }
+      const c = [0, 0, 0, 1], q = [0, 0, 0, 1];
+      for (let b = 0; b < NB; b++) {   // rotation gap dq = old * conj(new) (applied on the left), as a rotation vector
+        c[0] = -R.rot[4 * b]; c[1] = -R.rot[4 * b + 1]; c[2] = -R.rot[4 * b + 2]; c[3] = R.rot[4 * b + 3];
+        qmul(L.rot, 4 * b, c, 0, q, 0); if (q[3] < 0) for (let k = 0; k < 4; k++) q[k] = -q[k];
+        const s = Math.hypot(q[0], q[1], q[2]), th = 2 * Math.atan2(s, q[3]), f = s > 1e-9 ? th / s : 2;
+        B.rv[3 * b] = q[0] * f; B.rv[3 * b + 1] = q[1] * f; B.rv[3 * b + 2] = q[2] * f;
+      }
+    }
+    if (B && !B.pending) {
+      const s = Math.min(1, B.tau / this.blendT), w = 1 - s * s * (3 - 2 * s), wd = -6 * s * (1 - s) / this.blendT;
+      const q = [0, 0, 0, 1], o = _lq;
+      for (let i = 0; i < NB * 3; i++) {
+        R.pos[i] += w * B.dp[i]; R.vel[i] += w * B.dv[i] + wd * B.dp[i]; R.ang[i] += w * B.da[i] + wd * B.rv[i];
+      }
+      for (let b = 0; b < NB; b++) {
+        const x = B.rv[3 * b] * w, y = B.rv[3 * b + 1] * w, z = B.rv[3 * b + 2] * w, th = Math.hypot(x, y, z);
+        const k = th > 1e-9 ? Math.sin(th / 2) / th : 0.5;
+        q[0] = x * k; q[1] = y * k; q[2] = z * k; q[3] = Math.cos(th / 2);
+        qmul(q, 0, R.rot, 4 * b, o, 0); R.rot.set(o, 4 * b);
+      }
+      B.tau += dt; if (s >= 1) this.blend = null;
+    }
+    // the reference before the gaze turn, for the next switch
+    if (!L) this.lastRef = { pos: new Float64Array(NB * 3), rot: new Float64Array(NB * 4), vel: new Float64Array(NB * 3), ang: new Float64Array(NB * 3) };
+    const M = this.lastRef; M.pos.set(R.pos); M.rot.set(R.rot); M.vel.set(R.vel); M.ang.set(R.ang);
   }
 
   // where the standing pose should be: under him, upright with gravity, turned toward the glass
@@ -312,14 +355,15 @@ export class Brain {
     if (this.react && !this.meta.realign) {
       const X = this.react; X.t += dt;
       const x = X.t * X.fps;
-      if (x >= X.n - 1) { this.react = null; this.refXY = [fx, fy]; this.settled = true; this.refYaw = heading(this.rot, 0); }
-      else { this.clipRef(X, x, 1, X.xy, X.yaw); this.applyLook(R); return; }
+      if (x >= X.n - 1) { this.react = null; this.refXY = [fx, fy]; this.settled = true; this.refYaw = heading(this.rot, 0); this.blendStart(); }
+      else { this.clipRef(X, x, 1, X.xy, X.yaw); this.applyBlend(dt); this.applyLook(R); return; }
     }
     if (this.idle && !this.meta.realign) {
       const I = this.idle; I.t += dt;
       // ping-pong through the recording; going backwards, the velocities turn round
       const L = (I.n - 1) / I.fps, u = I.t % (2 * L), fwd = u < L, x = (fwd ? u : 2 * L - u) * I.fps;
       this.clipRef(I, x, fwd ? 1 : -1, this.refXY, this.refYaw);
+      this.applyBlend(dt);
       this.applyLook(R);
       return;
     }
@@ -329,6 +373,7 @@ export class Brain {
       qmul(q, 0, s.rot, 4 * b, R.rot, 4 * b);
       R.vel[3 * b] = R.vel[3 * b + 1] = R.vel[3 * b + 2] = 0; R.ang[3 * b] = R.ang[3 * b + 1] = R.ang[3 * b + 2] = 0;
     }
+    if (!this.meta.realign) this.applyBlend(dt);
     this.applyLook(R);
   }
 
