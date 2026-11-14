@@ -79,6 +79,7 @@ export class Clip {
 // ---------- pose matching (user 17:22: "the transition between poses doesn't make sense") ----------
 // A pose's fingerprint: feet, hands and head relative to his hips, turned to where he faces, plus hips height. Used to
 // enter a recording at the frame that already looks like him, instead of at its start.
+const BODY23 = ['Hips', 'Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightLeg', 'RightShin', 'RightFoot', 'RightToeBase', 'LeftLeg', 'LeftShin', 'LeftFoot', 'LeftToeBase'];
 const FEAT_BODIES = [[21, 2.0], [17, 2.0], [14, 0.5], [10, 0.5], [6, 1.0]];   // left foot, right foot, hands, head
 function featOf(pos, rootQ, out) {   // pos(b) -> [x,y,z]; rootQ w x y z
   const yaw = yawOf(rootQ), c = Math.cos(-yaw), s = Math.sin(-yaw), h = pos(0);
@@ -123,6 +124,24 @@ const LEGS = {
   Left: { foot: 'LeftFoot', dof: 60, k: 0 }, Right: { foot: 'RightFoot', dof: 48, k: 1 },
 };
 const LEG_W = [1, 1, 0.5, /* knee: bend, side, twist */ 1, 0.04, 0.04, /* ankle */ 1, 1, 0.4];
+// the arms for bracing on the walls: collarbone (a little), shoulder, elbow (ForeArm_z bends it; x/y barely)
+const ARMS = { Right: { hand: 'RightHand', dof: 24, sign: -1 }, Left: { hand: 'LeftHand', dof: 36, sign: 1 } };
+const ARM_W = [0.25, 0.25, 0.25, 1, 1, 1, 0.05, 0.05, 1, 0.6, 0.6, 0.6];   // collarbone, shoulder, elbow, wrist
+// bracing (tunable): start when the floor tilts more than `tilt` rad or turns faster than `rate` rad/s; reach in `reach`
+// s, keep `hold` s after it calms, let go in `release` s; palm centre `fwd` m forward of and `down` m under the
+// shoulder, `gap` m off the wood; wrist `palm` m behind the palm centre; walls within `maxReach` m of the shoulder
+const BR = { tilt: 0.1, rate: 0.26, reach: 0.6, hold: 1.5, release: 0.9, fwd: 0.12, down: 0.22, gap: -0.015, palm: 0.07, maxReach: 0.62, rotW: 0.3, lean: 0.5, base: 1 };
+export const BRACE = BR;
+// rotation matrix columns (x, y, z axes in the world) -> quaternion w x y z
+function matQ(x, y, z) {
+  const m00 = x[0], m11 = y[1], m22 = z[2], tr = m00 + m11 + m22;
+  let q;
+  if (tr > 0) { const S = Math.sqrt(tr + 1) * 2; q = [0.25 * S, (y[2] - z[1]) / S, (z[0] - x[2]) / S, (x[1] - y[0]) / S]; }
+  else if (m00 > m11 && m00 > m22) { const S = Math.sqrt(1 + m00 - m11 - m22) * 2; q = [(y[2] - z[1]) / S, 0.25 * S, (y[0] + x[1]) / S, (z[0] + x[2]) / S]; }
+  else if (m11 > m22) { const S = Math.sqrt(1 + m11 - m00 - m22) * 2; q = [(z[0] - x[2]) / S, (y[0] + x[1]) / S, 0.25 * S, (z[1] + y[2]) / S]; }
+  else { const S = Math.sqrt(1 + m22 - m00 - m11) * 2; q = [(x[1] - y[0]) / S, (z[0] + x[2]) / S, (z[1] + y[2]) / S, 0.25 * S]; }
+  return qn(q);
+}
 
 export class Kin {
   constructor(W, mj, lib, opt = {}) {
@@ -184,8 +203,9 @@ export class Kin {
   // start clip at frame x0; anchor its root (or its spine, for lying starts) onto where he is now; ease from his
   // current pose. dir: +1 forward, pingpong for idles.
   play(clip, x0, mode, opt = {}) {
-    const usePre = this.havePre && !opt.fromCur;
-    const from = usePre ? this.pre.slice() : this.cur.slice(), fromVel = usePre ? this.preVel : this.vel;
+    const usePre = this.havePre && !opt.fromCur && !opt.fromPose;
+    const from = opt.fromPose ? opt.fromPose.slice() : usePre ? this.pre.slice() : this.cur.slice();
+    const fromVel = opt.fromPose ? (opt.fromVel || new Float64Array(72)) : usePre ? this.preVel : this.vel;
     this.anim = { clip, x: x0, dir: 1, mode, speed: 1 };
     // recoveries (user 17:22: "the shoulders and neck change between the animation they were from without proper
     // retargeting"): the Inria fits hold the upper body in their own neutral (collarbones and chest at 0, elbows
@@ -269,8 +289,8 @@ export class Kin {
     return featOf(loc, [this.cur[3], this.cur[4], this.cur[5], this.cur[6]], new Float64Array(16));
   }
   // the idle frame (any idle, or any but `not`) that looks most like him now
-  bestIdle(not = -1) {
-    const f = this.curFeatures(); let best = null;
+  bestIdle(not = -1, feat = null) {
+    const f = feat || this.curFeatures(); let best = null;
     this.lib.idles.forEach((I, k) => {
       if (k === not) return;
       const FF = I.clip.features();
@@ -278,10 +298,11 @@ export class Kin {
     });
     return best;
   }
-  toIdle(hl, why, not = -1) {
-    const b = this.bestIdle(not);
+  toIdle(hl, why, not = -1, fromBody = false) {
+    const b = this.bestIdle(not, fromBody && this.physOk ? this.physFeat : null);
     this.idleK = b.k;
-    this.play(this.lib.idles[b.k].clip, b.x, 'pingpong', { hl });
+    const from = fromBody && this.physOk ? this.physUnleaned() : null;
+    this.play(this.lib.idles[b.k].clip, b.x, 'pingpong', { hl, fromPose: from || undefined, fromVel: from ? this.physVel : undefined });
     this.event(`${why}: ${this.lib.idles[b.k].label} at ${(b.x / FPS).toFixed(1)} s (pose gap ${(b.d * 100).toFixed(0)} cm)`);
     return b;
   }
@@ -304,7 +325,7 @@ export class Kin {
     this.play(idle.clip, 0, 'pingpong', { yaw, x: 0, y: 0, still: true, fromCur: true });
     this.offT = 1e9;   // no easing at a reset
     this.c = [0, 0]; this.cv = [0, 0];
-    this.state = 'stand'; this.t = 0; this.steps = []; this.tilted = 0;
+    this.state = 'stand'; this.t = 0; this.resetT = 0; this.steps = []; this.tilted = 0;
     this.compose(0);
     W.d.qvel.fill(0); mj.mj_forward(W.m, W.d);
     this.event('reset');
@@ -339,7 +360,7 @@ export class Kin {
   // the balance model: centre of mass c (ground plane, relative to the middle of his feet) on a pendulum of length hc;
   // the centre of pressure p stays inside his feet; capture point xi = where he'd have to put his weight to stop
   balance(dt, gl, gn, ctl = true) {
-    const w2 = Math.max(1, gn) / this.hc, w = Math.sqrt(w2), gt = [gl[0], gl[1]];
+    const w2 = Math.max(1, gn) / this.hc, w = Math.sqrt(w2), lk = 1 - BR.lean * (this.braceW || 0), gt = [gl[0] * lk, gl[1] * lk];   // braced: the walls take part of the slope's pull, he leans less
     const { f, l } = this.facing();
     const m = this.W.mass || 70, Fp = this.pushF;
     const fp = [Fp[0] / m, Fp[1] / m];
@@ -349,10 +370,11 @@ export class Kin {
       const xi = [this.c[0] + this.cv[0] / w + gt[0] / w2, this.c[1] + this.cv[1] / w + gt[1] / w2];
       const xf = xi[0] * f[0] + xi[1] * f[1], xl = xi[0] * l[0] + xi[1] * l[1];
       const K = 2;
-      const pf = clamp((1 + K) * xf, this.sup.back, this.sup.fwd), pl = clamp((1 + K) * xl, -this.sup.side, this.sup.side);
+      const bw = (this.braceW || 0) * BR.base, sb = this.sup.back - 0.08 * bw, sfw = this.sup.fwd + 0.08 * bw, ss = this.sup.side + 0.2 * bw;   // hands on the walls: a wider base
+      const pf = clamp((1 + K) * xf, sb, sfw), pl = clamp((1 + K) * xl, -ss, ss);
       const p = ctl ? [pf * f[0] + pl * l[0], pf * f[1] + pl * l[1]] : [0, 0];
       for (let k = 0; k < 2; k++) { const a = w2 * (this.c[k] - p[k]) + gt[k] + fp[k]; this.cv[k] += a * h; this.c[k] += this.cv[k] * h; }
-      const ef = Math.max(xf - this.sup.fwd, this.sup.back - xf, 0), el = Math.max(Math.abs(xl) - this.sup.side, 0);
+      const ef = Math.max(xf - sfw, sb - xf, 0), el = Math.max(Math.abs(xl) - ss, 0);
       out = Math.hypot(ef, el); dir = Math.atan2(xl, xf);
       this.xi = xi;
     }
@@ -398,10 +420,60 @@ export class Kin {
     want = clamp(want, -90, want === 180 ? 180 : 90);
     let pool = R.filter(c => c.ang === want && c.kind === kind); if (!pool.length) pool = R.filter(c => c.ang === want);
     if (!pool.length) return;
-    const c = pool[(this.reactN = (this.reactN || 0) + 1) % pool.length];
-    this.play(c.clip, (c.push_frame || 3) + 4, 'once', { hl: 0.18, keepUpper: true });
+    let c, x0, from = null;
+    if (this.physOk && this.ext) {
+      // neighbouring directions too (a 70 deg push can use a 45 or 90 recording); the score prefers the closest
+      const near = R.filter(r => (r.kind === kind || want === 180) && Math.abs(wrap((r.ang - ang) * Math.PI / 180)) < 0.9);
+      const b = this.pickReact(near.length ? near : pool, ang); c = b.c; x0 = b.x; from = this.physUnleaned();
+    } else { c = pool[(this.reactN = (this.reactN || 0) + 1) % pool.length]; x0 = (c.push_frame || 3) + 4; }
+    this.play(c.clip, x0, 'once', { hl: 0.25, keepUpper: true, fromPose: from || undefined, fromVel: from ? this.physVel : undefined });
     this.state = 'react'; this.steps.push(this.t); this.steps = this.steps.filter(t => this.t - t < 5);
     this.event(`${kind} ${Math.round(ang)} deg (${c.src || c.file})`);
+  }
+  // ---------- his real body, as the engine sees it (steps worker, round 8) ----------
+  // The network's body lags and differs from the recording (20-30 cm during steps). Recoveries and the returns to
+  // idle used to start from the ghost: the new recording was anchored where the ghost was, not where he was, so he
+  // started each one 20-30 cm off and the engine had to 'catch up with his body' after. Now the driver hands the
+  // engine his real pose every frame (setPhys), and those switches start from it.
+  setPhys(q, d, dt) {
+    if (!this.physPose) { this.physPose = new Float64Array(73); this.physPrev = new Float64Array(73); this.physVel = new Float64Array(72); this.physFeat = new Float64Array(16); this._pv = new Float64Array(72); }
+    this.physPrev.set(this.physPose); this.localPose(q, this.physPose);
+    if (this.physOk && dt > 0) { poseDiff(this.physPrev, this.physPose, this._pv); for (let k = 0; k < 72; k++) this.physVel[k] += (this._pv[k] / dt - this.physVel[k]) * 0.5; }
+    this.physOk = true;
+    const ids = this.W.bodyNames.map(n => this.W.bodyId[n]);
+    featOf(b => this.toLocal([d.xpos[3 * ids[b]], d.xpos[3 * ids[b] + 1], d.xpos[3 * ids[b] + 2]]), [this.physPose[3], this.physPose[4], this.physPose[5], this.physPose[6]], this.physFeat);
+    // his feet's middle (for taking the lean back out of his pose)
+    const L = this.W.bodyId.LeftFoot, R = this.W.bodyId.RightFoot;
+    this.physMid = this.toLocal([(d.xpos[3 * L] + d.xpos[3 * R]) / 2, (d.xpos[3 * L + 1] + d.xpos[3 * R + 1]) / 2, (d.xpos[3 * L + 2] + d.xpos[3 * R + 2]) / 2]);
+  }
+  // his real pose without the lean the engine adds on top (c): compose() will add it again, so it isn't counted twice
+  physUnleaned() {
+    const pl = this.physPose.slice(), pv = this.physMid, th = [this.c[0] / this.hc, this.c[1] / this.hc], a = Math.hypot(th[0], th[1]);
+    if (a > 1e-6) {
+      const R = qc(rv2q([-th[1], th[0], 0])), rel = [pl[0] - pv[0], pl[1] - pv[1], pl[2] - pv[2]], nr = qv(R, rel);
+      pl[0] = pv[0] + nr[0]; pl[1] = pv[1] + nr[1]; pl[2] = pv[2] + nr[2];
+      const q = qn(qm(R, [pl[3], pl[4], pl[5], pl[6]])); pl[3] = q[0]; pl[4] = q[1]; pl[5] = q[2]; pl[6] = q[3];
+    }
+    return pl;
+  }
+  // the recovery recording (and frame) to enter: right direction first, then the one whose frame looks most like him
+  // now (feet, hands, head vs hips) and whose hips move at his speed, searched over its first 0.5 s after the push
+  pickReact(pool, ang) {
+    const f = this.physFeat, v = this.physVel, fac = this.facing(), yaw = fac.yaw;
+    const vf = v[0] * Math.cos(yaw) + v[1] * Math.sin(yaw), vl = -v[0] * Math.sin(yaw) + v[1] * Math.cos(yaw);
+    let best = null;
+    for (const c of pool) {
+      const FF = c.clip.features(), B = c.clip.buf, p0 = c.push_frame || 3;
+      for (let i = p0; i < Math.min(c.clip.n - 20, p0 + 15); i++) {
+        // the clip's hips speed at frame i, in its own facing
+        const o = i * 376, q = [B[o + 6], B[o + 3], B[o + 4], B[o + 5]], cy = yawOf(q), cvx = B[o + 7], cvy = B[o + 8];
+        const cf = cvx * Math.cos(cy) + cvy * Math.sin(cy), cl = -cvx * Math.sin(cy) + cvy * Math.cos(cy);
+        const dv = Math.hypot(cf - vf, cl - vl), da = Math.abs(wrap((c.ang - ang) * Math.PI / 180));
+        const score = featDist(f, FF[i]) + 0.12 * dv + 0.15 * da;
+        if (!best || score < best.s) best = { c, x: i, s: score };
+      }
+    }
+    return best;
   }
   // the ghost starts again from his real body's pose (world qpos q): it had drifted from him (a recovery on a slope, a
   // push the network handled its own way) and following it would pull him over. Into the idle frame that matches.
@@ -420,7 +492,7 @@ export class Kin {
       // three recoveries in 5 s and still going: he can't keep it up
       if (this.steps.length >= 4) return this.startFall('too many recovery steps');
       this.state = 'stand';
-      this.toIdle(0.4, 'back to idle');
+      this.toIdle(0.4, 'back to idle', -1, !!this.ext);
       this.idleT = 8 + Math.random() * 10;
     }
   }
@@ -475,6 +547,7 @@ export class Kin {
       this.keepInBox(pl);
       this.writeWorld(pl);
       this.legIK();
+      this.braceArms(dt);
       this.localPose(d.qpos, this.cur);
     } else {
       this.keepInBox(this.tmp);
@@ -490,6 +563,87 @@ export class Kin {
     const b = this.W.box, mx = b.w / 2 - 0.22, my = b.D / 2 - 0.18;   // ground origin is the face's middle
     const nx = clamp(pl[0], -mx, mx), ny = clamp(pl[1], -my, my);
     if (nx !== pl[0] || ny !== pl[1]) { this.anchor.x += nx - pl[0]; this.anchor.y += ny - pl[1]; pl[0] = nx; pl[1] = ny; }
+  }
+  // ---------- hands on the walls (user 18:21: "use the arms to support himself and hold, so he doesn't move if the
+  // phone is rotating"). When the floor tilts or the phone turns, he puts his hands flat on the walls beside him (the
+  // box is narrow: the side walls are within reach), a little below his shoulders, pressing 2 cm into the wood, and
+  // keeps them there until it has been calm for 1.5 s. His physical body then really leans on them (contacts).
+  braceArms(dt) {
+    if (this.noBrace) { this.braceW = 0; this.hands = null; return; }
+    const W = this.W, d = W.d, g = W.m.opt.gravity, gl = qv(this.G.q, [g[0], g[1], g[2]]), G = Math.hypot(...gl) || 9.81;
+    const up = [-gl[0] / G, -gl[1] / G, -gl[2] / G];
+    const rate = this.upPrev ? Math.acos(clamp(up[0] * this.upPrev[0] + up[1] * this.upPrev[1] + up[2] * this.upPrev[2], -1, 1)) / Math.max(dt, 1e-3) : 0;
+    this.upPrev = up;
+    this.upRate = (this.upRate || 0) + (rate - (this.upRate || 0)) * (1 - Math.exp(-dt / 0.15));   // smoothed: sensor noise is not "the phone turning"
+    const tilt = Math.acos(clamp(up[2], -1, 1));
+    const room = !W.open && (this.G.name === 'floor' || this.G.name === 'ceil') && this.state === 'stand';
+    const want = room && this.t - (this.resetT || 0) > 2 && (tilt > BR.tilt || this.upRate > BR.rate);   // not in the first 2 s (the phone settling at the start made him brace)
+    this.calmT = want ? 0 : (this.calmT || 0) + dt;
+    const on = want || (room && this.braceW > 0 && this.calmT < BR.hold);
+    this.braceW = clamp((this.braceW || 0) + (on ? dt / BR.reach : -dt / BR.release), 0, 1);
+    if (this.braceW <= 0) { this.hands = null; return; }
+    const w = this.braceW * this.braceW * (3 - 2 * this.braceW);
+    // where each hand goes, from where his shoulder is NOW (round 1 of the walls work: the targets were fixed in the
+    // world when he reached, his body then moved with the idle and the network, the arms were stretched or crushed and
+    // the hands slammed the wood: 0-1170 N): out to his side and a little forward, a hand-span under the shoulder,
+    // palm flat on the wall, fingers up; the target follows his shoulder slowly (a hand doesn't skate on wood)
+    const { f, l } = this.facing(), b = this.W.box, ids = this.W.bodyId;
+    if (!this.hands) this.hands = {};
+    for (const side of ['Right', 'Left']) {
+      const sh = this.toLocal([d.xpos[3 * ids[side + 'Arm']], d.xpos[3 * ids[side + 'Arm'] + 1], d.xpos[3 * ids[side + 'Arm'] + 2]]);
+      const s = side === 'Left' ? 1 : -1, dir = [l[0] * s, l[1] * s];
+      // the wall on that side (x = +-w/2 or y = +-D/2 in the ground frame, origin under the box's middle)
+      let best = null;
+      for (const [ax, lim] of [[0, b.w / 2], [1, b.D / 2]]) for (const sg of [1, -1]) {
+        if (dir[ax] * sg <= 0.5) continue;
+        const t = (sg * lim - sh[ax]) / dir[ax]; if (t > 0 && (!best || t < best.t)) best = { t, ax, sg, lim };
+      }
+      if (!best || best.t > BR.maxReach) { delete this.hands[side]; continue; }
+      // palm centre on the wall: forward of the shoulder, below it; the palm 1.5 cm off the wood (he touches and leans)
+      const nW = [0, 0, 0]; nW[best.ax] = best.sg;                    // into the wall (ground frame)
+      const pc = [sh[0] + f[0] * BR.fwd, sh[1] + f[1] * BR.fwd, sh[2] - BR.down];
+      pc[best.ax] = best.sg * (best.lim - BR.gap);
+      // fingers up, tilted forward a little; palm facing the wall
+      let fd = [f[0] * 0.35, f[1] * 0.35, 1]; const fl = Math.hypot(...fd); fd = fd.map(v => v / fl);
+      const dn = fd[0] * nW[0] + fd[1] * nW[1] + fd[2] * nW[2]; fd = [fd[0] - dn * nW[0], fd[1] - dn * nW[1], fd[2] - dn * nW[2]];
+      const fl2 = Math.hypot(...fd); fd = fd.map(v => v / fl2);
+      const wrist = [pc[0] - fd[0] * BR.palm, pc[1] - fd[1] * BR.palm, pc[2] - fd[2] * BR.palm];
+      const tw = this.toWorld(wrist), fdw = qv(qc(this.G.q), fd), nw = qv(qc(this.G.q), nW);
+      // hand frame: palm normal = local -z, fingers = local -x (right) / +x (left), in this body's rest (T) pose
+      const xw = side === 'Right' ? fdw.map(v => -v) : fdw, zw = nw.map(v => -v);
+      const yw = [zw[1] * xw[2] - zw[2] * xw[1], zw[2] * xw[0] - zw[0] * xw[2], zw[0] * xw[1] - zw[1] * xw[0]];
+      const q = matQ(xw, yw, zw);
+      const H = this.hands[side];
+      if (!H) this.hands[side] = { p: tw, q };
+      else {   // follow the shoulder slowly: at most 12 cm/s along the wall
+        const e = [tw[0] - H.p[0], tw[1] - H.p[1], tw[2] - H.p[2]], el = Math.hypot(...e), k = Math.min(1, 0.12 * dt / Math.max(el, 1e-6));
+        for (let i = 0; i < 3; i++) H.p[i] += e[i] * k; H.q = q;
+      }
+    }
+    this.armIK(w);
+  }
+  armIK(w) {
+    const W = this.W, mj = this.mj, m = W.m, d = W.d, nv = this.nv;
+    const act = Object.keys(this.hands || {}); if (!act.length) return;
+    mj.mj_kinematics(m, d);
+    const start = {};
+    for (const side of act) { const b = W.bodyId[ARMS[side].hand]; start[side] = { p: [d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]], q: [d.xquat[4 * b], d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3]] }; }
+    for (let it = 0; it < 10; it++) {
+      mj.mj_kinematics(m, d); mj.mj_comPos(m, d);
+      for (const side of act) {
+        const A = ARMS[side], b = W.bodyId[A.hand], H = this.hands[side], S0 = start[side];
+        const tp = [0, 1, 2].map(i => S0.p[i] + (H.p[i] - S0.p[i]) * w);
+        const cq = [d.xquat[4 * b], d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3]];
+        const tq = qn(qm(rv2q(q2rv(qm(H.q, qc(S0.q))).map(v => v * w)), S0.q));
+        const e = [tp[0] - d.xpos[3 * b], tp[1] - d.xpos[3 * b + 1], tp[2] - d.xpos[3 * b + 2], ...q2rv(qm(tq, qc(cq))).map(v => v * BR.rotW)];
+        mj.mj_jacBody(m, d, this.jp, this.jr, b);
+        const JP = this.jp.GetView(), JR = this.jr.GetView(), N = ARM_W.length;
+        const J = []; for (let r = 0; r < 6; r++) { const row = []; for (let c = 0; c < N; c++) row.push(r < 3 ? JP[r * nv + A.dof + c] : JR[(r - 3) * nv + A.dof + c] * BR.rotW); J.push(row); }
+        const M = []; for (let i = 0; i < 6; i++) { M.push([]); for (let j = 0; j < 6; j++) { let s = 0; for (let c = 0; c < N; c++) s += J[i][c] * ARM_W[c] * J[j][c]; M[i].push(s + (i === j ? 0.004 : 0)); } }
+        const y = solve6(M, e);
+        for (let c = 0; c < N; c++) { let s = 0; for (let i = 0; i < 6; i++) s += J[i][c] * y[i]; d.qpos[A.dof + c + 1] += clamp(ARM_W[c] * s, -0.15, 0.15); }
+      }
+    }
   }
   // the legs reach the planted feet (damped least squares on each leg's 9 hinges, MuJoCo's Jacobians)
   legIK() {
@@ -544,8 +698,9 @@ export class Kin {
     // protective: arms come forward and a bit out, elbows soften (hinge angles of this body; 0 = T-pose)
     this.brace = this.target.slice();
     const set = (n, v) => { const i = W.act.findIndex(a => a.name === n); if (i >= 0) this.brace[i] = v; };
-    set('RightArm_y', -0.7); set('RightArm_z', -0.9); set('LeftArm_y', 0.7); set('LeftArm_z', 0.9);
-    set('RightForeArm_z', -0.5); set('LeftForeArm_z', 0.5);
+    // (falls worker) arms forward = RightArm_z + / LeftArm_z -, elbows bend = RightForeArm_z + / LeftForeArm_z - (signs were reversed)
+    set('RightArm_y', -0.7); set('RightArm_z', 0.9); set('LeftArm_y', 0.7); set('LeftArm_z', -0.9);
+    set('RightForeArm_z', 0.5); set('LeftForeArm_z', -0.5);
     W.tControl = d.time;
     this.event('fall: ' + why);
   }
@@ -585,9 +740,30 @@ export class Kin {
     const W = this.W, d = W.d;
     this.restoreGains();
     const hipsZ = this.cur[2];
-    if (hipsZ > 0.75) {   // he never went down (caught against a wall): straight back to standing
+    // his trunk upright (chest's up near the floor's up) and hips off the floor: he is crouched or sitting against a
+    // wall, not lying: he stands straight up from there (round 7: he was laid flat first, to play a lying get-up)
+    const chq = this.W.d.xquat, cb = this.W.bodyId.Chest, cu = qv(this.G.q, qv([chq[4 * cb], chq[4 * cb + 1], chq[4 * cb + 2], chq[4 * cb + 3]], [0, 0, 1]));
+    const hd = this.W.bodyId.Head, headZ = this.toLocal([this.W.d.xpos[3 * hd], this.W.d.xpos[3 * hd + 1], this.W.d.xpos[3 * hd + 2]])[2];
+    // on his feet = hips up AND trunk upright (falls worker: leaning diagonally on a wall is not); or trunk fairly upright
+    // with the head still high (get-up worker: sitting back against a wall)
+    if ((hipsZ > 0.6 && cu[2] > 0.75) || (cu[2] > 0.6 && headZ > 1.2)) {   // he never went down (caught against a wall): straight back to standing
       this.state = 'stand'; this.c = [0, 0]; this.cv = [0, 0];
-      this.toIdle(0.4, 'caught himself'); return;
+      this.toIdle(hipsZ > 0.75 ? 0.4 : 0.9, 'caught himself'); return;
+    }
+    // (falls worker) sitting on the floor (trunk upright, hips low - where a protective fall into a wall or corner now
+    // ends): no lying down first. The get-up recordings all pass through sitting up: start at the frame of any of them
+    // that looks most like him now (feet, hands, head relative to the hips, hips height), anchored by his hips.
+    if (cu[2] > 0.6) {
+      const f = this.curFeatures(); let best = null;
+      for (const kind of Object.keys(this.lib.getups)) for (const g of this.lib.getups[kind]) {
+        const FF = g.clip.features();
+        for (let i = 0; i < Math.floor(FF.length * 0.75); i += 2) { const dd = featDist(f, FF[i]); if (!best || dd < best.d) best = { g, i, d: dd, kind }; }
+      }
+      if (best) {
+        this.state = 'getup'; this.havePre = false;
+        this.play(best.g.clip, best.i, 'once', { hl: 0.45, still: true, fromCur: true });
+        return this.event(`get up from sitting (${best.g.file} at ${(best.i / FPS).toFixed(1)} s, pose gap ${(best.d * 100).toFixed(0)} cm)`);
+      }
     }
     // how he lies: his chest's front (the body's -y) against the ground's up
     const ch = W.bodyId.Chest, R = [d.xquat[4 * ch], d.xquat[4 * ch + 1], d.xquat[4 * ch + 2], d.xquat[4 * ch + 3]];
@@ -599,14 +775,50 @@ export class Kin {
       pool = pool.filter(c => Math.sign(c.lieSide || 0) === Math.sign(lf[2]));
       if (!pool.length) { kind = fr[2] > 0 ? 'back' : 'front'; pool = G[kind]; }
     }
-    const c = pool[(this.getN = (this.getN || 0) + 1) % pool.length];
-    this.state = 'getup';
+    // (worker 'getup') the get-up recording AND the moment in it that look most like him now (any clip of any kind:
+    // hips height, his up direction seen from his hips, feet/hands/head relative to his hips in the hips' own frame),
+    // from the first 70% of each clip; then entered there, turned so the hips' sideways axis (or the spine, on his
+    // side) lines up. Starting every get-up at frame 0 laid him flat first even when he sat against a wall.
+    const me = this.bodyFeat(i => { const id = W.bodyId[BODY23[i]]; return this.toLocal([d.xpos[3 * id], d.xpos[3 * id + 1], d.xpos[3 * id + 2]]); }, [this.cur[3], this.cur[4], this.cur[5], this.cur[6]], this.cur[2]);
+    let best = null;
+    for (const k of Object.keys(G)) for (const e of G[k]) {
+      const F = this.getupFeats(e.clip);
+      for (let i = 0; i < Math.floor(F.length * 0.7); i += 2) { let dd = 0; for (let j = 0; j < me.length; j++) dd += (me[j] - F[i][j]) ** 2; if (!best || dd < best.d) best = { e, i, d: dd, kind: k }; }
+    }
+    const c = best.e; kind = best.kind;
+    this.state = 'getup'; this.getupHold = 0;
     this.havePre = false;
-    this.play(c.clip, 0, 'once', { spine: true, hl: 0.35, still: true, fromCur: true });
-    this.event('get up from ' + kind + ' (' + c.file + ')');
+    const q0 = c.clip.q(best.i), lat0 = qv([q0[3], q0[4], q0[5], q0[6]], [1, 0, 0]), latN = qv([this.cur[3], this.cur[4], this.cur[5], this.cur[6]], [1, 0, 0]);
+    const useLat = Math.abs(lat0[2]) < 0.7 && Math.abs(latN[2]) < 0.7;
+    const yaw = useLat ? wrap(Math.atan2(latN[1], latN[0]) - Math.atan2(lat0[1], lat0[0])) : undefined;
+    this.play(c.clip, best.i, 'once', { spine: !useLat, yaw, hl: 0.35, still: true, fromCur: true });
+    this.event(`get up from ${kind} (${c.file} at ${(best.i / FPS).toFixed(1)} s, pose gap ${Math.sqrt(best.d / me.length * 3).toFixed(2)})`);
+  }
+  // pose fingerprint for get-ups (independent of which way he faces): parts relative to the hips in the hips' own frame,
+  // the ground's up seen from the hips (x2), hips height (x2)
+  bodyFeat(pos, rootQ, hipsZ) {
+    const inv = qc(rootQ), h = pos(0), o = [];
+    for (const [b, w] of [[21, 1], [17, 1], [14, 0.7], [10, 0.7], [6, 1]]) { const p = pos(b), r = qv(inv, [p[0] - h[0], p[1] - h[1], p[2] - h[2]]); o.push(r[0] * w, r[1] * w, r[2] * w); }
+    const up = qv(inv, [0, 0, 1]); o.push(up[0] * 0.6, up[1] * 0.6, up[2] * 0.6, hipsZ * 2);
+    return o;
+  }
+  getupFeats(clip) {
+    if (clip._gf) return clip._gf;
+    clip._gf = [];
+    for (let i = 0; i < clip.n; i++) { const q = clip.q(i); clip._gf.push(this.bodyFeat(b => clip.body(i, b), [q[3], q[4], q[5], q[6]], q[2])); }
+    return clip._gf;
   }
   updateGetup(dt) {
     if (this.faceChanged) { this.faceChanged = false; return this.startFall('the box turned over'); }
+    // the recording waits for him (worker 'getup'): when his real hips are behind the recording's (getupLag, metres
+    // along "up", set by the physics layer), it slows down, to a quarter speed at 33 cm behind; and it isn't over
+    // until his hips are within 15 cm of standing (or 4 s past its end: then he is down, and falls again)
+    const lag = this.getupLag || 0;
+    this.anim.speed = clamp(1 - (lag - 0.08) / 0.33, 0.25, 1);
+    const ended = this.anim.x >= this.anim.clip.n - 1.01;
+    this.getupHold = ended ? (this.getupHold || 0) + dt : 0;
+    if (ended && lag > 0.15 && this.getupHold < 4) return;
+    if (ended && lag > 0.15) { this.getupHold = 0; return this.startFall('the get-up failed'); }
     if (this.advance(dt)) {
       this.state = 'stand'; this.c = [0, 0]; this.cv = [0, 0]; this.steps = [];
       this.toIdle(0.5, 'standing again');

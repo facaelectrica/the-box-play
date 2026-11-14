@@ -54,6 +54,9 @@ export class Springs {
     this.help = opt.help ?? 0.5;                          // 0..1.5: hips spring strength (1 = 1.5 Hz, well damped)
     this.stiff = opt.stiff ?? 1;                          // muscles: fraction of the servos' own gains
     this.vsign = opt.vsign ?? -1;
+    this.getupMode = opt.getupMode ?? 'contacts';   // get-ups: 'contacts' = his limbs on the floor push (internal), 'hips' = the old outside hips spring
+    this.getupTurn = opt.getupTurn ?? 3;
+    this.getupCap = opt.getupCap ?? 0.2;           // outside help left in a get-up: only straight up, at most this x his weight
     this.vturn = opt.vturn ?? 1;
     this.virtual = opt.virtual ?? 1;                      // the hips pull is made by the standing legs' muscles (legPush), not from outside
     this.feetHelp = opt.feetHelp ?? 0;
@@ -159,7 +162,19 @@ export class Springs {
           Fv[k] = clamp(H * (kp * (gr.p[k] - d.qpos[k]) + kd * (this.gv[k] - v[k])), -2.5 * M * 9.81, 2.5 * M * 9.81);
           Tv[k] = clamp(H * (kr * e[k] + kdr * (this.gw[k] - w[k])), -400, 400);
         }
-        if (this.virtual && K.state !== 'getup') {   // (get-ups: lying, no standing leg to push with -> outside help)
+        if (K.state === 'getup' && this.getupMode === 'contacts') {
+          // get-ups (worker 'getup', Nov 14): the same pull, plus his weight, made by the limbs that touch the floor
+          // (hands, forearms, knees, feet...): their joints push against it (J^T at each contact point, through the
+          // whole chain up to his hips). Only what they can't do comes from outside: straight up, capped.
+          const gl = [-W.m.opt.gravity[0], -W.m.opt.gravity[1], -W.m.opt.gravity[2]], gN = Math.hypot(...gl) || 9.81, upv = gl.map(v => v / gN);
+          const Fw = [Fv[0] + M * gl[0], Fv[1] + M * gl[1], Fv[2] + M * gl[2]];
+          const got = this.contactPush(Fw, Tv.map(v => v * this.getupTurn));   // (turn x3: without it he rose hips-first, folded at the waist)
+          // outside: only the upward part of the pull that the floor contacts can't give, capped
+          const fu = Fv[0] * upv[0] + Fv[1] * upv[1] + Fv[2] * upv[2];
+          const ext = clamp((got ? 0.5 : 1) * fu, 0, this.getupCap * M * gN);
+          for (let k = 0; k < 3; k++) x[6 * b + k] += ext * upv[k];
+          helpSum += ext;
+        } else if (this.virtual && K.state !== 'getup') {   // (get-ups: lying, no standing leg to push with -> outside help)
           // round 4: no outside force. The same pull is made by the muscles of the legs that stand on the floor
           // (joint torques = J^T of the hips' wanted force and turn, through each standing leg from its foot), so
           // the floor pushes back and his weight stays on his feet: past his feet, the feet tip and he can't be held.
@@ -179,6 +194,12 @@ export class Springs {
     }
     d.qfrc_applied.fill(0);
     if (n) { this.stats.help = helpSum / n; }
+    // how far his hips are behind the recording's, along up (the get-up waits for him: kin.updateGetup)
+    if (K.state === 'getup') {   // behind = hips or head lower than the recording's (head: he can rise hips-first, folded)
+      const me = K.toLocal([d.qpos[0], d.qpos[1], d.qpos[2]]), gh = K.toLocal([gr.p[0], gr.p[1], gr.p[2]]);
+      const hb = this.head, mh = K.toLocal([d.xpos[3 * hb], d.xpos[3 * hb + 1], d.xpos[3 * hb + 2]]), gd = this.G.d, ghh = K.toLocal([gd.xpos[3 * hb], gd.xpos[3 * hb + 1], gd.xpos[3 * hb + 2]]);
+      K.getupLag = Math.max(0, gh[2] - me[2], ghh[2] - mh[2]);
+    }
     // can his body follow? hips far from the ghost's, or his head low while the ghost stands
     if (!falling && K.state !== 'getup') {
       const gap = Math.hypot(d.qpos[0] - gr.p[0], d.qpos[1] - gr.p[1], d.qpos[2] - gr.p[2]);
@@ -249,6 +270,40 @@ export class Springs {
         d.qfrc_applied[J.dof] = (1 - w[k]) * d.qfrc_applied[J.dof] + w[k] * tau * this.stiff;
       }
     });
+  }
+  // the limbs touching the floor push his body: each touching part gets a share of the wanted force F and turn T on
+  // his hips; every hinge between that part and his hips gets -J^T [F;T] (J at the contact point). Those hinges stop
+  // holding their limb up against gravity (it rests on the floor). Torques capped at the servos' limits.
+  // Returns how many parts pushed.
+  contactPush(F, T) {
+    const W = this.W, m = W.m, d = W.d, nv = m.nv, mj = W.mj;
+    if (!this.jp) { this.jp = new mj.DoubleBuffer(3 * nv); this.jr = new mj.DoubleBuffer(3 * nv); }
+    if (!this.effort) { this.effort = new Float64Array(nv).fill(300); W.act.forEach(a => { this.effort[a.dof] = a.effort; }); this.isWall = g => !W.isFig[m.geom_bodyid[g]]; }
+    const pts = new Map();
+    for (let i = 0; i < d.ncon; i++) {
+      const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, pos = [c.pos[0], c.pos[1], c.pos[2]], dist = c.dist; c.delete();
+      if (dist > 0.005) continue;
+      let b = -1;
+      if (this.isWall(g1) && !this.isWall(g2)) b = m.geom_bodyid[g2]; else if (this.isWall(g2) && !this.isWall(g1)) b = m.geom_bodyid[g1];
+      if (b < 0) continue;
+      const e = pts.get(b) || { p: [0, 0, 0], n: 0 }; for (let k = 0; k < 3; k++) e.p[k] += pos[k]; e.n++; pts.set(b, e);
+    }
+    if (!pts.size) return 0;
+    const share = 1 / pts.size, done = new Uint8Array(nv);
+    for (const [b, e] of pts) {
+      if (b === this.hips) continue;   // the hips on the floor carry their share themselves
+      const pt = e.p.map(v => v / e.n);
+      mj.mj_jac(m, d, this.jp, this.jr, pt, b);
+      const P = this.jp.GetView(), R = this.jr.GetView();
+      for (let c = 6; c < nv; c++) {
+        const jx = P[c], jy = P[nv + c], jz = P[2 * nv + c], rx = R[c], ry = R[nv + c], rz = R[2 * nv + c];
+        if (!jx && !jy && !jz && !rx && !ry && !rz) continue;
+        if (!done[c]) { d.qfrc_applied[c] = 0; done[c] = 1; }   // this hinge now pushes instead of holding its limb up
+        const tau = this.vsign * share * (jx * F[0] + jy * F[1] + jz * F[2] + rx * T[0] + ry * T[1] + rz * T[2]);
+        d.qfrc_applied[c] = clamp(d.qfrc_applied[c] + tau, -this.effort[c], this.effort[c]);
+      }
+    }
+    return pts.size;
   }
   // outside hips help toward the ghost's root (used by drive_brain for get-ups)
   hipsHelp(gr, H, kp, kd, kr, kdr) {
