@@ -1,24 +1,24 @@
 {
- "note": "Brains the page can run (Options > Brain). Each dir holds soma_tracker.onnx + soma_tracker.json. Scores: tools/test/scorecard.mjs. Brain numbers (short): 01 = stage2 20:06, 02 = stage3 22:45, 03 = stance 10:01, 04 = mix 70% 02 + 30% 03 (11:05); each new brain gets the next number.",
+ "note": "Brains the page can run (Options > Brain). Each dir holds soma_tracker.onnx + soma_tracker.json. Scores: tools/test/scorecard.mjs. Brain numbers (short): 01 = stage2 20:06, 02 = stage3 22:45, 03 = stance 10:01, 04 = mix 70% 02 + 30% 03, 05 = mix 50% 04 + 50% lab14 11:01; each new brain gets the next number.",
  "default": "live",
  "models": [
   {
    "id": "live",
-   "label": "04 \u00b7 latest (mix of 02 + 03, 11:05)",
+   "label": "05 \u00b7 latest (04 + run lab14, 11:40)",
    "dir": "body/models/live/",
    "idle": "seed_idle_A121",
    "onnx_bytes": 25211904,
-   "about": "Brain 04 (Nov 14 11:05): weight average of brain 02 (70%) and brain 03 (30%), no extra training. Free tests: 0 falls in 72 director pushes (02: 1, 03: 3), feet 19-21 cm apart (person 22), both idles 60 s. Arms still held out like 03. Derived from NVIDIA's model (NVIDIA Open Model License).",
-   "short": "04"
+   "about": "Brain 05 (Nov 14 11:40): average of brain 04 (50%) and the best lab14 save (11:01, 50%; lab14 = more stance practice from 03). Free tests: 1 fall in 72 pushes (04: 0; within noise), feet 21 cm (person 22), idles 60 s. Arms still out. Derived from NVIDIA's model (NVIDIA Open Model License).",
+   "short": "05"
   },
   {
    "id": "best",
-   "label": "03 \u00b7 previous (stance, 10:01)",
+   "label": "04 \u00b7 previous (mix of 02 + 03, 11:05)",
    "dir": "body/models/best/",
    "idle": "seed_idle_A121",
    "onnx_bytes": 25211904,
-   "about": "Brain 03 (lab13, stance reward, saved 10:01 Nov 14): feet ~21 cm apart; 3 falls in 72 pushes. Derived from NVIDIA's model (NVIDIA Open Model License).",
-   "short": "03"
+   "about": "Brain 04: 70% brain 02 + 30% brain 03, no training. 0 falls in 72 pushes, feet 19 cm. Derived from NVIDIA's model (NVIDIA Open Model License).",
+   "short": "04"
   },
   {
    "id": "nvidia",
