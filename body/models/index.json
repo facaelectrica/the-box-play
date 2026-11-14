@@ -1,10 +1,10 @@
 {
- "note": "Brains the page can run (Options > Brain). Each dir holds soma_tracker.onnx + soma_tracker.json. Scores: tools/test/scorecard.mjs. Brain numbers (short): 01 = stage2 20:06, 02 = stage3 22:45, 03 = stance 10:01, 04 = mix 70% 02 + 30% 03, 05 = mix 50% 04 + 50% lab14 11:01, 06 = mix 50% 04 + 50% lab15 12:10, 07 = mix 50% 06 + 50% lab15 12:36; each new brain gets the next number.",
+ "note": "Brains the page can run (Options > Brain). Each dir holds soma_tracker.onnx + soma_tracker.json. Scores: tools/test/scorecard.mjs. Brain numbers (short): 01 = stage2 20:06, 02 = stage3 22:45, 03 = stance 10:01, 04 = mix 70% 02 + 30% 03, 05 = mix 50% 04 + 50% lab14 11:01, 06 = mix 50% 04 + 50% lab15 12:10, 07 = mix 50% 06 + 50% lab15 12:36; each new brain gets the next number. (A6 Nov 14 13:20, user 13:15: every brain 01-07 in the picker so he can test them; 07 default.)",
  "default": "live",
  "models": [
   {
    "id": "live",
-   "label": "07 \u00b7 latest (06 + more arms training, 12:47)",
+   "label": "07 \u00b7 mix of 06 + arms training (12:47)",
    "dir": "body/models/live/",
    "idle": "seed_idle_A121",
    "onnx_bytes": 25211904,
@@ -13,12 +13,57 @@
   },
   {
    "id": "best",
-   "label": "06 \u00b7 previous (best on pushes, 12:20)",
+   "label": "06 \u00b7 mix of 04 + arms training (12:20)",
    "dir": "body/models/best/",
    "idle": "seed_idle_A121",
    "onnx_bytes": 25211904,
    "about": "Brain 06: 50% brain 04 + 50% lab15 12:10. 0 falls in 72 pushes, hands 32/36 cm. Derived from NVIDIA's model (NVIDIA Open Model License).",
    "short": "06"
+  },
+  {
+   "id": "b05",
+   "label": "05 \u00b7 mix of 04 + stance training (11:41)",
+   "dir": "body/models/b05/",
+   "idle": "seed_idle_A121",
+   "onnx_bytes": 25211904,
+   "about": "Brain 05: 50% brain 04 + 50% lab14 save 11:01. Derived from NVIDIA's model (NVIDIA Open Model License).",
+   "short": "05"
+  },
+  {
+   "id": "b04",
+   "label": "04 \u00b7 mix of 02 and 03 (11:08)",
+   "dir": "body/models/b04/",
+   "idle": "seed_idle_A121",
+   "onnx_bytes": 25211904,
+   "about": "Brain 04: 70% brain 02 + 30% brain 03. Derived from NVIDIA's model (NVIDIA Open Model License).",
+   "short": "04"
+  },
+  {
+   "id": "b03",
+   "label": "03 \u00b7 stance training (lab13, 10:01)",
+   "dir": "body/models/b03/",
+   "idle": "seed_idle_A121",
+   "onnx_bytes": 25211904,
+   "about": "Brain 03: lab13 stance reward, save 10:01. Derived from NVIDIA's model (NVIDIA Open Model License).",
+   "short": "03"
+  },
+  {
+   "id": "b02",
+   "label": "02 \u00b7 director training (stage 3, Nov 13 22:45)",
+   "dir": "body/models/b02/",
+   "idle": "seed_idle_A121",
+   "onnx_bytes": 25211904,
+   "about": "Brain 02: Stage 3 (director in training), save 22:45 Nov 13. Derived from NVIDIA's model (NVIDIA Open Model License).",
+   "short": "02"
+  },
+  {
+   "id": "b01",
+   "label": "01 \u00b7 pushes training (stage 2, Nov 13 20:06)",
+   "dir": "body/models/b01/",
+   "idle": "seed_idle_A121",
+   "onnx_bytes": 25211904,
+   "about": "Brain 01: Stage 2 (pushes), save 20:06 Nov 13. Derived from NVIDIA's model (NVIDIA Open Model License).",
+   "short": "01"
   },
   {
    "id": "nvidia",
