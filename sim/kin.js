@@ -76,6 +76,31 @@ export class Clip {
   spineYaw(i) { const h = this.body(i, 0), t = this.body(i, 6); return Math.atan2(t[1] - h[1], t[0] - h[0]); }
 }
 
+// ---------- pose matching (user 17:22: "the transition between poses doesn't make sense") ----------
+// A pose's fingerprint: feet, hands and head relative to his hips, turned to where he faces, plus hips height. Used to
+// enter a recording at the frame that already looks like him, instead of at its start.
+const FEAT_BODIES = [[21, 2.0], [17, 2.0], [14, 0.5], [10, 0.5], [6, 1.0]];   // left foot, right foot, hands, head
+function featOf(pos, rootQ, out) {   // pos(b) -> [x,y,z]; rootQ w x y z
+  const yaw = yawOf(rootQ), c = Math.cos(-yaw), s = Math.sin(-yaw), h = pos(0);
+  let k = 0;
+  for (const [b, w] of FEAT_BODIES) {
+    const p = pos(b), dx = p[0] - h[0], dy = p[1] - h[1];
+    out[k++] = (c * dx - s * dy) * w; out[k++] = (s * dx + c * dy) * w; out[k++] = (p[2] - h[2]) * w;
+  }
+  out[k++] = h[2] * 2;
+  return out;
+}
+Clip.prototype.features = function () {
+  if (this._f) return this._f;
+  this._f = [];
+  for (let i = 0; i < this.n; i++) {
+    const B = this.buf, o = i * F, q = [B[o + 6], B[o + 3], B[o + 4], B[o + 5]];   // hips quat xyzw -> wxyz
+    this._f.push(featOf(b => [B[o + 13 * b], B[o + 13 * b + 1], B[o + 13 * b + 2]], q, new Float64Array(16)));
+  }
+  return this._f;
+};
+const featDist = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += (a[i] - b[i]) ** 2; return Math.sqrt(s / 6); };
+
 // pose difference b - a in "velocity space" (72: root pos 3, root turn 3 as a rotation vector, 66 hinges)
 function poseDiff(a, b, out) {
   for (let k = 0; k < 3; k++) out[k] = b[k] - a[k];
@@ -232,6 +257,29 @@ export class Kin {
     return Math.atan2(b[1] - a[1], b[0] - a[0]);
   }
 
+  curFeatures() {
+    const d = this.W.d, ids = this.W.bodyNames.map(n => this.W.bodyId[n]);
+    const loc = b => this.toLocal([d.xpos[3 * ids[b]], d.xpos[3 * ids[b] + 1], d.xpos[3 * ids[b] + 2]]);
+    return featOf(loc, [this.cur[3], this.cur[4], this.cur[5], this.cur[6]], new Float64Array(16));
+  }
+  // the idle frame (any idle, or any but `not`) that looks most like him now
+  bestIdle(not = -1) {
+    const f = this.curFeatures(); let best = null;
+    this.lib.idles.forEach((I, k) => {
+      if (k === not) return;
+      const FF = I.clip.features();
+      for (let i = 0; i < FF.length; i += 2) { const dd = featDist(f, FF[i]); if (!best || dd < best.d) best = { k, x: i, d: dd }; }
+    });
+    return best;
+  }
+  toIdle(hl, why, not = -1) {
+    const b = this.bestIdle(not);
+    this.idleK = b.k;
+    this.play(this.lib.idles[b.k].clip, b.x, 'pingpong', { hl });
+    this.event(`${why}: ${this.lib.idles[b.k].label} at ${(b.x / FPS).toFixed(1)} s (pose gap ${(b.d * 100).toFixed(0)} cm)`);
+    return b;
+  }
+
   // ---------- states ----------
   reset() {
     const W = this.W, mj = this.mj;
@@ -316,9 +364,10 @@ export class Kin {
     if (b.out > this.stepMargin) return this.startReact(b.dir, b.out, xr);
     // calm: the next idle recording now and then
     if ((this.idleT -= dt) <= 0 && Math.hypot(this.cv[0], this.cv[1]) < 0.05) {
-      this.idleK = (this.idleK + 1) % this.lib.idles.length; this.idleT = 25 + Math.random() * 20;
-      this.play(this.lib.idles[this.idleK].clip, 0, 'pingpong', { hl: 0.45 });
-      this.event('idle ' + this.lib.idles[this.idleK].label);
+      // another idle, entered where it already looks like him (feet where his are); none close enough: keep this one
+      const b = this.bestIdle(this.idleK);
+      if (b && b.d < 0.035) this.toIdle(0.5, 'next idle', this.idleK);
+      this.idleT = b && b.d < 0.035 ? 25 + Math.random() * 20 : 3;
     }
     this.advance(dt);
   }
@@ -341,6 +390,8 @@ export class Kin {
     this.state = 'react'; this.steps.push(this.t); this.steps = this.steps.filter(t => this.t - t < 5);
     this.event(`${kind} ${Math.round(ang)} deg (${c.src || c.file})`);
   }
+  // his real body says his weight is past his feet (sim/springs.js): a step that way, as if thrown out fast
+  requestStep(ang, out) { if (this.state === 'stand') this.startReact(ang, Math.max(out, 0.07), 1); }
   updateReact(dt, gl, gn) {
     // the recording carries him; his lean drifts to what the slope asks for (the step put his feet back under him)
     const w2 = Math.max(1, gn) / this.hc, ceq = [-gl[0] / w2, -gl[1] / w2], k = 1 - Math.exp(-dt / 0.35);
@@ -349,9 +400,8 @@ export class Kin {
       // three recoveries in 5 s and still going: he can't keep it up
       if (this.steps.length >= 4) return this.startFall('too many recovery steps');
       this.state = 'stand';
-      this.play(this.lib.idles[this.idleK].clip, 0, 'pingpong', { hl: 0.4 });
+      this.toIdle(0.4, 'back to idle');
       this.idleT = 8 + Math.random() * 10;
-      this.event('back to idle');
     }
   }
 
@@ -509,8 +559,7 @@ export class Kin {
     const hipsZ = this.cur[2];
     if (hipsZ > 0.75) {   // he never went down (caught against a wall): straight back to standing
       this.state = 'stand'; this.c = [0, 0]; this.cv = [0, 0];
-      this.play(this.lib.idles[this.idleK].clip, 0, 'pingpong', { hl: 0.4, still: true });
-      return this.event('caught himself: standing');
+      this.toIdle(0.4, 'caught himself'); return;
     }
     // how he lies: his chest's front (the body's -y) against the ground's up
     const ch = W.bodyId.Chest, R = [d.xquat[4 * ch], d.xquat[4 * ch + 1], d.xquat[4 * ch + 2], d.xquat[4 * ch + 3]];
@@ -531,9 +580,8 @@ export class Kin {
     if (this.faceChanged) { this.faceChanged = false; return this.startFall('the box turned over'); }
     if (this.advance(dt)) {
       this.state = 'stand'; this.c = [0, 0]; this.cv = [0, 0]; this.steps = [];
-      this.play(this.lib.idles[this.idleK].clip, 0, 'pingpong', { hl: 0.5 });
+      this.toIdle(0.5, 'standing again');
       this.idleT = 10 + Math.random() * 10;
-      this.event('standing again');
     }
   }
 }
