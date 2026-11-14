@@ -80,7 +80,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">Recordings 6</div><div id="brainver"></div>
+<div id="ver">Version 7</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -213,9 +213,9 @@ import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=6';
-import { Springs } from './sim/springs.js?v=6';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=6';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=7';
+import { Springs } from './sim/springs.js?v=7';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=7';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -535,7 +535,7 @@ const figP = loadFig(FIG);
 // leans with a balance model, and falls as a MuJoCo ragdoll. The library downloads with the rest (kin/kin.json first).
 let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
-try { document.getElementById('brainver').textContent = 'recordings mode'; } catch (_) {}
+try { document.getElementById('brainver').textContent = ''; } catch (_) {}
 const libP = loadKinLibrary('body/clips/', u => u.endsWith('kin.json') ? LOAD.take(u, 'Recordings') : LOAD.take(u, 'Recordings'));
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -1342,6 +1342,9 @@ async function frame(now) {
     if (levelPending && (levelT += dt) > 0.4) { setLevel(gS); levelPending = false; }
     levelG(gS, gL);
     gx = gL.x; gy = gL.y; gz = gL.z;
+    // until the held angle has been taken as level (0.4 s after a start or reset), down is straight down: the raw angle
+    // you hold the phone at read as a 30-50 deg slope and he fell over at once (phone test, version 6)
+    if (levelPending) { gx = 0; gy = -1; gz = 0; }
   } else {
     const a = Math.min(1, dt * 10);
     dragS.roll += (dragRot.roll - dragS.roll) * a; dragS.pitch += (dragRot.pitch - dragS.pitch) * a;
@@ -1466,7 +1469,7 @@ function gaze(dt) {
 let stateShown = '';
 function showState() {
   const t = kin.state === 'stand' ? 'standing' : kin.state === 'react' ? 'recovering' : kin.state === 'fall' ? 'falling' : 'getting up';
-  if (t !== stateShown) { stateShown = t; try { document.getElementById('brainver').textContent = 'recordings: ' + t; } catch (_) {} }
+  if (t !== stateShown) { stateShown = t; try { document.getElementById('brainver').textContent = t; } catch (_) {} }
 }
 window.__kin = () => kin;
 // ================= start =================

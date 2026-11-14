@@ -126,7 +126,7 @@ const LEGS = {
 const LEG_W = [1, 1, 0.5, /* knee: bend, side, twist */ 1, 0.04, 0.04, /* ankle */ 1, 1, 0.4];
 // the arms for bracing on the walls: collarbone (a little), shoulder, elbow (ForeArm_z bends it; x/y barely)
 const ARMS = { Right: { hand: 'RightHand', dof: 24, sign: -1 }, Left: { hand: 'LeftHand', dof: 36, sign: 1 } };
-const ARM_W = [0.25, 0.25, 0.25, 1, 1, 1, 0.05, 0.05, 1, 0.6, 0.6, 0.6];   // collarbone, shoulder, elbow, wrist
+const ARM_W = [0, 0, 0, 1, 1, 1, 0.05, 0.05, 1, 0.6, 0.6, 0.6];   // collarbone (not moved: user 18:48 "how can the shoulder be coming out of its joint?"), shoulder, elbow, wrist
 // bracing (tunable): start when the floor tilts more than `tilt` rad or turns faster than `rate` rad/s; reach in `reach`
 // s, keep `hold` s after it calms, let go in `release` s; palm centre `fwd` m forward of and `down` m under the
 // shoulder, `gap` m off the wood; wrist `palm` m behind the palm centre; walls within `maxReach` m of the shoulder
@@ -326,6 +326,7 @@ export class Kin {
     this.offT = 1e9;   // no easing at a reset
     this.c = [0, 0]; this.cv = [0, 0];
     this.state = 'stand'; this.t = 0; this.resetT = 0; this.steps = []; this.tilted = 0;
+    this.braceW = 0; this.hands = null; this.calmT = 0; this.upPrev = null; this.upRate = 0; this.wanted = false;
     this.compose(0);
     W.d.qvel.fill(0); mj.mj_forward(W.m, W.d);
     this.event('reset');
@@ -333,7 +334,7 @@ export class Kin {
   event(s) { this.log.push({ t: +this.t.toFixed(2), s }); if (this.log.length > 60) this.log.shift(); this.last = s; }
 
   update(dt) {
-    dt = Math.min(dt, 0.05);
+    dt = Math.max(0, Math.min(dt, 0.05));   // (a negative frame time from the page's clock reset fed the brace)
     this.t += dt;
     if (this.state === 'fall') return this.updateFall(dt);
     this.pickFaceStanding();
@@ -343,7 +344,10 @@ export class Kin {
     if (this.state === 'stand' || this.state === 'react') {
       // the box turned onto another face, or the floor too steep for long: he falls
       if (this.faceChanged) { this.faceChanged = false; return this.startFall('the box turned over'); }
-      this.tilted = tilt > this.fallTilt ? this.tilted + dt : 0;
+      // the first 1.2 s after a reset the phone's "level" is still being taken (the page averages the held angle over
+      // 0.4 s): the raw angle read as a 36 deg slope and he fell at once (phone test, version 6)
+      if (this.t - (this.resetT || 0) < 1.2) { this.tilted = 0; const w2 = Math.max(1, gn) / this.hc; this.c = [-gl[0] / w2, -gl[1] / w2]; this.cv = [0, 0]; }   // already leaning as the slope asks, no jolt when it ends
+      else this.tilted = tilt > this.fallTilt ? this.tilted + dt : 0;
       if (this.tilted > 0.25) return this.startFall('floor too steep (' + Math.round(tilt * 57.3) + ' deg)');
     }
     if (this.state === 'stand') this.updateStand(dt, gl, gn);
@@ -387,10 +391,13 @@ export class Kin {
     return { f: [Math.cos(yaw), Math.sin(yaw)], l: [-Math.sin(yaw), Math.cos(yaw)], yaw };
   }
   updateStand(dt, gl, gn) {
+    if (this.t - (this.resetT || 0) < 1.2) { this.advance(dt); return; }   // (see update: level not taken yet)
     const b = this.balance(dt, gl, gn);
     const xr = this.xiPrev ? Math.hypot(this.xi[0] - this.xiPrev[0], this.xi[1] - this.xiPrev[1]) / Math.max(dt, 1e-3) : 0;
     this.xiPrev = this.xi.slice(); this.xiRate = xr;
-    if (b.out > this.stepMargin) return this.startReact(b.dir, b.out, xr);
+    // (feet planted, user 18:50) a step only when balance is really lost: past the margin for 0.15 s, or far past it
+    this.outT = b.out > this.stepMargin ? (this.outT || 0) + dt : 0;
+    if (this.outT > 0.15 || b.out > 3 * this.stepMargin) { this.outT = 0; return this.startReact(b.dir, b.out, xr); }
     // round 6: he turns back to face the glass, slowly (a person standing re-squares to what they look at): when calm and
     // more than 12 deg off, the recording's facing turns ~6 deg/s about his hips; planted feet pivot with the IK
     if (Math.hypot(this.cv[0], this.cv[1]) < 0.05 && (this.G.name === 'floor' || this.G.name === 'ceil')) {
@@ -579,7 +586,9 @@ export class Kin {
     const room = !W.open && (this.G.name === 'floor' || this.G.name === 'ceil') && this.state === 'stand';
     const want = room && this.t - (this.resetT || 0) > 2 && (tilt > BR.tilt || this.upRate > BR.rate);   // not in the first 2 s (the phone settling at the start made him brace)
     this.calmT = want ? 0 : (this.calmT || 0) + dt;
-    const on = want || (room && this.braceW > 0 && this.calmT < BR.hold);
+    // keep holding only after a real brace (a tiny brace weight from a stray frame used to keep itself going: arms out at the start)
+    if (want) this.wanted = true; else if (!(this.braceW > 0)) this.wanted = false;
+    const on = want || (room && this.wanted && this.calmT < BR.hold);
     this.braceW = clamp((this.braceW || 0) + (on ? dt / BR.reach : -dt / BR.release), 0, 1);
     if (this.braceW <= 0) { this.hands = null; return; }
     const w = this.braceW * this.braceW * (3 - 2 * this.braceW);

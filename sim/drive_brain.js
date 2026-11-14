@@ -81,9 +81,23 @@ export class BrainDrive {
   // the hands hitting the wood, its arms bounced around. While he braces, his arm joints (collarbones to wrists)
   // follow the recording's arms directly (their own muscles, NVIDIA's gains), holding the arms' weight; the network
   // keeps everything else. Faded in and out with the brace.
+  // (user 18:50: "the most important part is that the feet stay planted ... keep balance and keep the feet planted")
+  // a leg whose foot the recording has planted, and whose real foot is on the floor, follows the recording's leg angles
+  // (blend plantW): the network alone dragged planted feet 6-7 cm/s on slow tilts while the recording's stayed put
+  plantLegs() {
+    const W = this.W, B = this.brain, K = this.kin, d = W.d, k = this.plantW ?? 0;
+    if (!(k > 0) || !(K.state === 'stand' || K.state === 'react')) return;
+    if (!this.legJ) this.legJ = ['Left', 'Right'].map(side => W.act.map((a, j) => a.name.startsWith(side) && /(Leg|Shin|Foot)_/.test(a.name) ? j : -1).filter(j => j >= 0));
+    ['Left', 'Right'].forEach((side, s) => {
+      const L = K.locks && K.locks[side]; if (!L || !L.on || L.w < 1) return;
+      const b = W.bodyId[side + 'Foot'], h = K.toLocal([d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]])[2];
+      if (h > 0.14) return;   // his real foot is in the air: the network's step
+      for (const j of this.legJ[s]) { const a = W.act[j]; B.targets[j] += (this.G.d.qpos[a.qadr] - B.targets[j]) * k; }
+    });
+  }
   armsToWalls() {
     const W = this.W, B = this.brain, K = this.kin, w = K.braceW || 0;
-    if (!this.armJ) this.armJ = W.act.map((a, j) => /(Shoulder|Arm|ForeArm|Hand)_/.test(a.name) ? j : -1).filter(j => j >= 0);
+    if (!this.armJ) this.armJ = W.act.map((a, j) => /(Arm|ForeArm|Hand)_/.test(a.name) && !/Shoulder/.test(a.name) ? j : -1).filter(j => j >= 0);   // collarbones stay the network's
     this.armW = w * w * (3 - 2 * w);
     if (this.armW <= 0) return;
     for (const j of this.armJ) { const a = W.act[j]; B.targets[j] += (this.G.d.qpos[a.qadr] - B.targets[j]) * this.armW; }
@@ -165,7 +179,7 @@ export class BrainDrive {
       d.xfrc_applied.fill(0);
       if (fingerPush) fingerPush();
       if (B.due()) {
-        if (!falling) { B.readState(); B.down = false; await B.think(this.buildRef(1 / B.hz)); if (B.down) { B.down = false; B.setTone(1); } this.armsToWalls(); }
+        if (!falling) { B.readState(); B.down = false; await B.think(this.buildRef(1 / B.hz)); if (B.down) { B.down = false; B.setTone(1); } this.plantLegs(); this.armsToWalls(); }
         else {   // falling: hold the shape (see above) instead of the network
           B.tNext = d.time + 1 / B.hz - 1e-9;
           const k = Math.min(1, this.fallT / 0.35);
