@@ -50,6 +50,8 @@
   #dbg.on{background:#ffd400;border-color:#ffd400}#dbg.on::after{border-color:#111}
   #place.floor{background:#ffd400;border-color:#ffd400}#place.floor::after{border:0;height:3px;margin-top:2px;background:#111;width:16px;margin-left:-8px;border-radius:2px}
   #look.on{background:#ffd400;border-color:#ffd400}#look.on::after{background:#111;width:10px;height:10px;border-radius:2px}
+  #brainver{position:fixed;left:calc(12px + env(safe-area-inset-left));top:calc(46px + env(safe-area-inset-top));z-index:6;font-size:12px;font-weight:700;color:#111;background:#ffe866;border-radius:6px;padding:2px 8px;pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.35)}
+  #brainver:empty{display:none}
   #ver{position:fixed;left:calc(12px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));z-index:6;font-size:16px;font-weight:800;letter-spacing:.5px;color:#111;background:#ffd400;border-radius:8px;padding:4px 10px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #opts{position:fixed;left:0;right:0;bottom:0;z-index:4;max-height:72vh;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;background:rgba(24,16,9,.92);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);border-top:1px solid rgba(255,230,200,.18);border-radius:18px 18px 0 0;padding:6px 18px calc(18px + env(safe-area-inset-bottom));transform:translateY(105%);transition:transform .3s ease}
   #opts.open{transform:none}
@@ -78,7 +80,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.38</div>
+<div id="ver">v15.39</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -546,6 +548,8 @@ let MODELS = { default: 'nvidia', models: [{ id: 'nvidia', label: 'NVIDIA origin
 try { MODELS = JSON.parse(new TextDecoder().decode(await LOAD.take('body/models/index.json', 'Brain'))); } catch (_) {}
 const modelId = new URLSearchParams(location.search).get('model') || (() => { try { return localStorage.getItem('thebox.model'); } catch (_) { return null; } })() || MODELS.default;
 const MODEL = MODELS.models.find(m => m.id === modelId) || MODELS.models.find(m => m.id === MODELS.default) || MODELS.models[0];
+// v15.39 (user Nov 14 10:28): which brain is loaded, under the version label (so a reload shows if it is the latest)
+try { document.getElementById('brainver').textContent = 'brain: ' + (MODEL.short || MODEL.label); } catch (_) {}
 // the brain's network starts up while the physics engine does (= Brain.create, with the files from BOXLOAD)
 const sessionP = (async () => {
   const [meta, model] = await Promise.all([
@@ -570,7 +574,7 @@ const W = new BoxWorld(mj, await bodyP);
 LOAD.state('Body', 'ready');
 let control = null;
 try { const { meta, session, idle } = await sessionP; brain = new Brain(W, ort, session, meta); brain.setStandPose(BRAIN_STAND); if (idle) brain.setIdleClip(new Float32Array(idle)); }
-catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; LOAD.state('Brain', 'fail'); }
+catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; LOAD.state('Brain', 'fail'); try { document.getElementById('brainver').textContent = 'brain: hand-written stand (load failed)'; } catch (_) {} }
 // director (v15.35, user 20:14): recovery recordings, loaded after start (2.3 MB, not on the loading screen's path)
 let director = null;
 if (brain) (async () => {
