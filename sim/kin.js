@@ -43,6 +43,15 @@ const qz = a => [Math.cos(a / 2), 0, 0, Math.sin(a / 2)];
 const wrap = a => a - 2 * Math.PI * Math.round(a / (2 * Math.PI));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const xyzw2wxyz = q => [q[3], q[0], q[1], q[2]];
+// a joint's three hinges (about x, then y, then z: R = Rx Ry Rz) <-> a quaternion
+const eulQ = (x, y, z) => qm(qm([Math.cos(x / 2), Math.sin(x / 2), 0, 0], [Math.cos(y / 2), 0, Math.sin(y / 2), 0]), [Math.cos(z / 2), 0, 0, Math.sin(z / 2)]);
+function qEul(q, out, o) {
+  const [w, x, y, z] = q;
+  const R00 = 1 - 2 * (y * y + z * z), R01 = 2 * (x * y - w * z), R02 = 2 * (x * z + w * y), R12 = 2 * (y * z - w * x), R22 = 1 - 2 * (x * x + y * y);
+  out[o] = Math.atan2(-R12, R22); out[o + 1] = Math.asin(clamp(R02, -1, 1)); out[o + 2] = Math.atan2(-R01, R00);
+}
+// the upper body's joints (qpos addresses of their x hinges): spine, chest, neck, head, collarbones, arms, forearms, hands
+const UPPER = [7, 10, 13, 16, 19, 22, 25, 28, 31, 34, 37, 40, 43, 46];
 // facing (yaw) of a root quaternion: the body's forward is its -y
 function yawOf(q) { const f = qv(q, [0, -1, 0]); return Math.atan2(f[1], f[0]); }
 
@@ -152,6 +161,14 @@ export class Kin {
   play(clip, x0, mode, opt = {}) {
     const from = this.cur.slice();
     this.anim = { clip, x: x0, dir: 1, mode, speed: 1 };
+    // recoveries (user 17:22: "the shoulders and neck change between the animation they were from without proper
+    // retargeting"): the Inria fits hold the upper body in their own neutral (collarbones and chest at 0, elbows
+    // straight), the idles don't. So a recovery keeps HIS upper body as it is at that moment, and adds only the
+    // recording's own movement of each upper joint from its first frame (trunk bend, arm swing).
+    if (opt.keepUpper && !this.noKeepUpper) {
+      const ref = clip.sample(x0, new Float64Array(73));
+      this.anim.upper = UPPER.map(a => ({ a, mine: eulQ(from[a], from[a + 1], from[a + 2]), refInv: qc(eulQ(ref[a], ref[a + 1], ref[a + 2])) }));
+    }
     // anchor: the clip's frame-x0 root (xy, facing) onto his current root (xy, facing), on the ground
     const q0 = clip.sample(x0, this.tmp);
     let yawClip, yawNow;
@@ -182,7 +199,11 @@ export class Kin {
     for (let k = 7; k < 73; k++) out[k] = q[k];
     return out;
   }
-  basePose(out, x) { const a = this.anim; return this.anchored(a.clip.sample(x ?? a.x, this.tmp2), out); }
+  basePose(out, x) {
+    const a = this.anim, q = a.clip.sample(x ?? a.x, this.tmp2);
+    if (a.upper) for (const u of a.upper) qEul(qn(qm(u.mine, qm(u.refInv, eulQ(q[u.a], q[u.a + 1], q[u.a + 2])))), q, u.a);
+    return this.anchored(q, out);
+  }
   baseVel() {   // the clip's own speed now (velocity space, per second)
     const a = this.anim, x = a.x, x2 = clamp(x + a.dir, 0, a.clip.n - 1), v = new Float64Array(72);
     if (x2 === x) return v;
@@ -316,7 +337,7 @@ export class Kin {
     let pool = R.filter(c => c.ang === want && c.kind === kind); if (!pool.length) pool = R.filter(c => c.ang === want);
     if (!pool.length) return;
     const c = pool[(this.reactN = (this.reactN || 0) + 1) % pool.length];
-    this.play(c.clip, (c.push_frame || 3) + 4, 'once', { hl: 0.18 });
+    this.play(c.clip, (c.push_frame || 3) + 4, 'once', { hl: 0.18, keepUpper: true });
     this.state = 'react'; this.steps.push(this.t); this.steps = this.steps.filter(t => this.t - t < 5);
     this.event(`${kind} ${Math.round(ang)} deg (${c.src || c.file})`);
   }
