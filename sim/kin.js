@@ -449,6 +449,10 @@ export class Kin {
   // ---------- falling: MuJoCo takes over ----------
   startFall(why) {
     const W = this.W, mj = this.mj, m = W.m, d = W.d;
+    if (this.ext) {   // a real body (sim/springs.js) falls; the ghost only watches it
+      this.state = 'fall'; this.fallT = 0; this.restT = 0; this.restoreGains();
+      return this.event('fall: ' + why);
+    }
     // the speeds he has now (the recording + lean), as the ragdoll's start
     const q1 = new Float64Array(73), q2 = new Float64Array(73);
     const save = this.cur.slice();
@@ -475,6 +479,10 @@ export class Kin {
   updateFall(dt) {
     const W = this.W, d = W.d, m = W.m, PH = 1 / 480;
     this.fallT += dt;
+    if (this.ext) {   // the ghost takes the real body's state
+      const e = this.ext.d; for (let k = 0; k < 73; k++) d.qpos[k] = e.qpos[k]; for (let k = 0; k < m.nv; k++) d.qvel[k] = e.qvel[k];
+      this.mj.mj_forward(m, d);
+    } else {
     const [s0, s1, T] = this.limp, u = clamp(this.fallT / T, 0, 1), s = s0 + (s1 - s0) * u;
     this.setGains(s, Math.sqrt(s));
     const kb = clamp(this.fallT / 0.35, 0, 1);
@@ -482,6 +490,7 @@ export class Kin {
     const ctl = () => tg; ctl.hz = 60;
     const n = Math.min(40, Math.round(dt / PH));
     for (let i = 0; i < n; i++) W.step(ctl);
+    }
     this.pickFace();
     // lying still?
     const hipsV = Math.hypot(d.qvel[0], d.qvel[1], d.qvel[2]);

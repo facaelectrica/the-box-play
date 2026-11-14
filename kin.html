@@ -80,7 +80,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">Recordings 2</div><div id="brainver"></div>
+<div id="ver">Recordings 3</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -213,6 +213,7 @@ import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
 import { Kin, loadKinLibrary } from './sim/kin.js';
+import { Springs } from './sim/springs.js';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -225,6 +226,10 @@ const clamp = THREE.MathUtils.clamp;
 function pct(v) { return Math.round(v * 100) + '%'; }
 const OPTS = [
   { grp: 'The figure' },
+  { grp: 'Physics (springs)' },
+  { k: 'springs', label: 'His body in physics', tog: true, def: true, help: 'On: his body is physical and springs pull it toward the recordings. Off: the recordings alone (page 2). Changing it reloads.' },
+  { k: 'help', label: 'Help holding him up', min: 0, max: 1.5, step: 0.05, def: 0.5, fmt: pct, help: 'A spring from where the recording has his hips to his real hips. 0% = no help: he must stand on his own feet.' },
+  { k: 'stiff', label: 'Muscle stiffness', min: 0.2, max: 1.5, step: 0.05, def: 1, fmt: pct, help: 'How hard his joints pull toward the recording. Lower = looser, heavier limbs.' },
   { k: 'push', label: 'Finger push', min: 0, max: 2, step: 0.05, def: 1, fmt: pct, help: 'How hard your finger pushes him when you touch him.' },
   { grp: 'Moving the phone' },
   { k: 'shake', label: 'Shake strength', min: 0, max: 4, step: 0.05, def: 1.5, fmt: v => v.toFixed(2) + 'x', help: 'How much shaking the phone throws things about.' },
@@ -536,12 +541,18 @@ const libP = loadKinLibrary('body/clips/', u => u.endsWith('kin.json') ? LOAD.ta
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
 let DOLL = await figP;
-const W = new BoxWorld(mj, await bodyP);
+const bodyXml = await bodyP;
+const W = new BoxWorld(mj, bodyXml);
+// physics mode (user 17:30): the recordings run on a ghost copy of the world; his real body (W) is physical and
+// springs pull it toward the ghost (sim/springs.js)
+const PHYSICAL = SET.springs !== false;
+const G = PHYSICAL ? new BoxWorld(mj, bodyXml) : W;
 LOAD.state('Body', 'ready');
 let control = null;
-let kin = null;
-try { kin = new Kin(W, mj, await libP); LOAD.state('Recordings', 'ready'); }
+let kin = null, springs = null;
+try { kin = new Kin(G, mj, await libP); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
+if (kin && PHYSICAL) springs = new Springs(W, kin, { help: SET.help, stiff: SET.stiff });
 function newController() { control = null; }
 let S = 1;   // drawing units per metre
 function figureScale() {
@@ -551,7 +562,7 @@ function figureScale() {
 // the box, in metres, from the screen's shape; he stays where he is (only the walls move)
 function physBox() {
   S = figureScale();
-  W.setBox(2 * ix / S, 2 * iy / S, D / S);
+  W.setBox(2 * ix / S, 2 * iy / S, D / S); if (G !== W) G.setBox(2 * ix / S, 2 * iy / S, D / S);
   figRoot.scale.setScalar(S);
   keepInside();
   applyPlaceVis();
@@ -571,7 +582,9 @@ function keepInside() {
 function standUp() {
   levelPending = true; levelT = 0;   // the phone's angle right now becomes "level" (see setLevel)
   W.standAt(STAND); W.started = true; W.tControl = 0;
+  if (G !== W) { G.standAt(STAND); G.started = true; }
   if (kin) kin.reset();
+  if (springs) springs.reset();
   newController();
   syncFigure();
 }
@@ -1096,6 +1109,8 @@ function buildOptions() {
 function changed(k) {
   saveSettings();
   if (k === 'hiQ') applyQuality();
+  if (k === 'springs') location.reload();
+  if (springs && (k === 'help' || k === 'stiff')) { springs.help = SET.help; springs.stiff = SET.stiff; }
 }
 $('optBtn').onclick = () => $('opts').classList.add('open');
 $('optClose').onclick = () => $('opts').classList.remove('open');
@@ -1216,7 +1231,7 @@ $('place').onclick = e => {
   e.stopPropagation();
   place = place === 'box' ? 'floor' : 'box';
   $('place').classList.toggle('floor', place === 'floor');
-  W.setOpen(place === 'floor');
+  W.setOpen(place === 'floor'); if (G !== W) G.setOpen(place === 'floor');
   applyPlaceVis();
   standUp();
   note(place === 'box' ? 'Back in the box.' : 'Open floor: no walls. Double-tap to stand him up again.', 2400);
@@ -1337,8 +1352,15 @@ async function frame(now) {
     for (let b = 0; b < W.m.nbody; b++) { fx += x[6 * b]; fy += x[6 * b + 1]; fz += x[6 * b + 2]; }
     if (poke.on) poke.t += dt;
     kin.pushF = kin.state === 'fall' ? [0, 0, 0] : kin.dirLocal([fx, fy, fz]);
-    kin.update(dt);
-    if (kin.state !== 'fall') x.fill(0);
+    if (springs) {
+      // the ghost feels the same gravity; then his real body follows it (your finger pushes his real body)
+      const g = W.m.opt.gravity; G.setGravity([g[0], g[1], g[2]]);
+      kin.update(dt);
+      springs.update(dt, fingerPush);
+    } else {
+      kin.update(dt);
+      if (kin.state !== 'fall') x.fill(0);
+    }
     showState();
   }
   sfxUpdate(dt);
