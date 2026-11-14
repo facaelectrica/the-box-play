@@ -4,11 +4,19 @@
  "models": [
   {
    "id": "live",
-   "label": "Live training (stage3, saved 22:45)",
+   "label": "Latest training (stance, saved 10:01)",
    "dir": "body/models/live/",
    "idle": "seed_idle_A121",
    "onnx_bytes": 25211904,
-   "about": "stage3 training, checkpoint saved 22:45. Beat NVIDIA's brain 60 s on both idle recordings in the game physics. Derived from NVIDIA's model (NVIDIA Open Model License)."
+   "about": "Newest training brain (lab13, stance reward, saved 10:01 Nov 14): stands with the recording's stance (feet ~22 cm apart, was ~11); on pushes still behind the 22:45 brain (3 vs 1 falls in 72). Beat NVIDIA's brain 60 s on both idle recordings. Derived from NVIDIA's model (NVIDIA Open Model License)."
+  },
+  {
+   "id": "best",
+   "label": "Best on pushes (stage3, saved 22:45)",
+   "dir": "body/models/best/",
+   "idle": "seed_idle_A121",
+   "onnx_bytes": 25211904,
+   "about": "stage3 training, checkpoint saved 22:45 Nov 13: 1 fall in 72 pushes; feet ~11 cm apart. Beat NVIDIA's brain 60 s on both idles. Derived from NVIDIA's model (NVIDIA Open Model License)."
   },
   {
    "id": "nvidia",
