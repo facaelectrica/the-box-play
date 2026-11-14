@@ -118,6 +118,21 @@ export class BoxWorld {
       mp[3 * k] = p[0]; mp[3 * k + 1] = p[1]; mp[3 * k + 2] = p[2];
     }
   }
+  // v15.41: the six inside faces, for "which one is the floor now": inward normal n, a point p on the face, the room in
+  // front of it (m), and q = the turn (x y z w) that brings n to straight up. Floor and ceiling and the side walls turn
+  // about the screen's normal (upside down he still faces the glass), glass and back about x. Open floor: only the floor.
+  faces() {
+    const { w, h, D } = this.box, r = Math.SQRT1_2;
+    const all = [
+      { name: 'floor', n: [0, 0, 1], p: [0, D / 2, -h / 2], room: h, q: [0, 0, 0, 1] },
+      { name: 'ceil', n: [0, 0, -1], p: [0, D / 2, h / 2], room: h, q: [0, 1, 0, 0] },
+      { name: 'left', n: [1, 0, 0], p: [-w / 2, D / 2, 0], room: w, q: [0, -r, 0, r] },
+      { name: 'right', n: [-1, 0, 0], p: [w / 2, D / 2, 0], room: w, q: [0, r, 0, r] },
+      { name: 'glass', n: [0, 1, 0], p: [0, 0, 0], room: D, q: [r, 0, 0, r] },
+      { name: 'back', n: [0, -1, 0], p: [0, D, 0], room: D, q: [-r, 0, 0, r] },
+    ];
+    return this.open ? all.slice(0, 1) : all;
+  }
   // open floor (true) or the box (false); he stays where he is
   setOpen(on) { this.open = !!on; this.placeWalls(); }
   setGravity(v) { const g = this.m.opt.gravity; g[0] = v[0]; g[1] = v[1]; g[2] = v[2]; }

@@ -63,15 +63,24 @@ const _tq = new Float64Array(4), _t6 = new Float64Array(6), _lq = new Float64Arr
 // and he answered each one with his feet. The direction follows with time constant `tau` (s) (a dead zone made it
 // worse: noise became small steps); the size (shakes, bumps) passes straight through. Tested with 2 degrees of
 // jitter: feet travel 1.5 cm/s instead of 6.
-export function makeCalmGravity(dead = 0, tau = 0.4) {
+// v15.41 (user, Nov 14 14:48: "if I turn upside down immediately, he doesn't start behaving like he's upside down"):
+// the calming only applies to small differences (tremor, < `small`); a real turn of the phone is followed within
+// ~`tauFast` s. With one 0.4 s time constant a quick flip reached the physics ~1.4 s after the hand had stopped.
+// The step turns u toward v along the great circle (a straight-line blend stalls when v is nearly opposite u).
+export function makeCalmGravity(dead = 0, tau = 0.4, tauFast = 0.06, small = 4 * Math.PI / 180, big = 15 * Math.PI / 180) {
   let u = null;
   return function calm(g, dt) {
     const n = Math.hypot(g[0], g[1], g[2]) || 1, v = [g[0] / n, g[1] / n, g[2] / n];
     if (!u) u = v.slice();
     const a = Math.acos(Math.max(-1, Math.min(1, u[0] * v[0] + u[1] * v[1] + u[2] * v[2])));
-    if (a > dead) {
-      const k = (1 - Math.exp(-dt / tau)) * (a - dead) / a;
-      for (let i = 0; i < 3; i++) u[i] += (v[i] - u[i]) * k;
+    if (a > dead && a > 1e-7) {
+      const f = Math.max(0, Math.min(1, (a - small) / (big - small))), T = tau + (tauFast - tau) * f * f * (3 - 2 * f);
+      const step = (1 - Math.exp(-dt / T)) * (a - dead);
+      // the direction to turn in: v's part across u (if v is exactly opposite, any direction across u will do)
+      let w = [v[0] - u[0] * Math.cos(a), v[1] - u[1] * Math.cos(a), v[2] - u[2] * Math.cos(a)], wl = Math.hypot(w[0], w[1], w[2]);
+      if (wl < 1e-6) { w = Math.abs(u[0]) < 0.9 ? [0, -u[2], u[1]] : [-u[1], u[0], 0]; wl = Math.hypot(w[0], w[1], w[2]); }
+      const c = Math.cos(step), s = Math.sin(step) / wl;
+      for (let i = 0; i < 3; i++) u[i] = u[i] * c + w[i] * s;
       const l = Math.hypot(u[0], u[1], u[2]); u[0] /= l; u[1] /= l; u[2] /= l;
     }
     return [u[0] * n, u[1] * n, u[2] * n];
@@ -131,6 +140,8 @@ export class Brain {
     this.upLag = opt.upLag ?? 0.02;          // kg, while the brain drives him (attach/detach)
     this.turnRate = opt.turnRate ?? 2;          // how much the reference's heading follows his (and turns toward the glass)
     this.lost = 0;                    // seconds he has been far from the reference (fallen)
+    this.face = null; this.noRoom = false;   // v15.41: which face of the box is his floor (pickFace)
+    this.roomNeeded = opt.roomNeeded ?? 1.9;   // m between that face and the one opposite, to stand up in
     this.hz = meta.control_hz;
     this.tNext = 0;
     this.msNet = 0;
@@ -151,7 +162,7 @@ export class Brain {
       m.actuator_gainprm[10 * a] = kp; m.actuator_biasprm[10 * a + 1] = -kp; m.actuator_biasprm[10 * a + 2] = -kd;
     }
     for (let a = 0; a < m.nu; a++) this.targets[a] = this.W.d.qpos[m.jnt_qposadr[m.actuator_trnid[2 * a]]];
-    this.prev.fill(0); this.refXY = null; this.react = null; this.settled = false; this.up = null; this.tNext = 0; this.lost = 0; this.down = false; this.tone = 1;
+    this.prev.fill(0); this.refXY = null; this.react = null; this.settled = false; this.up = null; this.tNext = 0; this.lost = 0; this.down = false; this.tone = 1; this.face = null; this.noRoom = false;
     this.blend = null; this.lastRef = null;
   }
   // muscle tone: 1 = the trained gains, less = looser (when he has fallen and the tracker has given up)
@@ -230,8 +241,13 @@ export class Brain {
       for (let i = 0; i < 3; i++) U[i] += (up[i] - U[i]) * k;
       const l = Math.hypot(U[0], U[1], U[2]); U[0] /= l; U[1] /= l; U[2] /= l;
     }
-    qBetween(U, [0, 0, 1], this.G);
-    const G = this.G, t = [0, 0, 0];
+    // v15.41: the floor is the face of the box that "up" comes out of most (a face keeps the job until another is
+    // clearly more level: 0.1 in cosine, ~6 deg past the 45 deg line). Before, it was always the box's bottom: turned
+    // sideways his "ground" ran off to kilometres (he flailed), upside down it was overhead (he went limp at once).
+    const F = this.pickFace(U), t = [0, 0, 0], qs = [0, 0, 0, 1];
+    // gravity frame = the face's own turn (the ceiling: half a turn about the screen's normal), then what tilt is left
+    qrot(F.q, 0, U[0], U[1], U[2], t, 0); qBetween(t, [0, 0, 1], qs); qmul(qs, 0, F.q, 0, this.G, 0);
+    const G = this.G;
     for (let b = 0; b < NB; b++) {
       const id = this.bodyId[b];
       qrot(G, 0, xp[3 * id], xp[3 * id + 1], xp[3 * id + 2], this.pos, 3 * b);
@@ -242,13 +258,26 @@ export class Brain {
       qrot(G, 0, v[0], v[1], v[2], this.ang, 3 * b);
       qrot(G, 0, v[3], v[4], v[5], this.vel, 3 * b);
     }
-    // the floor's height under the hips, measured along gravity (the box's floor plane, turned the same way)
-    const fz = -W.box.h / 2, n = [0, 0, 1], p0 = [xp[3 * this.bodyId[0]], xp[3 * this.bodyId[0] + 1], fz];
+    // the floor's height under the hips, measured along gravity (that face's plane, turned the same way)
+    const n = F.n, h0 = 3 * this.bodyId[0], hd = (xp[h0] - F.p[0]) * n[0] + (xp[h0 + 1] - F.p[1]) * n[1] + (xp[h0 + 2] - F.p[2]) * n[2];
+    const p0 = [xp[h0] - hd * n[0], xp[h0 + 1] - hd * n[1], xp[h0 + 2] - hd * n[2]];
     qrot(G, 0, n[0], n[1], n[2], t, 0); const fn = t.slice();
     qrot(G, 0, p0[0], p0[1], p0[2], t, 0);
     const hx = this.pos[0], hy = this.pos[1];
     // plane through t with normal fn: z = t.z - (fn.x (x - t.x) + fn.y (y - t.y)) / fn.z
     this.ground = t[2] - (fn[0] * (hx - t[0]) + fn[1] * (hy - t[1])) / (fn[2] || 1);
+  }
+
+  // which face is the floor (see readState); this.face keeps the choice, this.noRoom = that face is too close to the
+  // opposite one for him to stand (the box's side walls, glass and back on a phone)
+  pickFace(U) {
+    const faces = this.W.faces ? this.W.faces() : [{ name: 'floor', n: [0, 0, 1], p: [0, 0, -this.W.box.h / 2], room: 9, q: [0, 0, 0, 1] }];
+    const dot = f => f.n[0] * U[0] + f.n[1] * U[1] + f.n[2] * U[2];
+    let best = faces[0]; for (const f of faces) if (dot(f) > dot(best)) best = f;
+    const cur = faces.find(f => f.name === this.face);
+    const F = cur && dot(cur) > dot(best) - 0.1 ? cur : best;
+    this.face = F.name; this.noRoom = F.room < this.roomNeeded;
+    return F;
   }
 
   // the reference from a recording (idle or recovery clip) at frame position x (fractional), direction sg (+1/-1),
@@ -506,7 +535,9 @@ export class Brain {
     this.err = e;
     this.lost = e > 0.5 ? this.lost + dt : Math.max(0, this.lost - dt);
     // brains trained to get up (meta.getup, train/job_getup1.sh) keep control on the floor; the others go limp
-    if (!this.meta.getup && this.lost > 0.6 && this.pos[2] - this.ground < 0.6) { this.down = true; this.setTone(0.04); }
+    // v15.41: a floor with no room to stand (the phone turned sideways or laid flat: a side wall, the back or the glass is
+    // "down") has no standing pose to follow either: he falls onto it and lies there, as when he falls over
+    if (!this.meta.getup && (this.noRoom || (this.lost > 0.6 && this.pos[2] - this.ground < 0.6))) { this.down = true; this.setTone(0.04); }
     return this.targets;
   }
 }
