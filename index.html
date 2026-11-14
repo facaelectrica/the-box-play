@@ -220,7 +220,6 @@ import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import * as ort from 'onnxruntime-web';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Director } from './sim/director.js';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -484,11 +483,14 @@ let envDirty = 0;
 const movers = [];   // hidden while the box looks at itself
 function updateEnv() {
   cubeCam.position.set(0, 0, -D / 2);
+  const was = movers.map(m => m.visible);
   for (const m of movers) m.visible = false;
   scene.background = ROOM;   // what comes in through the glass: the room
   cubeCam.update(renderer, scene);
   scene.background = bgNow();
-  for (const m of movers) m.visible = true;
+  // each one back as it was (v15.35: this used to switch them all on, so the skeleton, once built, came back frozen
+  // over the figure whenever the bounce light was redrawn: pause, resize, app switch; user Nov 13 20:18)
+  movers.forEach((m, i) => { m.visible = was[i]; });
   cubeRT.texture.needsPMREMUpdate = true;
 }
 
@@ -568,15 +570,6 @@ LOAD.state('Body', 'ready');
 let control = null;
 try { const { meta, session, idle } = await sessionP; brain = new Brain(W, ort, session, meta); brain.setStandPose(BRAIN_STAND); if (idle) brain.setIdleClip(new Float32Array(idle)); }
 catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; LOAD.state('Brain', 'fail'); }
-// director (v15.35, user 20:14): recovery recordings, loaded after start (2.3 MB, not on the loading screen's path)
-let director = null;
-if (brain) (async () => {
-  try {
-    const R = await (await fetch('body/clips/react.json')).json();
-    const clips = await Promise.all(R.clips.map(async c => ({ ...c, buf: new Float32Array(await (await fetch('body/clips/' + c.file)).arrayBuffer()) })));
-    director = new Director(brain, clips);
-  } catch (e) { console.warn('director clips did not load', e); }
-})();
 function newController() {
   if (brain) { brain.attach(); brain.told = false; control = brain.control; }
   else { control = makeController(W); control.hz = 240; }
@@ -741,11 +734,13 @@ let boneLines = null, jointDots = null;
 const dotM = new THREE.Matrix4();
 function buildSkel() {
   const m = W.m, pairs = [];
-  for (let b = 2; b < m.nbody; b++) if (m.body_parentid[b] > 0) pairs.push([m.body_parentid[b], b]);   // SOMA's bones
+  for (let b = 2; b < m.nbody; b++) if (m.body_parentid[b] > 0 && W.isFig[b]) pairs.push([m.body_parentid[b], b]);   // SOMA's bones
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pairs.length * 6), 3));
   boneLines = new THREE.LineSegments(geo, BONE); boneLines.userData.pairs = pairs;
-  jointDots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.016, 10, 8), JDOT, m.nbody - 1);
+  const dotBodies = []; for (let b = 1; b < m.nbody; b++) if (W.isFig[b]) dotBodies.push(b);   // not the walls
+  jointDots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.016, 10, 8), JDOT, dotBodies.length);
+  jointDots.userData.bodies = dotBodies;
   for (const o of [boneLines, jointDots]) { o.renderOrder = 20; o.frustumCulled = false; skel.add(o); }
 }
 function updateSkel() {
@@ -755,7 +750,7 @@ function updateSkel() {
     p.setXYZ(2 * i, x[3 * a], x[3 * a + 1], x[3 * a + 2]); p.setXYZ(2 * i + 1, x[3 * b], x[3 * b + 1], x[3 * b + 2]);
   });
   p.needsUpdate = true;
-  for (let b = 1; b < W.m.nbody; b++) { dotM.makeTranslation(x[3 * b], x[3 * b + 1], x[3 * b + 2]); jointDots.setMatrixAt(b - 1, dotM); }
+  jointDots.userData.bodies.forEach((b, i) => { dotM.makeTranslation(x[3 * b], x[3 * b + 1], x[3 * b + 2]); jointDots.setMatrixAt(i, dotM); });
   jointDots.instanceMatrix.needsUpdate = true;
 }
 function applyDebug() {
@@ -1269,16 +1264,29 @@ $('tilt').onclick = e => {
 };
 for (const ev of ['pointerdown', 'pointerup']) $('tilt').addEventListener(ev, e => e.stopPropagation());
 
-// ================= look mode: physics stops, he stands in his default pose, a finger turns the view around him =================
-const look = { on: false, yaw: 0, pitch: 0.12, dist: 0, tgt: new THREE.Vector3(), drag: null };
+// ================= look mode: physics stops, he stays frozen as he was, a finger turns the view around him =================
+// (v15.35, user Nov 13 20:18: "paused in the position he was in, instead of resetting to the default pose")
+const look = { on: false, yaw: 0, pitch: 0.12, dist: 0, tgt: new THREE.Vector3(), drag: null, snap: null };
+// the moment he was paused: the test poses overwrite the body (and reset the physics clock), so going back restores it
+function snapBody() {
+  const d = W.d, c = a => a ? new Float64Array(a) : null;
+  return { qpos: c(d.qpos), qvel: c(d.qvel), act: c(d.act), ctrl: c(d.ctrl), warm: c(d.qacc_warmstart), time: d.time,
+    wctrl: c(W.ctrl), tControl: W.tControl };
+}
+function restoreBody(s) {
+  const d = W.d, put = (dst, src) => { if (dst && src) dst.set(src); };
+  put(d.qpos, s.qpos); put(d.qvel, s.qvel); put(d.act, s.act); put(d.ctrl, s.ctrl); put(d.qacc_warmstart, s.warm);
+  put(W.ctrl, s.wctrl); d.time = s.time; W.tControl = s.tControl;
+  W.placeWalls(); mj.mj_forward(W.m, d); syncFigure();
+}
 $('look').onclick = e => {
   e.stopPropagation();
   look.on = !look.on; $('look').classList.toggle('on', look.on);
   $('pose').style.display = look.on ? 'block' : 'none';
-  if (!look.on && poseIdx !== 0) standUp();   // physics carries on from standing, not from a test pose
+  if (!look.on && poseIdx !== 0 && look.snap) restoreBody(look.snap);   // carry on from the paused moment, not a test pose
   poseIdx = 0; $('pose').classList.remove('on');
   if (look.on) {
-    if (!PLAY) standUp();
+    look.snap = snapBody();
     const p = bodyPoint('Hips'), h = bodyPoint('Head');
     look.tgt.copy(p).lerp(h, 0.25);
     look.yaw = 0; look.pitch = 0.1; look.dist = 1.75 * S * 1.75;
@@ -1296,12 +1304,13 @@ $('pose').onclick = e => {
   e.stopPropagation();
   if (!look.on) return;
   poseIdx = (poseIdx + 1) % POSES.length;
-  applyPose(W, mj, POSES[poseIdx], brain ? BRAIN_STAND : STAND);
+  if (poseIdx === 0 && look.snap) restoreBody(look.snap);   // the cycle ends back where he was paused
+  else applyPose(W, mj, POSES[poseIdx], brain ? BRAIN_STAND : STAND);
   syncFigure();
   const p = bodyPoint('Hips'), h = bodyPoint('Head');
   look.tgt.copy(p).lerp(h, 0.25);
   $('pose').classList.toggle('on', poseIdx !== 0);
-  note(POSES[poseIdx].label, 1500);
+  note(poseIdx === 0 && look.snap ? 'Back as he was when paused' : POSES[poseIdx].label, 1500);
 };
 for (const ev of ['pointerdown', 'pointerup']) $('pose').addEventListener(ev, e => e.stopPropagation());
 el.addEventListener('pointerdown', e => { if (look.on) look.drag = { x: e.clientX, y: e.clientY, yaw: look.yaw, pitch: look.pitch, id: e.pointerId }; }, true);
@@ -1364,7 +1373,6 @@ async function frame(now) {
     testKick();
     if (brain && control === brain.control && brain.due()) {
       await brain.think();   // the network, 30 times a second
-      if (director) director.update(1 / 30);   // losing balance? switch to a real recovery recording
       if (brain.down && !brain.told) { brain.told = true; note("He can't get up on his own yet. Double-tap to stand him up.", 3500); }
     }
     W.step(control);
