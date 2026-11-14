@@ -184,7 +184,8 @@ export class Kin {
   // start clip at frame x0; anchor its root (or its spine, for lying starts) onto where he is now; ease from his
   // current pose. dir: +1 forward, pingpong for idles.
   play(clip, x0, mode, opt = {}) {
-    const from = this.cur.slice();
+    const usePre = this.havePre && !opt.fromCur;
+    const from = usePre ? this.pre.slice() : this.cur.slice(), fromVel = usePre ? this.preVel : this.vel;
     this.anim = { clip, x: x0, dir: 1, mode, speed: 1 };
     // recoveries (user 17:22: "the shoulders and neck change between the animation they were from without proper
     // retargeting"): the Inria fits hold the upper body in their own neutral (collarbones and chest at 0, elbows
@@ -211,10 +212,15 @@ export class Kin {
     this.basePose(this.base);
     poseDiff(this.base, from, this.off0);
     const bv = this.baseVel();
-    for (let k = 0; k < 72; k++) this.offV[k] = (opt.still ? 0 : this.vel[k]) - bv[k];
+    for (let k = 0; k < 72; k++) this.offV[k] = (opt.still ? 0 : fromVel[k]) - bv[k];
     this.offV[3] = this.offV[4] = this.offV[5] = 0;
     this.offT = 0; this.offHL = opt.hl ?? this.blendHL;
     this.locks.Left = this.locks.Right = null;
+  }
+  turnAnchor(a) {   // turn the recording's placement by a about his hips
+    const A = this.anchor, h = [this.cur[0], this.cur[1]], c = Math.cos(a), s = Math.sin(a);
+    const rx = A.x - h[0], ry = A.y - h[1];
+    A.x = h[0] + c * rx - s * ry; A.y = h[1] + s * rx + c * ry; A.yaw = wrap(A.yaw + a);
   }
   anchored(q, out) {
     const A = this.anchor, c = Math.cos(A.yaw), s = Math.sin(A.yaw);
@@ -294,7 +300,8 @@ export class Kin {
     const yaw = wrap(-Math.PI / 2 - yawOf([q0[3], q0[4], q0[5], q0[6]]));
     this.cur.set(q0); this.cur[0] = 0; this.cur[1] = 0;   // placeholder for play()'s "from"
     this.vel.fill(0);
-    this.play(idle.clip, 0, 'pingpong', { yaw, x: 0, y: 0, still: true });
+    this.havePre = false;
+    this.play(idle.clip, 0, 'pingpong', { yaw, x: 0, y: 0, still: true, fromCur: true });
     this.offT = 1e9;   // no easing at a reset
     this.c = [0, 0]; this.cv = [0, 0];
     this.state = 'stand'; this.t = 0; this.steps = []; this.tilted = 0;
@@ -362,6 +369,12 @@ export class Kin {
     const xr = this.xiPrev ? Math.hypot(this.xi[0] - this.xiPrev[0], this.xi[1] - this.xiPrev[1]) / Math.max(dt, 1e-3) : 0;
     this.xiPrev = this.xi.slice(); this.xiRate = xr;
     if (b.out > this.stepMargin) return this.startReact(b.dir, b.out, xr);
+    // round 6: he turns back to face the glass, slowly (a person standing re-squares to what they look at): when calm and
+    // more than 12 deg off, the recording's facing turns ~6 deg/s about his hips; planted feet pivot with the IK
+    if (Math.hypot(this.cv[0], this.cv[1]) < 0.05 && (this.G.name === 'floor' || this.G.name === 'ceil')) {
+      const want = qv(this.G.q, [0, -1, 0]), wy = Math.atan2(want[1], want[0]), dy = wrap(wy - this.facing().yaw);
+      if (Math.abs(dy) > 0.21) this.turnAnchor(Math.sign(dy) * Math.min(Math.abs(dy), 0.1 * dt));
+    }
     // calm: the next idle recording now and then
     if ((this.idleT -= dt) <= 0 && Math.hypot(this.cv[0], this.cv[1]) < 0.05) {
       // another idle, entered where it already looks like him (feet where his are); none close enough: keep this one
@@ -390,6 +403,13 @@ export class Kin {
     this.state = 'react'; this.steps.push(this.t); this.steps = this.steps.filter(t => this.t - t < 5);
     this.event(`${kind} ${Math.round(ang)} deg (${c.src || c.file})`);
   }
+  // the ghost starts again from his real body's pose (world qpos q): it had drifted from him (a recovery on a slope, a
+  // push the network handled its own way) and following it would pull him over. Into the idle frame that matches.
+  resync(q, why = 'caught up with his body') {
+    this.localPose(q, this.cur); this.vel.fill(0); this.c = [0, 0]; this.cv = [0, 0];
+    this.writeWorld(this.cur); this.mj.mj_kinematics(this.W.m, this.W.d);
+    this.state = 'stand'; this.havePre = false; this.toIdle(0.35, why); this.idleT = 8 + Math.random() * 8;
+  }
   // his real body says his weight is past his feet (sim/springs.js): a step that way, as if thrown out fast
   requestStep(ang, out) { if (this.state === 'stand') this.startReact(ang, Math.max(out, 0.07), 1); }
   updateReact(dt, gl, gn) {
@@ -413,6 +433,13 @@ export class Kin {
     this.offT += dt;
     const o = this.offsetNow(new Float64Array(72));
     poseAdd(this.base, o, this.tmp);
+    // the pose before the lean and the planted feet (round 5: easing into the next recording started from the pose
+    // AFTER the lean, and the lean was then added again: on a tilted floor every switch jumped by the slope's angle,
+    // 32-60 deg at the spine in one frame)
+    if (!this.pre) { this.pre = new Float64Array(73); this.preVel = new Float64Array(72); this.prePrev = new Float64Array(73); }
+    this.prePrev.set(this.pre); this.pre.set(this.tmp);
+    if (dt > 0 && this.havePre) { poseDiff(this.prePrev, this.pre, this.preVel); for (let k = 0; k < 72; k++) this.preVel[k] /= dt; }
+    this.havePre = true;
     // the pose before the lean, in the world: where his feet would be
     this.writeWorld(this.tmp);
     mj.mj_kinematics(m, d);
@@ -499,6 +526,7 @@ export class Kin {
   // ---------- falling: MuJoCo takes over ----------
   startFall(why) {
     const W = this.W, mj = this.mj, m = W.m, d = W.d;
+    this.havePre = false;
     if (this.ext) {   // a real body (sim/springs.js) falls; the ghost only watches it
       this.state = 'fall'; this.fallT = 0; this.restT = 0; this.restoreGains();
       return this.event('fall: ' + why);
@@ -573,7 +601,8 @@ export class Kin {
     }
     const c = pool[(this.getN = (this.getN || 0) + 1) % pool.length];
     this.state = 'getup';
-    this.play(c.clip, 0, 'once', { spine: true, hl: 0.35, still: true });
+    this.havePre = false;
+    this.play(c.clip, 0, 'once', { spine: true, hl: 0.35, still: true, fromCur: true });
     this.event('get up from ' + kind + ' (' + c.file + ')');
   }
   updateGetup(dt) {

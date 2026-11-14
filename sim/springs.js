@@ -250,6 +250,18 @@ export class Springs {
       }
     });
   }
+  // outside hips help toward the ghost's root (used by drive_brain for get-ups)
+  hipsHelp(gr, H, kp, kd, kr, kdr) {
+    const d = this.W.d, b = this.hips, x = d.xfrc_applied, M = this.W.mass || 70;
+    const v = [d.qvel[0], d.qvel[1], d.qvel[2]], r = [d.qpos[3], d.qpos[4], d.qpos[5], d.qpos[6]], w = qv(r, [d.qvel[3], d.qvel[4], d.qvel[5]]);
+    const e = q2rv(qm(gr.r, qc(r)));
+    let f2 = 0;
+    for (let k = 0; k < 3; k++) {
+      const F = clamp(H * (kp * (gr.p[k] - d.qpos[k]) + kd * (this.gv[k] - v[k])), -2.5 * M * 9.81, 2.5 * M * 9.81);
+      x[6 * b + k] += F; x[6 * b + 3 + k] += clamp(H * (kr * e[k] + kdr * (this.gw[k] - w[k])), -400, 400); f2 += F * F;
+    }
+    this.lastHelp = Math.sqrt(f2);
+  }
   // a wanted force F and turn T on his hips, made by the standing legs: each standing leg's 9 hinges get -J^T [F;T]
   // (J = how its foot moves relative to the hips), shared by his weight over the feet (this.share from stanceTorques).
   // Torques on a hinge are capped at the servo's own limit (300 N m).

@@ -17,7 +17,7 @@ export class BrainDrive {
     this.W = W; this.kin = kin; this.brain = brain; this.G = kin.W; this.springs = springs;
     kin.ext = W;   // the engine's falls follow this body
     this.ref = { pos: new Float64Array(NB * 3), rot: new Float64Array(NB * 4), vel: new Float64Array(NB * 3), ang: new Float64Array(NB * 3) };
-    this.prevRef = null; this.lostT = 0; this.sup = null; this.stats = {};
+    this.prevRef = null; this.lostT = 0; this.sup = null; this.stats = {}; this.getupBy = 'springs';
   }
   reset() {
     const W = this.W, d = W.d, g = this.G.d;
@@ -49,6 +49,9 @@ export class BrainDrive {
     }
     R.pos.set(P); R.rot.set(Q);
     this.prevRef = { P, Q };
+    // where he looks (the page's gaze(): at you, now and then at the floor, toward where he's falling): the reference's
+    // neck and head turn to it (Brain.applyLook), his real neck follows
+    if (this.brain.lookAt) this.brain.applyLook(R);
     return R;
   }
   // the ghost stays where his real body is: its spot follows his hips (slowly while he stands, faster while he steps),
@@ -60,8 +63,24 @@ export class BrainDrive {
     const k = 1 - Math.exp(-dt * (K.state === 'react' ? 2 : 0.8));
     A.x += (me[0] - gh[0]) * k; A.y += (me[1] - gh[1]) * k;
   }
+  height(dd, b) { return this.kin.toLocal([dd.xpos[3 * b], dd.xpos[3 * b + 1], dd.xpos[3 * b + 2]])[2]; }
   async update(dt, fingerPush) {
     const W = this.W, d = W.d, K = this.kin, B = this.brain, PH = 1 / 480;
+    if (this.springs && K.state === 'getup' && this.getupBy === 'brain') {
+      // the network moves his joints through the get-up recording; the springs' hips help (outside force) lifts
+      if (this.mode !== 'getup') { this.mode = 'getup'; B.attach(); B.told = true; this.prevRef = null; this.springs.helpK = 0; this.springs.gPrev = null; }
+      const S = this.springs, gr = S.ghostRoot(dt), n = Math.min(40, Math.round(dt / PH)), M = W.mass || 70;
+      S.helpK = Math.min(1, S.helpK + dt / 0.6);
+      const w0 = 2 * Math.PI * 1.5, kp = M * w0 * w0, kd = 2 * 0.8 * M * w0, kr = 10 * w0 * w0, kdr = 2 * 0.8 * 10 * w0, H = S.help * 1.6 * S.helpK;
+      let hs = 0;
+      for (let i = 0; i < n; i++) {
+        d.xfrc_applied.fill(0); if (fingerPush) fingerPush();
+        if (B.due()) { B.readState(); B.down = false; await B.think(this.buildRef(1 / B.hz)); if (B.down) { B.down = false; B.setTone(1); } }
+        S.hipsHelp(gr, H, kp, kd, kr, kdr); hs += S.lastHelp || 0;
+        W.step(B.control);
+      }
+      this.stats.help = hs / Math.max(1, n); this.stats.err = B.err || 0; return;
+    }
     if (this.springs && K.state === 'getup') {
       if (this.mode !== 'getup') { this.mode = 'getup'; const S = this.springs; S.mode = 'follow'; S.helpK = 0; S.gPrev = null; S.lostT = 0; S.setGains(S.stiff, Math.sqrt(S.stiff)); }
       this.springs.update(dt, fingerPush); this.stats.err = 0; this.stats.help = this.springs.stats.help; return;
@@ -84,9 +103,19 @@ export class BrainDrive {
       W.step(B.control);
     }
     // losing it: far from the recording's pose for a while (the network was trained to give up past 0.5 m)
+    // round 5: far from the recording's pose is not the same as falling. He falls when his body is really going down
+    // (hips under 60 cm, or head 40 cm below the recording's) for 0.4 s; if he is still up but the recording has
+    // drifted away from him (err > 35 cm for 0.3 s: a step on a slope, the return to idle after it), the recording
+    // starts again from his pose instead of pulling him over.
     if (!falling && K.state !== 'getup') {
-      this.lostT = (B.err || 0) > 0.45 ? this.lostT + dt : Math.max(0, this.lostT - dt);
-      if (this.lostT > 0.5) { this.lostT = 0; K.startFall('his body could not follow'); }
+      const hh = this.height(d, W.bodyId.Head), gh = this.height(this.G.d, W.bodyId.Head), hip = this.height(d, W.bodyId.Hips);
+      const down = hip < 0.6 || gh - hh > 0.4 || (B.err || 0) > 0.9;
+      this.lostT = down ? this.lostT + dt : Math.max(0, this.lostT - dt);
+      if (this.lostT > 0.4) { this.lostT = 0; K.startFall('his body went down'); }
+      else if (!down) {
+        this.driftT = (B.err || 0) > 0.35 ? (this.driftT || 0) + dt : 0;
+        if (this.driftT > 0.3) { this.driftT = 0; K.resync(d.qpos); this.prevRef = null; }
+      }
     }
     if (!falling && K.state === 'getup') {   // (no springs given) the network tries the get-up itself
       this.lostT = (B.err || 0) > 0.6 ? this.lostT + dt : Math.max(0, this.lostT - dt);

@@ -80,7 +80,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">Recordings 4</div><div id="brainver"></div>
+<div id="ver">Recordings 5</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -164,7 +164,7 @@ window.BOXLOAD = (() => {
   row('Page code').state = 'load';
   start(MJ + 'mujoco.wasm', 'Physics engine', 11201302);
   start('body/clips/kin/kin.json', 'Recordings');
-  try { if (JSON.parse(localStorage.getItem('thebox.settings.v4') || '{}').brain !== false) { start('body/models/b08/soma_tracker.json', 'Brain'); start('body/models/b08/soma_tracker.onnx', 'Brain', 25211904); } } catch (_) {}
+  start('body/models/b08/soma_tracker.json', 'Brain'); start('body/models/b08/soma_tracker.onnx', 'Brain', 25211904);
   let fig = 'female';
   try { fig = localStorage.getItem('box.figure') || fig; } catch (_) {}
   const FIGF = { female: 'body/bodychan.glb', male: 'body/bodykun.glb' };   // = FIGS in the module
@@ -213,9 +213,9 @@ import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=4';
-import { Springs } from './sim/springs.js?v=4';
-import { BrainDrive } from './sim/drive_brain.js?v=4';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=5';
+import { Springs } from './sim/springs.js?v=5';
+import { BrainDrive } from './sim/drive_brain.js?v=5';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -229,11 +229,6 @@ const clamp = THREE.MathUtils.clamp;
 function pct(v) { return Math.round(v * 100) + '%'; }
 const OPTS = [
   { grp: 'The figure' },
-  { grp: 'Physics (springs)' },
-  { k: 'brain', label: 'Balance by the trained brain', tog: true, def: true, help: 'On: his physical body is balanced by the trained network (brain 08), following the recordings; springs only help him through a get-up. Off: springs only. Changing it reloads.' },
-  { k: 'springs', label: 'His body in physics', tog: true, def: true, help: 'On: his body is physical. Off: the recordings alone (page 2). Changing it reloads.' },
-  { k: 'help', label: 'Help holding him up', min: 0, max: 1.5, step: 0.05, def: 0.5, fmt: pct, help: 'A spring from where the recording has his hips to his real hips. 0% = no help: he must stand on his own feet.' },
-  { k: 'stiff', label: 'Muscle stiffness', min: 0.2, max: 1.5, step: 0.05, def: 1, fmt: pct, help: 'How hard his joints pull toward the recording. Lower = looser, heavier limbs.' },
   { k: 'push', label: 'Finger push', min: 0, max: 2, step: 0.05, def: 1, fmt: pct, help: 'How hard your finger pushes him when you touch him.' },
   { grp: 'Moving the phone' },
   { k: 'shake', label: 'Shake strength', min: 0, max: 4, step: 0.05, def: 1.5, fmt: v => v.toFixed(2) + 'x', help: 'How much shaking the phone throws things about.' },
@@ -549,19 +544,19 @@ const bodyXml = await bodyP;
 const W = new BoxWorld(mj, bodyXml);
 // physics mode (user 17:30): the recordings run on a ghost copy of the world; his real body (W) is physical and
 // springs pull it toward the ghost (sim/springs.js)
-const PHYSICAL = SET.springs !== false;
+const PHYSICAL = true;   // (user 18:05: "I want a single version": no mode switches)
 const G = PHYSICAL ? new BoxWorld(mj, bodyXml) : W;
 LOAD.state('Body', 'ready');
 let control = null;
 let kin = null, springs = null;
 try { kin = new Kin(G, mj, await libP); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
-if (kin && PHYSICAL) springs = new Springs(W, kin, { help: SET.help, stiff: SET.stiff });
+if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
 // round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
 // only carry him through get-ups (the network was never taught to get up).
 let drive = null;
-if (kin && PHYSICAL && SET.brain !== false) try {
+if (kin && PHYSICAL) try {
   ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/'; ort.env.wasm.numThreads = 1;
   const dir = 'body/models/b08/';
   const meta = JSON.parse(new TextDecoder().decode(await LOAD.take(dir + 'soma_tracker.json', 'Brain')));
@@ -572,7 +567,7 @@ if (kin && PHYSICAL && SET.brain !== false) try {
   drive = new BrainDrive(W, kin, brainNet, springs);
   LOAD.state('Brain', 'ready');
 } catch (e) { console.warn('brain did not load: springs only', e); LOAD.state('Brain', 'fail'); drive = null; }
-if (drive) kin.ext = W;
+if (drive) { kin.ext = W; brain = drive.brain; }   // gaze() picks where he looks for this brain
 function newController() { control = null; }
 let S = 1;   // drawing units per metre
 function figureScale() {
@@ -1129,8 +1124,6 @@ function buildOptions() {
 function changed(k) {
   saveSettings();
   if (k === 'hiQ') applyQuality();
-  if (k === 'springs' || k === 'brain') location.reload();
-  if (springs && (k === 'help' || k === 'stiff')) { springs.help = SET.help; springs.stiff = SET.stiff; }
 }
 $('optBtn').onclick = () => $('opts').classList.add('open');
 $('optClose').onclick = () => $('opts').classList.remove('open');
@@ -1365,6 +1358,7 @@ async function frame(now) {
   placeLight();
 
   // the recordings engine: kinematic while he stands, steps and gets up; MuJoCo physics while he falls
+  if (brain) gaze(dt);   // where he looks: at you, now and then the floor, where he's falling (drives brain.lookAt)
   if (kin && !look.on) {
     // your finger: its push (into the box and the way you drag) goes to his balance; while he falls, to the physics
     fingerPush();
