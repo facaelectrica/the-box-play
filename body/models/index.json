@@ -4,11 +4,11 @@
  "models": [
   {
    "id": "live",
-   "label": "Live training (stage2, saved 20:06)",
+   "label": "Live training (stage3, saved 22:45)",
    "dir": "body/models/live/",
    "idle": "seed_idle_A121",
    "onnx_bytes": 25211904,
-   "about": "stage2 training, checkpoint saved 20:06. Beat NVIDIA's brain 60 s on both idle recordings in the game physics. Derived from NVIDIA's model (NVIDIA Open Model License)."
+   "about": "stage3 training, checkpoint saved 22:45. Beat NVIDIA's brain 60 s on both idle recordings in the game physics. Derived from NVIDIA's model (NVIDIA Open Model License)."
   },
   {
    "id": "nvidia",
