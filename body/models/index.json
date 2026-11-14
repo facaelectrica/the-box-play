@@ -3,6 +3,15 @@
  "default": "live",
  "models": [
   {
+   "id": "b08",
+   "label": "08 \u00b7 TEST: new training (lab16, 16:27)",
+   "dir": "body/models/b08/",
+   "idle": "seed_idle_A121",
+   "onnx_bytes": 25211904,
+   "about": "Brain 08 (test, Nov 14 16:27): lab16 save at ~60 min, trained from NVIDIA's original with the per-joint posture score, lighter pushes, 2 GPUs. Whole-body table vs the person: chest +2.8 deg (07: +7.4), head +1.8 cm (07: +4.2), feet -2.4 cm (07: -5.2), right knee +7 deg (07: +11.5); 1 fall in 80 pushes (07: 0). Derived from NVIDIA's model (NVIDIA Open Model License).",
+   "short": "08 test"
+  },
+  {
    "id": "live",
    "label": "07 \u00b7 mix of 06 + arms training (12:47)",
    "dir": "body/models/live/",
