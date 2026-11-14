@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.34</div>
+<div id="ver">v15.35</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -220,6 +220,7 @@ import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import * as ort from 'onnxruntime-web';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
+import { Director } from './sim/director.js';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -567,6 +568,15 @@ LOAD.state('Body', 'ready');
 let control = null;
 try { const { meta, session, idle } = await sessionP; brain = new Brain(W, ort, session, meta); brain.setStandPose(BRAIN_STAND); if (idle) brain.setIdleClip(new Float32Array(idle)); }
 catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; LOAD.state('Brain', 'fail'); }
+// director (v15.35, user 20:14): recovery recordings, loaded after start (2.3 MB, not on the loading screen's path)
+let director = null;
+if (brain) (async () => {
+  try {
+    const R = await (await fetch('body/clips/react.json')).json();
+    const clips = await Promise.all(R.clips.map(async c => ({ ...c, buf: new Float32Array(await (await fetch('body/clips/' + c.file)).arrayBuffer()) })));
+    director = new Director(brain, clips);
+  } catch (e) { console.warn('director clips did not load', e); }
+})();
 function newController() {
   if (brain) { brain.attach(); brain.told = false; control = brain.control; }
   else { control = makeController(W); control.hz = 240; }
@@ -1354,6 +1364,7 @@ async function frame(now) {
     testKick();
     if (brain && control === brain.control && brain.due()) {
       await brain.think();   // the network, 30 times a second
+      if (director) director.update(1 / 30);   // losing balance? switch to a real recovery recording
       if (brain.down && !brain.told) { brain.told = true; note("He can't get up on his own yet. Double-tap to stand him up.", 3500); }
     }
     W.step(control);

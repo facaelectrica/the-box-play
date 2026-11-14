@@ -146,7 +146,7 @@ export class Brain {
       m.actuator_gainprm[10 * a] = kp; m.actuator_biasprm[10 * a + 1] = -kp; m.actuator_biasprm[10 * a + 2] = -kd;
     }
     for (let a = 0; a < m.nu; a++) this.targets[a] = this.W.d.qpos[m.jnt_qposadr[m.actuator_trnid[2 * a]]];
-    this.prev.fill(0); this.refXY = null; this.settled = false; this.up = null; this.tNext = 0; this.lost = 0; this.down = false; this.tone = 1;
+    this.prev.fill(0); this.refXY = null; this.react = null; this.settled = false; this.up = null; this.tNext = 0; this.lost = 0; this.down = false; this.tone = 1;
   }
   // muscle tone: 1 = the trained gains, less = looser (when he has fallen and the tracker has given up)
   setTone(f) {
@@ -245,6 +245,36 @@ export class Brain {
     this.ground = t[2] - (fn[0] * (hx - t[0]) + fn[1] * (hy - t[1])) / (fn[2] || 1);
   }
 
+  // the reference from a recording (idle or recovery clip) at frame position x (fractional), direction sg (+1/-1),
+  // its frame-0 feet middle (I.mid) placed on xy, its frame-0 facing (I.h0) turned to yaw
+  clipRef(I, x, sg, xy, yaw) {
+    const R = this.ref, t = [0, 0, 0];
+    const i0 = Math.min(I.n - 2, Math.floor(x)), w = x - i0, A = I.buf, F = 376;
+    const qc = [0, 0, Math.sin((yaw - I.h0) / 2), Math.cos((yaw - I.h0) / 2)], c = [0, 0, 0, 1];
+    for (let b = 0; b < NB; b++) {
+      const a = i0 * F + 13 * b, e = a + F, lp = k => A[a + k] + (A[e + k] - A[a + k]) * w;
+      qrot(qc, 0, lp(0) - I.mid[0], lp(1) - I.mid[1], 0, t, 0);
+      R.pos[3 * b] = xy[0] + t[0]; R.pos[3 * b + 1] = xy[1] + t[1]; R.pos[3 * b + 2] = this.ground + lp(2);
+      // nlerp between the two frames' rotations (same hemisphere)
+      const dot = A[a + 3] * A[e + 3] + A[a + 4] * A[e + 4] + A[a + 5] * A[e + 5] + A[a + 6] * A[e + 6], s2 = dot < 0 ? -1 : 1;
+      for (let k = 0; k < 4; k++) c[k] = A[a + 3 + k] * (1 - w) + s2 * A[e + 3 + k] * w;
+      const l = Math.hypot(c[0], c[1], c[2], c[3]); for (let k = 0; k < 4; k++) c[k] /= l;
+      qmul(qc, 0, c, 0, R.rot, 4 * b);
+      qrot(qc, 0, sg * lp(7), sg * lp(8), sg * lp(9), R.vel, 3 * b);
+      qrot(qc, 0, sg * lp(10), sg * lp(11), sg * lp(12), R.ang, 3 * b);
+    }
+  }
+
+  // director (v15.35): play a recovery recording once, from time t0 (s), starting where he stands and the way he faces
+  playReact(buf, t0 = 0, fps = 30) {
+    const F = 376, n = Math.floor(buf.length / F);
+    if (n < 2) return;
+    const f0 = buf.subarray(0, F), r0 = new Float64Array(4);
+    for (let i = 0; i < 4; i++) r0[i] = f0[3 + i];
+    const mid = [(f0[13 * 17] + f0[13 * 21]) / 2, (f0[13 * 17 + 1] + f0[13 * 21 + 1]) / 2], P = this.pos;
+    this.react = { buf, n, fps, mid, h0: heading(r0, 0), t: t0, xy: [(P[3 * 17] + P[3 * 21]) / 2, (P[3 * 17 + 1] + P[3 * 21 + 1]) / 2], yaw: heading(this.rot, 0) };
+  }
+
   // where the standing pose should be: under him, upright with gravity, turned toward the glass
   updateRef(dt) {
     const P = this.pos, s = this.stand;
@@ -277,24 +307,19 @@ export class Brain {
     const fo = [0, 0, 0];
     if (this.meta.realign) qrot(q, 0, s.pos[0], s.pos[1], 0, fo, 0);   // realigned: hips on hips
     else qrot(q, 0, (s.pos[3 * 17] + s.pos[3 * 21]) / 2, (s.pos[3 * 17 + 1] + s.pos[3 * 21 + 1]) / 2, 0, fo, 0);
+    // director (v15.35): a one-shot recovery recording (playReact) replaces the idle until it ends, anchored where he
+    // stood and the way he faced when it started; then the idle's spot moves to where he ended up
+    if (this.react && !this.meta.realign) {
+      const X = this.react; X.t += dt;
+      const x = X.t * X.fps;
+      if (x >= X.n - 1) { this.react = null; this.refXY = [fx, fy]; this.settled = true; this.refYaw = heading(this.rot, 0); }
+      else { this.clipRef(X, x, 1, X.xy, X.yaw); this.applyLook(R); return; }
+    }
     if (this.idle && !this.meta.realign) {
       const I = this.idle; I.t += dt;
       // ping-pong through the recording; going backwards, the velocities turn round
       const L = (I.n - 1) / I.fps, u = I.t % (2 * L), fwd = u < L, x = (fwd ? u : 2 * L - u) * I.fps;
-      const i0 = Math.min(I.n - 2, Math.floor(x)), w = x - i0, sg = fwd ? 1 : -1, A = I.buf, F = 376;
-      const qc = [0, 0, Math.sin((this.refYaw - I.h0) / 2), Math.cos((this.refYaw - I.h0) / 2)], c = [0, 0, 0, 1];
-      for (let b = 0; b < NB; b++) {
-        const a = i0 * F + 13 * b, e = a + F, lp = k => A[a + k] + (A[e + k] - A[a + k]) * w;
-        qrot(qc, 0, lp(0) - I.mid[0], lp(1) - I.mid[1], 0, t, 0);
-        R.pos[3 * b] = this.refXY[0] + t[0]; R.pos[3 * b + 1] = this.refXY[1] + t[1]; R.pos[3 * b + 2] = this.ground + lp(2);
-        // nlerp between the two frames' rotations (same hemisphere)
-        const dot = A[a + 3] * A[e + 3] + A[a + 4] * A[e + 4] + A[a + 5] * A[e + 5] + A[a + 6] * A[e + 6], s2 = dot < 0 ? -1 : 1;
-        for (let k = 0; k < 4; k++) c[k] = A[a + 3 + k] * (1 - w) + s2 * A[e + 3 + k] * w;
-        const l = Math.hypot(c[0], c[1], c[2], c[3]); for (let k = 0; k < 4; k++) c[k] /= l;
-        qmul(qc, 0, c, 0, R.rot, 4 * b);
-        qrot(qc, 0, sg * lp(7), sg * lp(8), sg * lp(9), R.vel, 3 * b);
-        qrot(qc, 0, sg * lp(10), sg * lp(11), sg * lp(12), R.ang, 3 * b);
-      }
+      this.clipRef(I, x, fwd ? 1 : -1, this.refXY, this.refYaw);
       this.applyLook(R);
       return;
     }

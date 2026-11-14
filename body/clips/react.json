@@ -1,0 +1,206 @@
+{
+ "fps": 30,
+ "note": "Inria push recovery (Zenodo 10512652, CC BY 4.0, Inria): ang 0 = pushed forward, +90 = toward his left",
+ "clips": [
+  {
+   "file": "react_00.bin",
+   "src": "S15_SI_PH180_1",
+   "ang": -90,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 83.52
+  },
+  {
+   "file": "react_01.bin",
+   "src": "S12_NI_PH180_2",
+   "ang": -90,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 64.78
+  },
+  {
+   "file": "react_02.bin",
+   "src": "S4_NI_PH180_1",
+   "ang": -90,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 77.07
+  },
+  {
+   "file": "react_03.bin",
+   "src": "S17_NI_PM180_1",
+   "ang": -90,
+   "kind": "inplace",
+   "steps": 0,
+   "frames": 74,
+   "push_frame": 3,
+   "peak_N": 73.71
+  },
+  {
+   "file": "react_04.bin",
+   "src": "S15_SI_PM135_2",
+   "ang": -45,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 65.94
+  },
+  {
+   "file": "react_05.bin",
+   "src": "S4_SI_PM135_1",
+   "ang": -45,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 85.19
+  },
+  {
+   "file": "react_06.bin",
+   "src": "S4_NI_PM135_1",
+   "ang": -45,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 85.05
+  },
+  {
+   "file": "react_07.bin",
+   "src": "S17_SI_PM135_2",
+   "ang": -45,
+   "kind": "inplace",
+   "steps": 0,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 63.15
+  },
+  {
+   "file": "react_08.bin",
+   "src": "S19_SI_PM90_2",
+   "ang": 0,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 87.62
+  },
+  {
+   "file": "react_09.bin",
+   "src": "S4_NI_PM90_2",
+   "ang": 0,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 70.17
+  },
+  {
+   "file": "react_10.bin",
+   "src": "S1_SI_PH90_1",
+   "ang": 0,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 83.76
+  },
+  {
+   "file": "react_11.bin",
+   "src": "S1_NI_PM90_2",
+   "ang": 0,
+   "kind": "inplace",
+   "steps": 0,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 96.05
+  },
+  {
+   "file": "react_12.bin",
+   "src": "S2_SI_PH45_1",
+   "ang": 45,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 70.31
+  },
+  {
+   "file": "react_13.bin",
+   "src": "S6_NI_PM0_1",
+   "ang": 45,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 72.05
+  },
+  {
+   "file": "react_14.bin",
+   "src": "S4_NI_PM45_2",
+   "ang": 45,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 59.55
+  },
+  {
+   "file": "react_15.bin",
+   "src": "S17_SI_PM45_2",
+   "ang": 45,
+   "kind": "inplace",
+   "steps": 0,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 60.71
+  },
+  {
+   "file": "react_16.bin",
+   "src": "S4_NI_PM0_1",
+   "ang": 90,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 74.75
+  },
+  {
+   "file": "react_17.bin",
+   "src": "S15_SI_PM0_2",
+   "ang": 90,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 94.32
+  },
+  {
+   "file": "react_18.bin",
+   "src": "S16_NI_PH0_2",
+   "ang": 90,
+   "kind": "step",
+   "steps": 1,
+   "frames": 78,
+   "push_frame": 3,
+   "peak_N": 108.61
+  },
+  {
+   "file": "react_19.bin",
+   "src": "S17_NI_PM0_1",
+   "ang": 90,
+   "kind": "inplace",
+   "steps": 0,
+   "frames": 64,
+   "push_frame": 3,
+   "peak_N": 66.98
+  }
+ ]
+}
