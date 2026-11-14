@@ -268,6 +268,10 @@ export class Brain {
     }
   }
 
+  // v15.38 (A5): change the idle recording he follows (the director rotates a few: soft knees, weight on one leg,
+  // hands on the back), eased in like the recoveries; the new recording's first frame lands on the same spot and facing
+  switchIdle(buf, fps = 30) { this.setIdleClip(buf, fps); this.blendStart(); }
+
   // director (v15.35): play a recovery recording once, from time t0 (s), starting where he stands and the way he faces
   playReact(buf, t0 = 0, fps = 30) {
     const F = 376, n = Math.floor(buf.length / F);

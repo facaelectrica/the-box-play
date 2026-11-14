@@ -1,0 +1,11 @@
+{
+ "note": "v15.38 (A5): idle recordings the director rotates through while he is calm (BONES-SEED, private use). Picked from 384 calm idles for soft knees and shoulder posture; each held 60 s by the 22:45 brain.",
+ "every": [25, 45],
+ "idles": [
+  {"file": "seed_idle_soft_A077.bin", "label": "neutral, soft knees (11 deg)"},
+  {"file": "seed_idle_weight_A268.bin", "label": "weight on one leg, knees 17 deg"},
+  {"file": "seed_idle_back_A056.bin", "label": "hands on the back, knees 14 deg"},
+  {"file": "seed_idle_rightleg_A419.bin", "label": "right leg forward"},
+  {"file": "seed_idle_weightL_A018.bin", "label": "weight shifting, relaxed arms"}
+ ]
+}

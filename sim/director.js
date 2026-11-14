@@ -14,11 +14,22 @@ export class Director {
     this.vTrig = opt.vTrig ?? 0.30; this.vStep = opt.vStep ?? 0.45; this.cool = 0; this.coolT = opt.coolT ?? 0.8;
     this.lead = opt.lead ?? 4;                        // frames after the recorded push onset to start from
     this.last = null; this.n = 0;
+    // v15.38 (A5, user 00:57-00:59 "arms more relaxed", "weight on one leg", knees): idle recordings to rotate through
+    // while he is calm, every `every` s (random in the range), eased in by brain.switchIdle; the first one soon after load
+    this.idles = opt.idles || []; this.every = opt.every || [25, 45]; this.ki = -1; this.idleT = opt.firstIdle ?? 2; this.settleIdle = opt.settleIdle ?? 1.5;
+  }
+  nextIdle() {
+    const B = this.brain; if (!this.idles.length) return;
+    this.ki = (this.ki + 1) % this.idles.length; const c = this.idles[this.ki];
+    B.switchIdle(c.buf); this.idleNow = c.file;
+    this.cool = (B.blendT || 0.4) + this.settleIdle;   // the weight shift into the new idle is not a stumble
+    this.idleT = this.every[0] + Math.random() * (this.every[1] - this.every[0]);
   }
   update(dt) {
     const B = this.brain;
     if (!B || !this.clips.length || B.down) return;
     if (B.react) { this.cool = this.coolT; return; }
+    if (this.idles.length && (this.idleT -= dt) <= 0 && this.cool <= 0 && Math.hypot(B.vel[0], B.vel[1]) < 0.15) this.nextIdle();
     if ((this.cool -= dt) > 0) return;
     const vx = B.vel[0], vy = B.vel[1], v = Math.hypot(vx, vy);
     if (v < this.vTrig) return;

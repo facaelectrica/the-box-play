@@ -29,6 +29,34 @@
    "source": "BONES-SEED soma_uniform walk_sideway_090_loop_001__A028",
    "licence": "BONES-SEED license (private use; raw data not public)",
    "floor_shift_cm": -0.45
+  },
+  "seed_idle_soft_A077": {
+   "frames": 337,
+   "floats": 376,
+   "source": "BONES-SEED soma_uniform neutral_idle_loop_003__A077",
+   "licence": "BONES-SEED license (private use; raw data not public)",
+   "floor_shift_cm": -1.82
+  },
+  "seed_idle_weight_A268": {
+   "frames": 485,
+   "floats": 376,
+   "source": "BONES-SEED soma_uniform idle_right_R_002__A268",
+   "licence": "BONES-SEED license (private use; raw data not public)",
+   "floor_shift_cm": -0.94
+  },
+  "seed_idle_weightL_A018": {
+   "frames": 900,
+   "floats": 376,
+   "source": "BONES-SEED soma_uniform Idle_Left_001__A018",
+   "licence": "BONES-SEED license (private use; raw data not public)",
+   "floor_shift_cm": -1.64
+  },
+  "seed_idle_back_A056": {
+   "frames": 537,
+   "floats": 376,
+   "source": "BONES-SEED soma_uniform idle_hands_on_back_loop_002__A056",
+   "licence": "BONES-SEED license (private use; raw data not public)",
+   "floor_shift_cm": -1.06
   }
  }
 }

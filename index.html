@@ -78,7 +78,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">v15.37</div>
+<div id="ver">v15.38</div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -577,7 +577,13 @@ if (brain) (async () => {
   try {
     const R = await (await fetch('body/clips/react.json')).json();
     const clips = await Promise.all(R.clips.map(async c => ({ ...c, buf: new Float32Array(await (await fetch('body/clips/' + c.file)).arrayBuffer()) })));
-    director = new Director(brain, clips);
+    // v15.38: idle recordings to rotate through (soft knees, weight on one leg, hands on the back), loaded after start
+    let idles = [], every;
+    try {
+      const J = await (await fetch('body/clips/idles.json')).json(); every = J.every;
+      idles = await Promise.all(J.idles.map(async c => ({ ...c, buf: new Float32Array(await (await fetch('body/clips/' + c.file)).arrayBuffer()) })));
+    } catch (e) { console.warn('idle rotation clips did not load', e); }
+    director = new Director(brain, clips, { idles, every });
   } catch (e) { console.warn('director clips did not load', e); }
 })();
 function newController() {
