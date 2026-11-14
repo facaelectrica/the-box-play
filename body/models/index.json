@@ -1,24 +1,24 @@
 {
- "note": "Brains the page can run (Options > Brain). Each dir holds soma_tracker.onnx + soma_tracker.json. Scores: tools/test/scorecard.mjs.",
+ "note": "Brains the page can run (Options > Brain). Each dir holds soma_tracker.onnx + soma_tracker.json. Scores: tools/test/scorecard.mjs. Brain numbers (short): 01 = stage2 20:06, 02 = stage3 22:45, 03 = stance 10:01; each new training brain gets the next number.",
  "default": "live",
  "models": [
   {
    "id": "live",
-   "label": "Latest training (stance, saved 10:01)",
+   "label": "03 \u00b7 latest (stance, 10:01)",
    "dir": "body/models/live/",
    "idle": "seed_idle_A121",
    "onnx_bytes": 25211904,
    "about": "Newest training brain (lab13, stance reward, saved 10:01 Nov 14): stands with the recording's stance (feet ~22 cm apart, was ~11); on pushes still behind the 22:45 brain (3 vs 1 falls in 72). Beat NVIDIA's brain 60 s on both idle recordings. Derived from NVIDIA's model (NVIDIA Open Model License).",
-   "short": "stance 10:01 (latest)"
+   "short": "03"
   },
   {
    "id": "best",
-   "label": "Best on pushes (stage3, saved 22:45)",
+   "label": "02 \u00b7 previous (best on pushes, 22:45)",
    "dir": "body/models/best/",
    "idle": "seed_idle_A121",
    "onnx_bytes": 25211904,
    "about": "stage3 training, checkpoint saved 22:45 Nov 13: 1 fall in 72 pushes; feet ~11 cm apart. Beat NVIDIA's brain 60 s on both idles. Derived from NVIDIA's model (NVIDIA Open Model License).",
-   "short": "22:45 (best on pushes)"
+   "short": "02"
   },
   {
    "id": "nvidia",
@@ -26,7 +26,7 @@
    "dir": "body/",
    "about": "NVIDIA's pretrained SOMA tracker, as in v15",
    "onnx_bytes": 12610426,
-   "short": "NVIDIA original"
+   "short": "NVIDIA"
   }
  ]
 }

@@ -549,7 +549,7 @@ try { MODELS = JSON.parse(new TextDecoder().decode(await LOAD.take('body/models/
 const modelId = new URLSearchParams(location.search).get('model') || (() => { try { return localStorage.getItem('thebox.model'); } catch (_) { return null; } })() || MODELS.default;
 const MODEL = MODELS.models.find(m => m.id === modelId) || MODELS.models.find(m => m.id === MODELS.default) || MODELS.models[0];
 // v15.39 (user Nov 14 10:28): which brain is loaded, under the version label (so a reload shows if it is the latest)
-try { document.getElementById('brainver').textContent = 'brain: ' + (MODEL.short || MODEL.label); } catch (_) {}
+try { document.getElementById('brainver').textContent = 'brain ' + (MODEL.short || MODEL.label); } catch (_) {}
 // the brain's network starts up while the physics engine does (= Brain.create, with the files from BOXLOAD)
 const sessionP = (async () => {
   const [meta, model] = await Promise.all([
@@ -574,7 +574,7 @@ const W = new BoxWorld(mj, await bodyP);
 LOAD.state('Body', 'ready');
 let control = null;
 try { const { meta, session, idle } = await sessionP; brain = new Brain(W, ort, session, meta); brain.setStandPose(BRAIN_STAND); if (idle) brain.setIdleClip(new Float32Array(idle)); }
-catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; LOAD.state('Brain', 'fail'); try { document.getElementById('brainver').textContent = 'brain: hand-written stand (load failed)'; } catch (_) {} }
+catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; LOAD.state('Brain', 'fail'); try { document.getElementById('brainver').textContent = 'brain failed to load'; } catch (_) {} }
 // director (v15.35, user 20:14): recovery recordings, loaded after start (2.3 MB, not on the loading screen's path)
 let director = null;
 if (brain) (async () => {
