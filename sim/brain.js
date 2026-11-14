@@ -120,6 +120,9 @@ export class Brain {
     this.settleBack = 0.35;
     this.turn = opt.turn ?? 1;
     this.blendT = opt.blendT ?? 0.4;     // v15.37: seconds to ease into/out of a recovery recording (0 = jump); push test: 0.4 best
+    // v15.40 (user Nov 14 12:29 "no gap between balancing and idle, one smooth motion"): leaving a recovery, the idle
+    // continues from the frame that best matches his pose (motion matching), eased in over exitBlendT
+    this.exitBlendT = opt.exitBlendT ?? 1.0; this.matchExit = opt.matchExit ?? false;   // matching: push test showed no smoother return (gap 4.6 -> 4.6 cm); kept for later
     this.blend = null; this.lastRef = null;
     this.mass = opt.mass ?? 70;
     // his sense of up = the physics' gravity (calmed in the page by makeCalmGravity). Calming it a second time here made
@@ -268,6 +271,36 @@ export class Brain {
     }
   }
 
+  // v15.40 (A5): motion matching on the way back to the idle. Every frame of the idle recording is compared with his
+  // body now (hands, forearms, shins, feet, chest, head relative to the hips, in the hips' heading; speeds of the
+  // hands and feet count too), and the idle continues forward from the closest frame, so the recovery flows into the
+  // idle instead of snapping to wherever the idle had paused.
+  matchIdle() {
+    if (!this.idle) return;
+    const P = this.pos, V = this.vel, F = 376, parts = [10, 14, 9, 13, 16, 20, 17, 21, 3, 6], vparts = [10, 14, 17, 21];
+    const feat = (pos, vel, off, h) => {   // positions relative to the hips, turned by -heading; then part speeds
+      const c = Math.cos(-h), sn = Math.sin(-h), o = [];
+      for (const b of parts) { const dx = pos[off(b)] - pos[off(0)], dy = pos[off(b) + 1] - pos[off(0) + 1], dz = pos[off(b) + 2] - pos[off(0) + 2];
+        o.push(c * dx - sn * dy, sn * dx + c * dy, dz); }
+      for (const b of vparts) { const vx = vel(b, 0), vy = vel(b, 1); o.push(0.15 * (c * vx - sn * vy), 0.15 * (sn * vx + c * vy), 0.15 * vel(b, 2)); }
+      return o;
+    };
+    const feats = c => {   // once per recording (cached on the buffer)
+      if (c.buf._feat) return c.buf._feat;
+      const A = c.buf, n = Math.floor(A.length / F), out = [];
+      for (let f = 0; f < n; f++) { const base = f * F; out.push(feat(A, (b, k) => A[base + 13 * b + 7 + k], b => base + 13 * b, heading(A, base + 3))); }
+      return (c.buf._feat = out);
+    };
+    const me = feat(P, (b, k) => V[3 * b + k], b => 3 * b, heading(this.rot, 0));
+    // the idle he was on, and (when the director gives its rotation in idlePool) every other calm idle too
+    const pool = [{ buf: this.idle.buf, file: this.idleFile }, ...(this.idlePool || []).filter(c => c.buf !== this.idle.buf)];
+    let best = null, bf = 0, bd = Infinity;
+    for (const c of pool) { const Q = feats(c);
+      for (let f = 0; f < Q.length - 1; f++) { const q = Q[f]; let d = 0; for (let i = 0; i < q.length; i++) { const e = q[i] - me[i]; d += e * e; } if (d < bd) { bd = d; bf = f; best = c; } } }
+    if (best.buf !== this.idle.buf) { this.setIdleClip(best.buf, this.idle.fps); this.idleFile = best.file; }
+    this.idle.t = bf / this.idle.fps; this.lastMatch = { file: best.file, frame: bf, cost: Math.sqrt(bd / me.length) };
+  }
+
   // v15.38 (A5): change the idle recording he follows (the director rotates a few: soft knees, weight on one leg,
   // hands on the back), eased in like the recoveries; the new recording's first frame lands on the same spot and facing
   switchIdle(buf, fps = 30) { this.setIdleClip(buf, fps); this.blendStart(); }
@@ -288,13 +321,14 @@ export class Brain {
   // at his feet) is stored per body part and faded to zero with a smoothstep, so the reference keeps its position and
   // speed at the switch and lands exactly on the new recording after blendT. The recording itself plays unchanged
   // underneath (its steps keep their timing); only the gap is faded ("inertialization", as games do it).
-  blendStart() { if (this.blendT > 0 && this.lastRef) this.blend = { pending: true, tau: 0 }; }
+  blendStart(T = this.blendT) { if (T > 0 && this.lastRef) this.blend = { pending: true, tau: 0, T }; }
   applyBlend(dt) {
     const R = this.ref, B = this.blend, L = this.lastRef;
     if (B && B.pending) {
       B.pending = false; B.dp = new Float64Array(NB * 3); B.dv = new Float64Array(NB * 3); B.da = new Float64Array(NB * 3);
       B.dq = new Float64Array(NB * 4); B.rv = new Float64Array(NB * 3);
       for (let i = 0; i < NB * 3; i++) { B.dp[i] = L.pos[i] - R.pos[i]; B.dv[i] = L.vel[i] - R.vel[i]; B.da[i] = L.ang[i] - R.ang[i]; }
+      if (B.exit && this.gaps) { let g = 0; for (let b = 0; b < NB; b++) g += Math.hypot(B.dp[3 * b] - B.dp[0], B.dp[3 * b + 1] - B.dp[1], B.dp[3 * b + 2] - B.dp[2]); this.gaps.push(g / NB); }   // test hook: mean pose gap at a recovery's end (m, hips-relative)
       const c = [0, 0, 0, 1], q = [0, 0, 0, 1];
       for (let b = 0; b < NB; b++) {   // rotation gap dq = old * conj(new) (applied on the left), as a rotation vector
         c[0] = -R.rot[4 * b]; c[1] = -R.rot[4 * b + 1]; c[2] = -R.rot[4 * b + 2]; c[3] = R.rot[4 * b + 3];
@@ -304,7 +338,7 @@ export class Brain {
       }
     }
     if (B && !B.pending) {
-      const s = Math.min(1, B.tau / this.blendT), w = 1 - s * s * (3 - 2 * s), wd = -6 * s * (1 - s) / this.blendT;
+      const T = B.T || this.blendT, s = Math.min(1, B.tau / T), w = 1 - s * s * (3 - 2 * s), wd = -6 * s * (1 - s) / T;
       const q = [0, 0, 0, 1], o = _lq;
       for (let i = 0; i < NB * 3; i++) {
         R.pos[i] += w * B.dp[i]; R.vel[i] += w * B.dv[i] + wd * B.dp[i]; R.ang[i] += w * B.da[i] + wd * B.rv[i];
@@ -359,7 +393,7 @@ export class Brain {
     if (this.react && !this.meta.realign) {
       const X = this.react; X.t += dt;
       const x = X.t * X.fps;
-      if (x >= X.n - 1) { this.react = null; this.refXY = [fx, fy]; this.settled = true; this.refYaw = heading(this.rot, 0); this.blendStart(); }
+      if (x >= X.n - 1) { this.react = null; this.refXY = [fx, fy]; this.settled = true; this.refYaw = heading(this.rot, 0); if (this.matchExit) this.matchIdle(); this.blendStart(this.exitBlendT); if (this.blend) this.blend.exit = true; }
       else { this.clipRef(X, x, 1, X.xy, X.yaw); this.applyBlend(dt); this.applyLook(R); return; }
     }
     if (this.idle && !this.meta.realign) {

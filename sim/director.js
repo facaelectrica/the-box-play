@@ -16,12 +16,13 @@ export class Director {
     this.last = null; this.n = 0;
     // v15.38 (A5, user 00:57-00:59 "arms more relaxed", "weight on one leg", knees): idle recordings to rotate through
     // while he is calm, every `every` s (random in the range), eased in by brain.switchIdle; the first one soon after load
-    this.idles = opt.idles || []; this.every = opt.every || [25, 45]; this.ki = -1; this.idleT = opt.firstIdle ?? 2; this.settleIdle = opt.settleIdle ?? 1.5;
+    this.idles = opt.idles || [];   // (brain.idlePool = this.idles would let the return from a recovery pick any of them; push test v15.40: no smoother)
+    this.every = opt.every || [25, 45]; this.ki = -1; this.idleT = opt.firstIdle ?? 2; this.settleIdle = opt.settleIdle ?? 1.5;
   }
   nextIdle() {
     const B = this.brain; if (!this.idles.length) return;
     this.ki = (this.ki + 1) % this.idles.length; const c = this.idles[this.ki];
-    B.switchIdle(c.buf); this.idleNow = c.file;
+    B.switchIdle(c.buf); this.idleNow = c.file; B.idleFile = c.file;
     this.cool = (B.blendT || 0.4) + this.settleIdle;   // the weight shift into the new idle is not a stumble
     this.idleT = this.every[0] + Math.random() * (this.every[1] - this.every[0]);
   }
