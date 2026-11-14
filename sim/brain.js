@@ -131,7 +131,7 @@ export class Brain {
     this.blendT = opt.blendT ?? 0.4;     // v15.37: seconds to ease into/out of a recovery recording (0 = jump); push test: 0.4 best
     // v15.40 (user Nov 14 12:29 "no gap between balancing and idle, one smooth motion"): leaving a recovery, the idle
     // continues from the frame that best matches his pose (motion matching), eased in over exitBlendT
-    this.exitBlendT = opt.exitBlendT ?? 1.0; this.matchExit = opt.matchExit ?? false;   // matching: push test showed no smoother return (gap 4.6 -> 4.6 cm); kept for later
+    this.exitBlendT = opt.exitBlendT ?? 1.0; this.matchExit = opt.matchExit ?? false; this.cutTail = opt.cutTail ?? true;   // matching: push test showed no smoother return (gap 4.6 -> 4.6 cm); kept for later
     this.blend = null; this.lastRef = null;
     this.mass = opt.mass ?? 70;
     // his sense of up = the physics' gravity (calmed in the page by makeCalmGravity). Calming it a second time here made
@@ -341,7 +341,17 @@ export class Brain {
     const f0 = buf.subarray(0, F), r0 = new Float64Array(4);
     for (let i = 0; i < 4; i++) r0[i] = f0[3 + i];
     const mid = [(f0[13 * 17] + f0[13 * 21]) / 2, (f0[13 * 17 + 1] + f0[13 * 21 + 1]) / 2], P = this.pos;
-    this.react = { buf, n, fps, mid, h0: heading(r0, 0), t: t0, xy: [(P[3 * 17] + P[3 * 21]) / 2, (P[3 * 17 + 1] + P[3 * 21 + 1]) / 2], yaw: heading(this.rot, 0) };
+    // v15.42 (A6, user 16:56-16:58: "he does this stiff pose ... he should go straight to idle"): the Inria recordings end
+    // with the person standing still in the lab pose (wrists 22-27 cm out vs 11-14 in the idles) for 0.8 s on average,
+    // up to 2.6 s; he copied that, then faded back. The recording now ends where the person stops moving (hips slower
+    // than 0.08 m/s for the rest of the clip, + 3 frames), never before 0.5 s after the start; cutTail = false: old way.
+    let end = n - 1;
+    if (this.cutTail) {
+      let last = 0;
+      for (let i = 0; i < n; i++) { const o = i * F + 7; if (Math.hypot(buf[o], buf[o + 1]) > 0.08) last = i; }
+      end = Math.min(n - 1, Math.max(last + 3, Math.ceil((t0 + 0.5) * fps)));
+    }
+    this.react = { buf, n, end, fps, mid, h0: heading(r0, 0), t: t0, xy: [(P[3 * 17] + P[3 * 21]) / 2, (P[3 * 17 + 1] + P[3 * 21 + 1]) / 2], yaw: heading(this.rot, 0) };
     this.blendStart();
   }
 
@@ -422,7 +432,7 @@ export class Brain {
     if (this.react && !this.meta.realign) {
       const X = this.react; X.t += dt;
       const x = X.t * X.fps;
-      if (x >= X.n - 1) { this.react = null; this.refXY = [fx, fy]; this.settled = true; this.refYaw = heading(this.rot, 0); if (this.matchExit) this.matchIdle(); this.blendStart(this.exitBlendT); if (this.blend) this.blend.exit = true; }
+      if (x >= X.end) { this.react = null; this.refXY = [fx, fy]; this.settled = true; this.refYaw = heading(this.rot, 0); if (this.matchExit) this.matchIdle(); this.blendStart(this.exitBlendT); if (this.blend) this.blend.exit = true; }
       else { this.clipRef(X, x, 1, X.xy, X.yaw); this.applyBlend(dt); this.applyLook(R); return; }
     }
     if (this.idle && !this.meta.realign) {
