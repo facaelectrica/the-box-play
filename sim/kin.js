@@ -234,6 +234,20 @@ export class Kin {
     const yaw = opt.yaw ?? wrap(yawNow - yawClip), c = Math.cos(yaw), s = Math.sin(yaw);
     const ax = (opt.x ?? from[0]) - (c * q0[0] - s * q0[1]), ay = (opt.y ?? from[1]) - (s * q0[0] + c * q0[1]);
     this.anchor = { x: ax, y: ay, yaw };
+    // (V32; user 10:28 "keep working on the blend to fix the sliding. That's very important") get-ups: when his feet
+    // are on the floor now and the recording's are too at its first frame, the recording is placed by the feet (the
+    // middle of its feet onto the middle of his) instead of by the hips: the blend from his fallen pose then moves his
+    // hips and trunk, and his feet stay where they are (placed by the hips, the 30-40 cm of pose difference slid them)
+    if (opt.feetAnchor && !globalThis.NOFEETANCHOR) {
+      const d = this.W.d, lf = this.W.bodyId.LeftFoot, rf = this.W.bodyId.RightFoot;
+      const myL = this.toLocal([d.xpos[3 * lf], d.xpos[3 * lf + 1], d.xpos[3 * lf + 2]]), myR = this.toLocal([d.xpos[3 * rf], d.xpos[3 * rf + 1], d.xpos[3 * rf + 2]]);
+      const i0 = Math.round(x0), cL = clip.body(i0, 21), cR = clip.body(i0, 17);
+      const downMe = [myL[2] < 0.12, myR[2] < 0.12], downC = [cL[2] < 0.2, cR[2] < 0.2];
+      let mx = 0, my = 0, kx = 0, ky = 0, k = 0;
+      [[myL, cL], [myR, cR]].forEach(([me, cc], j) => { if (downMe[j] && downC[j]) { mx += me[0]; my += me[1]; kx += cc[0]; ky += cc[1]; k++; } });
+      if (k) { mx /= k; my /= k; kx /= k; ky /= k; this.anchor.x = mx - (c * kx - s * ky); this.anchor.y = my - (s * kx + c * ky); this.feetAnchored = k; if (globalThis.FADBG) console.error("FA", k, myL.map(v=>v.toFixed(2)).join(","), cL.map(v=>v.toFixed(2)).join(",")); }
+      else { this.feetAnchored = 0; if (globalThis.FADBG) console.error("FA0", myL.map(v=>v.toFixed(2)).join(","), myR.map(v=>v.toFixed(2)).join(","), cL.map(v=>v.toFixed(2)).join(","), cR.map(v=>v.toFixed(2)).join(",")); }
+    }
     // ease: offset = where he is - where the clip starts (and the same for speeds)
     this.basePose(this.base);
     poseDiff(this.base, from, this.off0);
@@ -968,7 +982,7 @@ export class Kin {
       }
       if (best) {
         this.state = 'getup'; this.havePre = false;
-        this.play(best.g.clip, best.i, 'once', { hl: 0.45, still: true, fromCur: true, legsNow: true });
+        this.play(best.g.clip, best.i, 'once', { hl: 0.45, still: true, fromCur: true, legsNow: true, feetAnchor: true });
         return this.event(`get up from sitting (${best.g.file} at ${(best.i / FPS).toFixed(1)} s, pose gap ${(best.d * 100).toFixed(0)} cm)`);
       }
     }
@@ -1000,7 +1014,7 @@ export class Kin {
     const q0 = c.clip.q(best.i), lat0 = qv([q0[3], q0[4], q0[5], q0[6]], [1, 0, 0]), latN = qv([this.cur[3], this.cur[4], this.cur[5], this.cur[6]], [1, 0, 0]);
     const useLat = Math.abs(lat0[2]) < 0.7 && Math.abs(latN[2]) < 0.7;
     const yaw = useLat ? wrap(Math.atan2(latN[1], latN[0]) - Math.atan2(lat0[1], lat0[0])) : undefined;
-    this.play(c.clip, best.i, 'once', { spine: !useLat, yaw, hl: 0.35, still: true, fromCur: true, legsNow: true });
+    this.play(c.clip, best.i, 'once', { spine: !useLat, yaw, hl: 0.35, still: true, fromCur: true, legsNow: true, feetAnchor: true });
     this.event(`get up from ${kind} (${c.file} at ${(best.i / FPS).toFixed(1)} s, pose gap ${Math.sqrt(best.d / me.length * 3).toFixed(2)})`);
   }
   // pose fingerprint for get-ups (independent of which way he faces): parts relative to the hips in the hips' own frame,

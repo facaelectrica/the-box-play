@@ -603,9 +603,30 @@ export class BrainDrive {
       const recDown = isDown(G, n), b = W.bodyId[n];
       // (V30) the feet's spots come from the recording: where the recorded person's foot plants, frozen there; his leg
       // reaches it (locked where his own foot happened to be - often still 5-8 cm up, coming down from the blend - it crept)
+      // (V32) feet on the floor when the get-up starts stay where they lie, from the first frame (the recording is
+      // placed by them, kin.play feetAnchor)
+      if (!L[n] && !this.gLocksInit && /Foot/.test(n) && isDown(d, n) && recDown) L[n] = { p: P3(d, b), q: Q(d, b), t: 0, own: true };
       if (!L[n] && recDown && (/Foot/.test(n) || isDown(d, n))) L[n] = /Foot/.test(n) ? { p: P3(G, b), q: Q(G, b), t: 0 } : { p: P3(d, b), q: Q(d, b), t: 0 };
       if (L[n]) { L[n].t += 1 / 30; want[n] = L[n]; }
     }
+    // (V32) his feet stay where they were planted, so as he comes up his stance can differ from the recorded person's
+    // (who then stands and walks on from theirs): nearly up (hips over 75 cm), a foot more than 6 cm from where the
+    // recording's foot stands takes a small step there - lifted, not slid; one foot at a time, the other planted
+    const hipsUp = ht([d.qpos[0], d.qpos[1], d.qpos[2]]);
+    if (!globalThis.NOGLSTEP && hipsUp > 0.75 && !['LeftFoot', 'RightFoot'].some(n => L[n] && L[n].step)) {
+      let best = null, bd = 0.06;
+      for (const n of ['LeftFoot', 'RightFoot']) { const lk = L[n], o2 = n === 'LeftFoot' ? 'RightFoot' : 'LeftFoot';
+        if (!lk || !L[o2] || !isDown(G, n)) continue; const gp = P3(G, W.bodyId[n]), e = gp.map((v, i) => v - lk.p[i]), eu = dot(e, up);
+        const dh = Math.hypot(e[0] - eu * up[0], e[1] - eu * up[1], e[2] - eu * up[2]); if (dh > bd) { bd = dh; best = n; } }
+      if (best) L[best].step = { from: L[best].p.slice(), s: 0 };
+    }
+    for (const n of ['LeftFoot', 'RightFoot']) { const lk = L[n]; if (!lk || !lk.step) continue;
+      const st = lk.step, b = W.bodyId[n], to = P3(G, b); st.s = Math.min(1, st.s + (1 / 30) / 0.35);
+      const e = st.s * st.s * (3 - 2 * st.s), lift = 0.07 * Math.sin(Math.PI * st.s);
+      for (let k = 0; k < 3; k++) lk.p[k] = st.from[k] + (to[k] - st.from[k]) * e + lift * up[k];
+      lk.q = Q(G, b); if (st.s >= 1) { lk.step = null; lk.p = to; }
+    }
+    this.gLocksInit = true;
     if (!Object.keys(want).length) return;
     const D = this.ikG || (this.ikG = new mj.MjData(m));
     if (!this.jpG) { this.jpG = new mj.DoubleBuffer(3 * nv); this.jrG = new mj.DoubleBuffer(3 * nv); }
@@ -616,15 +637,16 @@ export class BrainDrive {
     // the planted feet are the fixed points (a person's body moves over their feet, not the feet under it): first his
     // whole body moves along the floor so the planted feet can be reached where they are (the recording's placement
     // moves with it), then his legs and arms reach them
-    const feetIn = Object.keys(want).filter(n => /Foot/.test(n));
-    if (feetIn.length && !globalThis.GL_NOSHIFT) for (let pass = 0; pass < 3; pass++) {
-      this.limbIK(D, want, chain, rw, 10);
+    const feetIn = Object.keys(want).filter(n => /Foot/.test(n) && !want[n].step);
+    // (V32: the shift is worked out from the recording's own legs, before they reach - now that the reach works it
+    // would otherwise take the whole difference, 30-40 cm at the start of a get-up, in bent knees and stretched legs)
+    if (feetIn.length && !globalThis.GL_NOSHIFT) for (let pass = 0; pass < 2; pass++) {
       mj.mj_kinematics(m, D);
       const r = [0, 0, 0]; for (const n of feetIn) { const b = W.bodyId[n]; for (let k = 0; k < 3; k++) r[k] += (want[n].p[k] - D.xpos[3 * b + k]) / feetIn.length; }
       // along the floor fully; up/down only downward (his hips higher than his legs reach: he stays a little lower)
       const rn = dot(r, up); for (let k = 0; k < 3; k++) r[k] -= Math.max(0, rn) * up[k];
       if (Math.hypot(...r) < 0.003) break;
-      for (let k = 0; k < 3; k++) { r[k] *= 0.8; D.qpos[k] += r[k]; d.qpos[k] += r[k]; }
+      for (let k = 0; k < 3; k++) { D.qpos[k] += r[k]; d.qpos[k] += r[k]; }
       this.stats.lockShift = (this.stats.lockShift || 0) + Math.hypot(...r);
     }
     this.limbIK(D, want, chain, rw, globalThis.GL_IT ?? 14);
@@ -632,7 +654,8 @@ export class BrainDrive {
     for (const n in want) {
       const b = W.bodyId[n], lk = want[n], C = chain(n), err = Math.hypot(lk.p[0] - D.xpos[3 * b], lk.p[1] - D.xpos[3 * b + 1], lk.p[2] - D.xpos[3 * b + 2]);
       // out of reach: the spot creeps toward where the limb can be (a slow slide, not a jump); far out, it lets go
-      if (err > 0.05) { const bp = [D.xpos[3 * b], D.xpos[3 * b + 1], D.xpos[3 * b + 2]]; for (let k = 0; k < 3; k++) lk.p[k] += (bp[k] - lk.p[k]) * 0.25; }
+      if (globalThis.GLDBG && /Foot/.test(n)) console.error('GL', W.d.time.toFixed(2), n, (err*100).toFixed(1), 'up', (dot([lk.p[0] - D.xpos[3 * b], lk.p[1] - D.xpos[3 * b + 1], lk.p[2] - D.xpos[3 * b + 2]], up)*100).toFixed(1), lk.own ? 'own' : 'rec', 'hipsH', ht([d.qpos[0], d.qpos[1], d.qpos[2]]).toFixed(2), 'ghostFoot', P3(G, b).map(v => v.toFixed(2)).join(','), 'lock', lk.p.map(v => v.toFixed(2)).join(','));
+      if (err > 0.05 && !lk.step) { const bp = [D.xpos[3 * b], D.xpos[3 * b + 1], D.xpos[3 * b + 2]]; for (let k = 0; k < 3; k++) lk.p[k] += (bp[k] - lk.p[k]) * 0.25; }
       for (let c = 0; c < C.N; c++) { const qa = C.dof + 1 + c; d.qpos[qa] = D.qpos[qa]; }
     }
     this.stats.locks = (this.stats.locks || 0) + Object.keys(want).length;
@@ -643,7 +666,10 @@ export class BrainDrive {
     const qmu = (a, b) => [a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3], a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2], a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1], a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]];
     const rvec = q => { if (q[0] < 0) q = q.map(v => -v); const sn = Math.hypot(q[1], q[2], q[3]); if (sn < 1e-9) return [0, 0, 0]; const a = 2 * Math.atan2(sn, q[0]); return [q[1] / sn * a, q[2] / sn * a, q[3] / sn * a]; };
     for (let it = 0; it < iters; it++) {
-      mj.mj_kinematics(m, D);
+      // (V32) mj_comPos too: mj_jacBody reads the dof axes it makes (with mj_kinematics alone they were zero on this
+      // scratch body: the leg reach never moved his legs, only the whole-body shift held his feet - they crept 4-5 cm)
+      mj.mj_kinematics(m, D); mj.mj_comPos(m, D);
+      if (globalThis.GLDBG === 2 && (it === 0 || it === iters - 1)) console.error('IK', it, Object.keys(want).map(n => { const b = W.bodyId[n], p = want[n].p; return n + ' ' + (Math.hypot(p[0] - D.xpos[3 * b], p[1] - D.xpos[3 * b + 1], p[2] - D.xpos[3 * b + 2]) * 100).toFixed(1); }).join(' | '));
       for (const n in want) {
         const lk = want[n], b = W.bodyId[n], C = chain(n);
         const r = rvec(qmu(lk.q, [D.xquat[4 * b], -D.xquat[4 * b + 1], -D.xquat[4 * b + 2], -D.xquat[4 * b + 3]]));
@@ -747,7 +773,7 @@ export class BrainDrive {
     // physical body through the recordings with muscles failed 3 times in 4 (stuck in a squat, a wall-sit, a frog), and
     // made poses no person makes (his trunk held up on one hand).
     if (K.state === 'getup' && this.getupBy === 'kin') {
-      if (this.mode !== 'getup') { this.mode = 'getup'; this.kinFrom = Float64Array.from(d.qpos); this.kinT = 0; this.gLocks = {}; d.xfrc_applied.fill(0); d.qfrc_applied.fill(0); if (this.springs) this.springs.restoreStrength(); }
+      if (this.mode !== 'getup') { this.mode = 'getup'; this.kinFrom = Float64Array.from(d.qpos); this.kinT = 0; this.gLocks = {}; this.gLocksInit = false; d.xfrc_applied.fill(0); d.qfrc_applied.fill(0); if (this.springs) this.springs.restoreStrength(); }
       this.kinT += dt;
       // (Version 28) your finger pressing on him while he gets up: the recording can't feel it; a firm push (over a
       // third of his weight, for a quarter second) puts him down again, the physics takes him
