@@ -545,8 +545,11 @@ export class Kin {
         const o = i * 376, q = [B[o + 6], B[o + 3], B[o + 4], B[o + 5]], cy = yawOf(q), cvx = B[o + 7], cvy = B[o + 8];
         const cf = cvx * Math.cos(cy) + cvy * Math.sin(cy), cl = -cvx * Math.sin(cy) + cvy * Math.cos(cy);
         const dv = Math.hypot(cf - vf, cl - vl), da = Math.abs(wrap((c.ang - ang) * Math.PI / 180));
-        const score = featDist(f, FF[i]) + 0.12 * dv + 0.15 * da;
-        if (!best || score < best.s) best = { c, x: i, s: score };
+        // (PHYS, quickBack: the recording's foot lifted 0.33 s after the step began, his capture point 43 cm out by then)
+        // a frame where a planted foot lifts soon is preferred: liftW per frame (1/30 s) of wait, up to 0.5 s
+        let lift = c.clip.contact(i, 0) <= 0.5 || c.clip.contact(i, 1) <= 0.5 ? 0 : 15; if (lift && (this.liftW ?? globalThis.LIFTW ?? 0.01)) for (let k = i; k < Math.min(c.clip.n - 1, i + 15); k++) if ((c.clip.contact(k, 0) > 0.5 && c.clip.contact(k + 1, 0) <= 0.5) || (c.clip.contact(k, 1) > 0.5 && c.clip.contact(k + 1, 1) <= 0.5)) { lift = k - i; break; }
+        const score = featDist(f, FF[i]) + 0.12 * dv + 0.15 * da + (this.liftW ?? globalThis.LIFTW ?? 0.01) * lift;
+        if (!best || score < best.s) best = { c, x: i, s: score, lift };
       }
     }
     return best;

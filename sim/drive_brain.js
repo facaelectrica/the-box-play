@@ -10,9 +10,9 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=54';
-import { Balance } from './balance.js?v=54';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=54';
+import { Pins } from './pins.js?v=55';
+import { Balance } from './balance.js?v=55';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=55';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function hullPts(P) {
   const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
@@ -1033,6 +1033,27 @@ export class BrainDrive {
       this.wsHoldT = (this.wsHoldT || 0) + dt; a.speed = Math.min(a.speed, globalThis.WSSPEED ?? 0.1);
     } else if (share >= (this.wsShare ?? globalThis.WSSHARE ?? 0.6)) this.wsHoldT = 0;
   }
+  // (user 15:18: "he does not use his hands as support or even step ... he just falls, the head hits"; s2 snapshot: the
+  // director declared the fall ~1 s after his head hit the wall) physics controller: the fall - and with it the catch
+  // (turn toward the surface, hands/forearms to it, catchFirst/turnTo/armsTo below) - starts from his REAL body: his
+  // centre of mass outside his planted soles by efMargin and moving further out faster than efSpeed for efT s. A hand
+  // pinned on a wall is support his soles' outline doesn't count (leaning there is not falling): not then.
+  earlyFall(dt) {
+    const K = this.kin, B = this.brain, d = this.W.d, r = B.realBal;
+    if (!(B.meta && B.meta.physics) || (this.earlyFallOn ?? !globalThis.NOEF) === false || !r || d.time - r.t > 0.1 || !r.support || r.support.length < 3 || (K.state !== 'stand' && K.state !== 'react')) { this.efT = 0; return false; }
+    if (this.pins && Object.entries(this.pins.on).some(([n, P]) => /Hand/.test(n) && !P.ground)) { this.efT = 0; return false; }
+    const S = r.support, c0 = [0, 0]; for (const p of S) { c0[0] += p[0] / S.length; c0[1] += p[1] / S.length; }
+    const a = [r.com[0] - c0[0], r.com[1] - c0[1]], al = Math.hypot(a[0], a[1]) || 1, vOut = (r.v[0] * a[0] + r.v[1] * a[1]) / al;
+    const out = -r.comMargin;
+    // during a recovery step (react) the same rule (stricter there, 12 cm / 0.5 m/s, was worse: hand first 18 -> 14 of
+    // ~40 head contacts, head over 1 m/s 14 -> 21, falls only 30 -> 28)
+    const st = K.state === 'react', go = out > (st ? (this.efMarginR ?? globalThis.EFMR ?? 0.05) : (this.efMargin ?? globalThis.EFM ?? 0.05)) && vOut > (st ? (this.efSpeedR ?? globalThis.EFVR ?? 0.3) : (this.efSpeed ?? globalThis.EFV ?? 0.3));
+    this.efT = go ? (this.efT || 0) + dt : 0;
+    if (this.efT < (this.efTime ?? globalThis.EFT ?? 0.1)) return false;
+    this.efT = 0; this.stats.earlyFalls = (this.stats.earlyFalls || 0) + 1;
+    K.startFall('his weight is going over (' + Math.round(out * 100) + ' cm past his feet, ' + vOut.toFixed(1) + ' m/s)');
+    return true;
+  }
   async update(dt, fingerPush) {
     const W = this.W, d = W.d, m = W.m, K = this.kin, B = this.brain, PH = 1 / 480;
     if (this.pins && !this.noPins) this.pins.update(dt);
@@ -1320,6 +1341,11 @@ export class BrainDrive {
     // a recovery recording waits for him: when his body lags the recording, it plays slower (down to 60%)
     if (K.state === 'react' && K.anim) K.anim.speed = Math.max(0.6, Math.min(1, 1 - ((B.err || 0) - 0.15) * 1.6));
     if (K.state === 'react' && K.anim) this.weightShift(dt); else this.wsHoldT = 0;
+    // (PHYS 87c5061) the physics controller holds a foot the recording lifts until his centre of mass is over the other
+    // planted sole (brain.stepHold, at most 0.5 s): the recording's time waits for it (it ran on and the ghost left him:
+    // 'caught up with his body' 50 -> 59)
+    if (B.stepHold && K.anim && (K.state === 'react' || K.state === 'stand') && !globalThis.NOSTEPHOLD) { if (!this.shSpeed) this.shSpeed = K.anim.speed; K.anim.speed = 0; this.stats.stepHoldT = (this.stats.stepHoldT || 0) + dt; }
+    else if (this.shSpeed) { if (K.anim && K.state === 'stand') K.anim.speed = this.shSpeed; this.shSpeed = 0; }
     // round 5: far from the recording's pose is not the same as falling. He falls when his body is really going down
     // (hips under 60 cm, or head 40 cm below the recording's) for 0.4 s; if he is still up but the recording has
     // drifted away from him (err > 35 cm for 0.3 s: a step on a slope, the return to idle after it), the recording
@@ -1329,6 +1355,7 @@ export class BrainDrive {
       const down = hip < 0.6 || gh - hh > 0.4 || (B.err || 0) > 0.9;
       this.lostT = down ? this.lostT + dt : Math.max(0, this.lostT - dt);
       if (this.lostT > 0.4) { this.lostT = 0; K.startFall('his body went down'); }
+      else if (this.earlyFall(dt)) { /* the fall (and its catch) started from his real body */ }
       else if (!down) {
         // during a recovery step the recording slows down for him instead (above); only a big gap restarts it there
         const lim = K.state === 'react' ? 0.55 : 0.35, tl = K.state === 'react' ? 0.4 : 0.3;
