@@ -91,19 +91,19 @@ tr:last-child td{border-bottom:0}
 </style>
 </head>
 <body>
-<header class="bar"><div class="bar-in"><h1>The Box — Rulebook</h1><span class="stamp">V43 · Nov 15, 13:35</span></div></header>
+<header class="bar"><div class="bar-in"><h1>The Box — Rulebook</h1><span class="stamp">V43 · Nov 15, 13:40</span></div></header>
 <div class="page">
 
 <section>
 <h2>How he should behave</h2>
-<p class="lead">Each request you've made is filed under one of these ten rules. They're ranked: <b>when two rules clash, the higher one wins.</b> Every rule has a piece of code that owns it and a test that checks it.</p>
+<p class="lead">What we're aiming for in how he behaves, and what's being done about it. Every request about him is filed under one of these nine rules. They're ranked: <b>when two rules clash, the higher one wins.</b> Each rule says whether it works yet.</p>
 </section>
 
 <div class="facts">
-  <div><span>Rules</span><b>10</b></div>
-  <div><span>Done</span><b style="color:var(--good)">6</b></div>
-  <div><span>In progress</span><b style="color:var(--warn)">4</b></div>
-  <div><span>Latest build</span><b>V43</b></div>
+  <div><span>Rules</span><b>9</b></div>
+  <div><span>Works</span><b style="color:var(--good)">5</b></div>
+  <div><span>Partly</span><b style="color:var(--warn)">2</b></div>
+  <div><span>Not yet</span><b style="color:var(--bad)">2</b></div>
 </div>
 
 <h2>Being worked on now</h2>
@@ -120,28 +120,25 @@ tr:last-child td{border-bottom:0}
   <button data-f="safe">Never broken</button>
   <button data-f="phys">Honest physics</button>
   <button data-f="human">Like a person</button>
-  <button data-f="stage">Staging &amp; page</button>
-  <button data-f="todo">Not done yet</button>
+  <button data-f="stage">Facing you</button>
+  <button data-f="todo">Not working yet</button>
 </div>
 
 <div class="rules" id="rules">
 
 <details class="rule" data-cat="safe" data-st="done">
-<summary><span class="n">1</span><span class="t"><span class="cat safe"><i></i>Never broken</span><b>Never stuck, never through the box</b><span class="one">The page never freezes. No part of him goes into a wall, the floor or the ceiling.</span></span><span class="pill done">Done</span></summary>
+<summary><span class="n">1</span><span class="t"><span class="cat safe"><i></i>Never broken</span><b>Never through the box</b><span class="one">No part of him goes into a wall, the floor or the ceiling, in any pose, fall or get-up.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
   <div><h4>What you asked</h4><ul class="asks">
-    <li><time>Nov 14 23:19</time><span>Log errors in the snapshot when something goes wrong</span></li>
-    <li><time>Nov 15 11:04</time><span><q>The whole thing has to be smooth. There cannot be a freeze</q></span></li>
-    <li><time>Nov 15</time><span>Figure froze while the menu still worked</span></li>
+    <li><time>Nov 15</time><span>Limbs going into the walls during get-ups and when the box flips</span></li>
   </ul></div>
-  <div><h4>How it's done</h4><p>The freeze was a memory leak: every time the code checked his contacts with the box, it made a copy that was never freed. Fixed in V37. Even if something goes wrong now, the page keeps running, with watchdogs on falls and get-ups. A last step every frame pushes any limb out of the walls.</p></div>
-  <div><h4>Still to watch</h4><p>If it freezes again, send a snapshot: it now includes errors and memory use.</p></div>
-  <div class="vers"><span>V29</span><span>V31</span><span>V36</span><span>V37</span></div>
+  <div><h4>How it works now</h4><p>A last step every frame moves him out of any wall, and his foot spots move with him. An arm going into a wall bends out at its own joints, so it no longer shoves his whole body.</p></div>
+  <div class="vers"><span>V29</span><span>V31</span><span>V37</span><span>V42</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="safe" data-st="done">
-<summary><span class="n">2</span><span class="t"><span class="cat safe"><i></i>Never broken</span><b>A body that could exist</b><span class="one">Every joint stays within a person's range. No broken-looking back, neck, arms, ankles or knees.</span></span><span class="pill done">Done</span></summary>
+<summary><span class="n">2</span><span class="t"><span class="cat safe"><i></i>Never broken</span><b>A body that could exist</b><span class="one">Every joint stays within a person's range. No broken-looking back, neck, arms, ankles or knees.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
   <div><h4>What you asked</h4><ul class="asks">
     <li><time>Nov 14 21:20</time><span>Ankles never fold sideways</span></li>
@@ -149,14 +146,14 @@ tr:last-child td{border-bottom:0}
     <li><time>Nov 14 23:03–23:20</time><span>No impossible bends in the back, neck or arms</span></li>
     <li><time>Nov 15 09:15</time><span>Knees popping out; the mannequin's pieces must stay joined when he bends</span></li>
   </ul></div>
-  <div><h4>How it's done</h4><p>Joint limits are taken from real people's recordings. Fall poses stay in the middle of each joint's range. The trunk and neck of the figure bend smoothly instead of as separate pieces.</p></div>
+  <div><h4>How it works now</h4><p>Joint limits are taken from real people's recordings. Fall poses stay in the middle of each joint's range. The trunk and neck of the figure bend smoothly instead of as separate pieces.</p></div>
   <div><h4>Still to check</h4><p>Since V34 his knees bend fully to reach the floor in get-ups. Send snapshots of get-ups so we can check they look natural.</p></div>
   <div class="vers"><span>V17</span><span>V29</span><span>V34</span></div>
 </div>
 </details>
 
-<details class="rule" data-cat="human" data-st="prog">
-<summary><span class="n">3</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Catch the fall, like a person</b><span class="one">He turns toward the fall and puts his hands, arms or a knee out. He protects his head only when he can't.</span></span><span class="pill prog">In progress</span></summary>
+<details class="rule" data-cat="human" data-st="open">
+<summary><span class="n">3</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Catch the fall, like a person</b><span class="one">He turns toward the fall and puts his hands, arms or a knee out. He protects his head only when he can't.</span></span><span class="pill open">Not yet</span></summary>
 <div class="body">
   <div><h4>What you asked</h4><ul class="asks">
     <li><time>Nov 14 19:12</time><span><q>the head is very important</q></span></li>
@@ -164,28 +161,29 @@ tr:last-child td{border-bottom:0}
     <li><time>Nov 15 09:10</time><span>Face never pressed on a wall</span></li>
     <li><time>Nov 15 12:21</time><span>Catch himself with hands out when he feels he's falling — <q>super important</q></span></li>
   </ul></div>
-  <div><h4>How it's done</h4><p>Today he mostly guards his head. The rework (hands out first, head guard only when there's no time or room, or he's upside down) is being built.</p></div>
+  <div><h4>How it works now</h4><p>Not working yet: today he mostly guards his head. Being built: arms wrapped over his head as soon as the box flips, and hands out to catch a wall when there is one to catch.</p></div>
   <div class="vers"><span>V10</span><span>V29</span><span>next</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="phys" data-st="prog">
-<summary><span class="n">4</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>Physically honest</b><span class="one">No invisible lifting. A person's strength at every joint. He pushes with his palms.</span></span><span class="pill prog">In progress</span></summary>
+<summary><span class="n">4</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>Physically honest</b><span class="one">No invisible lifting. A person's strength at every joint. He pushes with his palms.</span></span><span class="pill prog">Partly</span></summary>
 <div class="body">
   <div><h4>What you asked</h4><ul class="asks">
     <li><time>Nov 14 20:59</time><span>No rising <q>like gravity didn't exist</q></span></li>
     <li><time>Nov 14 23:06</time><span>No physics cheating, like lifting himself with one hand</span></li>
     <li><time>Nov 15 12:23</time><span><q>a human always uses the palm against the floor … never the back</q></span></li>
   </ul></div>
-  <div><h4>How it's done</h4><p>During get-ups his strength is capped at a person's. Feet and hands grip no harder than a real sole or palm on wood.</p></div>
+  <div><h4>How it works now</h4><p>During get-ups his strength is capped at a person's. Feet and hands grip no harder than a real sole or palm on wood.</p></div>
   <div><h4>Agreed exception</h4><p>Get-ups play a real person's recording, so the poses are human but his muscles don't drive them. A firm push or a steep floor still knocks him down.</p></div>
-  <div><h4>Still open</h4><ul><li>While standing, his spine and knees sometimes use more than a person's strength</li><li>Hands on the floor turned palm down during get-ups</li></ul></div>
-  <div class="vers"><span>V13</span><span>V25</span><span>next</span></div>
+  <div><h4>Not working yet</h4><ul><li>While standing, his spine and knees sometimes use more than a person's strength</li><li>Hands on walls don't land flat yet (being worked on)</li></ul></div>
+  <div><h4>Fixed lately</h4><p>V42: in get-ups a hand on the floor turns palm down (it was mostly the back of the hand) and lets go when he lifts it.</p></div>
+  <div class="vers"><span>V13</span><span>V25</span><span>V42</span></div>
 </div>
 </details>
 
-<details class="rule" data-cat="phys" data-st="prog">
-<summary><span class="n">5</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>What touches stays put</b><span class="one">A foot or hand on the floor or a wall doesn't slide. Whole sole down: never tiptoe, never floating.</span></span><span class="pill prog">In progress</span></summary>
+<details class="rule" data-cat="phys" data-st="open">
+<summary><span class="n">5</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>What touches stays put</b><span class="one">A foot or hand on the floor or a wall doesn't slide. Whole sole down: never tiptoe, never floating.</span></span><span class="pill open">Not yet</span></summary>
 <div class="body">
   <div><h4>What you asked</h4><ul class="asks">
     <li><time>Nov 14 18:50</time><span>Feet planted: the core ability, the whole sole down</span></li>
@@ -204,26 +202,27 @@ tr:last-child td{border-bottom:0}
     </div>
     <p class="note">*V37 uses a stricter test (sliding measured against the box's own walls and floor, which is correct in turned rooms). Under the same test V35 was 10.0.</p>
   </div>
-  <div><h4>Still open</h4><ul><li>Some sliding in turned rooms, in the narrow box, and while the box is still turning</li><li>Heels float about 1 cm (cosmetic)</li></ul></div>
-  <div class="vers"><span>V11</span><span>V31</span><span>V34</span><span>V35</span><span>V37</span></div>
+  <div><h4>Not working yet</h4><ul><li>Feet still slide in get-ups, worst in turned rooms, the narrow box and while the box is turning</li><li>Feet float in the "faint" get-ups (being worked on); heels float about 1 cm</li></ul></div>
+  <div><h4>Works</h4><p>Standing: feet stay planted. V42: an arm in a wall no longer shoves his whole body and feet.</p></div>
+  <div class="vers"><span>V11</span><span>V31</span><span>V34</span><span>V35</span><span>V37</span><span>V42</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="phys" data-st="prog">
-<summary><span class="n">6</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>Balanced like a person</b><span class="one">His weight stays over what supports him. A hand on a wall counts as support, like a foot. If his weight goes outside that, he steps, grabs or falls.</span></span><span class="pill prog">In progress</span></summary>
+<summary><span class="n">6</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>Balanced like a person</b><span class="one">His weight stays over what supports him. A hand on a wall counts as support, like a foot. If his weight goes outside that, he steps, grabs or falls.</span></span><span class="pill prog">Partly</span></summary>
 <div class="body">
   <div><h4>What you asked</h4><ul class="asks">
     <li><time>Nov 14 23:09</time><span>No positions that would make him fall in real life (cross-arm pose)</span></li>
     <li><time>Nov 15 12:18</time><span><q>if I shake the phone left and right and the hands are on the wall, he should be able to stay stable</q></span></li>
   </ul></div>
-  <div><h4>How we check it</h4><p>The balance overlay (debug menu → balance) shows where his weight is compared with his feet. A standing test suite covers tilts, tremor, pushes and standing off-centre.</p></div>
-  <div><h4>Still open</h4><ul><li>In tilts and pushes his weight leaves his feet: 3 falls in 36 standing tests</li><li>A step when his weight leaves his support (coming)</li><li>Gentle pushes during a get-up do nothing (a person would wobble)</li></ul></div>
-  <div class="vers"><span>next</span></div>
+  <div><h4>Works</h4><p>V42: a bracing hand goes on the wall he tips toward (both when level); he no longer props himself on the far wall.</p></div>
+  <div><h4>Not working yet</h4><ul><li>In tilts and pushes his weight leaves his feet: 3 falls in 36 standing tests</li><li>No step yet when his weight leaves his support</li><li>Gentle pushes during a get-up do nothing (a person would wobble)</li></ul></div>
+  <div class="vers"><span>V42</span><span>next</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="human" data-st="done">
-<summary><span class="n">7</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Real human motion first</b><span class="one">Recordings of real people drive his movement. Changes are smooth, and get-ups use arms and legs as levers.</span></span><span class="pill done">Done</span></summary>
+<summary><span class="n">7</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Real human motion first</b><span class="one">Recordings of real people drive his movement. Changes are smooth, and get-ups use arms and legs as levers.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
   <div><h4>What you asked</h4><ul class="asks">
     <li><time>Nov 14 16:21</time><span>No manual animation; use real motion</span></li>
@@ -231,13 +230,13 @@ tr:last-child td{border-bottom:0}
     <li><time>Nov 14 21:16</time><span>Get-ups use legs and arms as levers, hands planted</span></li>
     <li><time>Nov 15 09:09</time><span>No snap when a get-up starts</span></li>
   </ul></div>
-  <div><h4>How it's done</h4><p>He has 2,485 recorded moves on his body. Get-ups, sit-to-stands and push recoveries come from real people. Each get-up blends in from how he landed over 0.8 s.</p></div>
+  <div><h4>How it works now</h4><p>He has 2,485 recorded moves on his body. Get-ups, sit-to-stands and push recoveries come from real people. Each get-up blends in from how he landed over 0.8 s.</p></div>
   <div class="vers"><span>V16</span><span>V25</span><span>V29</span><span>V35</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="human" data-st="done">
-<summary><span class="n">8</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Comfortable and economical</b><span class="one">No effort held for no reason: arms on something or hanging, elbows down. He rests when he can.</span></span><span class="pill done">Done</span></summary>
+<summary><span class="n">8</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Comfortable and economical</b><span class="one">No effort held for no reason: arms on something or hanging, elbows down. He rests when he can.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
   <div><h4>What you asked</h4><ul class="asks">
     <li><time>Nov 14 21:11</time><span>Elbows down and back, not forward</span></li>
@@ -250,26 +249,13 @@ tr:last-child td{border-bottom:0}
 </details>
 
 <details class="rule" data-cat="stage" data-st="done">
-<summary><span class="n">9</span><span class="t"><span class="cat stage"><i></i>Staging &amp; page</span><b>Social and staging</b><span class="one">He faces the glass and goes back to the middle only when the box is level.</span></span><span class="pill done">Done</span></summary>
+<summary><span class="n">9</span><span class="t"><span class="cat stage"><i></i>Facing you</span><b>Faces you</b><span class="one">He faces the glass and goes back to the middle only when the box is level.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
   <div><h4>What you asked</h4><ul class="asks">
     <li><time>Nov 15 09:51</time><span>Back to the middle only when the box is level, facing us</span></li>
   </ul></div>
-  <div><h4>How it's done</h4><p>When things are calm and the box is within about 10° of level, he steps to the middle and slowly turns back to face the glass. When it's tipped toward a near wall, he leans on the wall instead.</p></div>
+  <div><h4>How it works now</h4><p>When things are calm and the box is within about 10° of level, he steps to the middle and slowly turns back to face the glass. When it's tipped toward a near wall, he leans on the wall instead.</p></div>
   <div class="vers"><span>V29</span></div>
-</div>
-</details>
-
-<details class="rule" data-cat="stage" data-st="done">
-<summary><span class="n">10</span><span class="t"><span class="cat stage"><i></i>Staging &amp; page</span><b>Page and buttons</b><span class="one">A clean page: V label, pause, debug menu (wireframe, poses, balance, snapshot).</span></span><span class="pill done">Done</span></summary>
-<div class="body">
-  <div><h4>What you asked</h4><ul class="asks">
-    <li><time>Nov 15 09:30</time><span>Clean up the page; label builds "V" + number</span></li>
-    <li><time>Nov 15 09:52</time><span>The recordings page becomes the official one</span></li>
-    <li><time>Nov 15 12:54</time><span>Let me switch the brain myself to judge it: Options → Brain (08, NVIDIA's original, or none)</span></li>
-    <li><time>Nov 15 13:09</time><span>A physics controller instead of a brain, same director and rules: Options → Brain → Physics controller</span></li>
-  </ul></div>
-  <div class="vers"><span>V29</span><span>V40</span><span>V43</span></div>
 </div>
 </details>
 
@@ -298,22 +284,18 @@ tr:last-child td{border-bottom:0}
     <li>He's damaged by how hard he hits. Below 2.8 m/s there's no damage (hands and feet: 4.2 m/s). Damage adds up, and a part breaks when it's had enough.</li>
     <li>Feet and hands used as support while standing never crack, and nothing counts during a get-up.</li>
     <li>Wood sound; branching cracks with chips; dent marks on the box. Broken pieces keep moving and can split further.</li>
-    <li>No freeze when he breaks. If the head, neck or trunk breaks, he stops.</li>
+    <li>If the head, neck or trunk breaks, he stops.</li>
   </ul>
   <div class="vers"><span>V30</span><span>V32</span><span>V33</span><span>V36</span><span>V38</span></div>
 </div>
-
-<h2>Not now</h2>
-<div class="box"><p>No work on speed, download size or battery until the behaviour is right (Nov 15 12:18). Brain 08 stays.</p></div>
 
 <h2>How a new request joins</h2>
 <ol class="steps">
   <li><span><b>It gets a place in the ranking:</b> it either becomes a new rule or is added to an existing one.</span></li>
   <li><span><b>Clashes are written down</b> in the table above, with which rule wins and how.</span></li>
-  <li><span><b>One piece of code owns it</b> and gets a test that measures it.</span></li>
-  <li><span><b>It's built, tested against all the rules, and released.</b> This page is updated with the build.</span></li>
+  <li><span><b>It's built and tested against all the rules.</b> This page says whether it works yet, and is updated with each build.</span></li>
 </ol>
-<p class="note">Source: the project doc "rulebook-test-page.md". Live copy next to the game: <a href="https://facaelectrica.github.io/the-box-play/rules.html">facaelectrica.github.io/the-box-play/rules.html</a>. Every agent updates it with each build.</p>
+<p class="note">Only how he behaves is tracked here, not the app. Source: the project doc "rulebook-test-page.md". Live copy next to the game: <a href="https://facaelectrica.github.io/the-box-play/rules.html">facaelectrica.github.io/the-box-play/rules.html</a>. Every agent updates it with each build.</p>
 
 </div>
 <script>
