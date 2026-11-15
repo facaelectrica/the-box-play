@@ -72,7 +72,7 @@ export class BrainDrive {
     const T = (a, b) => a + (b - a) * u;
     for (let i = 0; i < B.meta.kp.length; i++) {
       const a = B.actIdx[i], n = this.W.act[a].name;
-      const f = /Neck|Head/.test(n) ? T(0.9, 0.7) : /Spine|Chest/.test(n) ? T(0.6, 0.45) : /Shoulder|Arm|Hand/.test(n) ? T(0.55, 0.35) : T(0.4, 0.3);
+      const f = /Neck|Head/.test(n) ? T(0.9, 0.7) : /Spine|Chest/.test(n) ? T(0.6, 0.45) : /Shoulder|Arm|Hand/.test(n) ? Math.max(T(0.55, 0.35), 0.85 * (this.guardW || 0)) : T(0.4, 0.3);
       const kp = B.meta.kp[i] * f, kd = B.meta.kd[i] * Math.sqrt(f);
       m.actuator_gainprm[10 * a] = kp; m.actuator_biasprm[10 * a + 1] = -kp; m.actuator_biasprm[10 * a + 2] = -kd;
     }
@@ -97,10 +97,89 @@ export class BrainDrive {
     set('Spine1_x', 0.35); set('Spine2_x', 0.3); set('Chest_x', 0.25); set('Neck1_x', 0.45); set('Neck2_x', 0.2); set('Head_x', 0.15);
     this.curled = true;
   }
+  // (user 19:12: "the head is very important. He always wants to protect the head so he doesn't hit it directly")
+  // seconds until his head reaches a wall, the floor or the ceiling at its present speed (9 = no threat)
+  headThreat() {
+    const W = this.W, d = W.d, hb = W.bodyId.Head, p = [d.xpos[3 * hb], d.xpos[3 * hb + 1], d.xpos[3 * hb + 2]];
+    if (!this.headPrev) { this.headPrev = p; return 9; }
+    const v = [0, 1, 2].map(i => (p[i] - this.headPrev[i]) * 30); this.headPrev = p;   // called at 30 Hz
+    const sp = Math.hypot(...v); if (sp < 0.8) return 9;
+    const b = W.box, planes = [[0, -b.w / 2], [0, b.w / 2], [1, 0], [1, b.D], [2, -b.h / 2], [2, b.h / 2]];
+    let t = 9;
+    for (const [ax, at] of planes) { if (W.open && ax !== 2) continue; const gap = at - p[ax], vv = v[ax]; if (gap * vv > 0) t = Math.min(t, (Math.abs(gap) - 0.12) / Math.abs(vv)); }
+    return t;
+  }
   headDownNow() {
     const W = this.W, d = W.d, hb = W.bodyId.Head, hp = W.bodyId.Hips, g0 = W.m.opt.gravity, gn0 = Math.hypot(g0[0], g0[1], g0[2]) || 9.81;
     const ux = d.xpos[3 * hb] - d.xpos[3 * hp], uy = d.xpos[3 * hb + 1] - d.xpos[3 * hp + 1], uz = d.xpos[3 * hb + 2] - d.xpos[3 * hp + 2], ul = Math.hypot(ux, uy, uz) || 1;
     return (ux * g0[0] + uy * g0[1] + uz * g0[2]) / ul / gn0;
+  }
+  // (head worker, user 19:12 "He always wants to protect the head so he doesn't hit it directly") where his head is
+  // about to hit: its path over the next 0.7 s (its speed now, plus part of gravity: he is not in free fall) against
+  // the walls, the floor and the ceiling; the first surface it would reach within a head's radius. null = no threat.
+  headImpact() {
+    const W = this.W, d = W.d, hb = W.bodyId.Head, p = [d.xpos[3 * hb], d.xpos[3 * hb + 1], d.xpos[3 * hb + 2]];
+    const pv = this.hgPrev; this.hgPrev = p; if (!pv) return null;
+    const v = [0, 1, 2].map(i => (p[i] - pv[i]) * 30), g = W.m.opt.gravity, b = W.box;   // called at 30 Hz
+    // only while his head is really on its way (at rest, "part of gravity" alone would find the floor under it every time
+    // and keep his arms up and chin down through the whole lying-still part, into the get-up)
+    if (Math.hypot(v[0], v[1], v[2]) < 0.7) return null;
+    const planes = [[0, -b.w / 2, 1, 'left'], [0, b.w / 2, -1, 'right'], [1, 0, 1, 'glass'], [1, b.D, -1, 'back'], [2, -b.h / 2, 1, 'floor'], [2, b.h / 2, -1, 'ceil']];
+    for (let t = 0; t <= 0.7; t += 1 / 60) {
+      const q = [0, 1, 2].map(i => p[i] + v[i] * t + 0.3 * g[i] * t * t);
+      for (const [ax, at, sg, nm] of planes) {
+        if (W.open && nm !== 'floor') continue;
+        if (sg * (q[ax] - at) > 0.13) continue;
+        const vin = -sg * (v[ax] + 0.6 * g[ax] * t);   // speed into that surface when it gets there
+        if (vin < 0.5) continue;
+        const n = [0, 0, 0]; n[ax] = sg; const P = q.slice(); P[ax] = at;
+        return { t, P, n, nm, vin };
+      }
+    }
+    return null;
+  }
+  // both hands go to the surface where his head would hit, a hand's width either side of that point, ahead of the
+  // head (resolved-rate arm IK over the upper arm and forearm hinges, within the joint limits); chin tucked, or the
+  // face turned aside when it is the face that would hit. Returns the [actuator, target] pairs to blend in.
+  headGuard() {
+    const W = this.W, d = W.d, m = W.m, mj = W.mj, K = this.kin, H = this.headImpact();
+    if (H) this.hgLast = { ...H, at: this.fallT }; else if (this.hgLast && this.fallT - this.hgLast.at > 0.35) this.hgLast = null;
+    const I = this.hgLast; if (!I) return null;
+    if (!this.hgArms) this.hgArms = ['Right', 'Left'].map(side => ({
+      side, sh: W.bodyId[side + 'Arm'], hand: W.bodyId[side + 'Hand'],
+      js: ['Arm_x', 'Arm_y', 'Arm_z', 'ForeArm_x', 'ForeArm_y', 'ForeArm_z'].map(n => { const nm = side + n, j = mj.mj_name2id(m, mj.mjtObj.mjOBJ_JOINT.value, nm); return { j, a: W.act.findIndex(a => a.name === nm) }; }).filter(o => o.j >= 0 && o.a >= 0) }));
+    const pos = b => [d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]], sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const out = [], hp = pos(W.bodyId.Head);
+    for (const A of this.hgArms) {
+      const S = pos(A.sh), hd = pos(A.hand);
+      let lat = sub(S, hp); const ln = dot(lat, I.n); lat = lat.map((x, i) => x - ln * I.n[i]); const ll = Math.hypot(...lat) || 1;
+      let T = I.P.map((x, i) => x + I.n[i] * (this.hgOff ?? 0.07) + lat[i] / ll * (this.hgLat ?? 0.13));
+      const ST = sub(T, S), sl = Math.hypot(...ST); if (sl > 0.56) T = S.map((x, i) => x + ST[i] * 0.56 / sl);
+      let e = sub(T, hd); const el = Math.hypot(...e); if (el > 0.2) e = e.map(x => x * 0.2 / el);
+      // Jacobian of the wrist position over this arm's hinges: axis x (wrist - joint anchor)
+      const J = A.js.map(o => cross([d.xaxis[3 * o.j], d.xaxis[3 * o.j + 1], d.xaxis[3 * o.j + 2]], sub(hd, [d.xanchor[3 * o.j], d.xanchor[3 * o.j + 1], d.xanchor[3 * o.j + 2]])));
+      // damped least squares: dq = J^T (J J^T + l^2 I)^-1 e
+      const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], l2 = 0.02;
+      for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) { let s = r === c ? l2 : 0; for (const col of J) s += col[r] * col[c]; M[r][c] = s; }
+      const det = M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1]) - M[0][1] * (M[1][0] * M[2][2] - M[1][2] * M[2][0]) + M[0][2] * (M[1][0] * M[2][1] - M[1][1] * M[2][0]);
+      if (Math.abs(det) < 1e-12) continue;
+      const inv = [[M[1][1] * M[2][2] - M[1][2] * M[2][1], M[0][2] * M[2][1] - M[0][1] * M[2][2], M[0][1] * M[1][2] - M[0][2] * M[1][1]],
+        [M[1][2] * M[2][0] - M[1][0] * M[2][2], M[0][0] * M[2][2] - M[0][2] * M[2][0], M[0][2] * M[1][0] - M[0][0] * M[1][2]],
+        [M[1][0] * M[2][1] - M[1][1] * M[2][0], M[0][1] * M[2][0] - M[0][0] * M[2][1], M[0][0] * M[1][1] - M[0][1] * M[1][0]]];
+      const y = [0, 1, 2].map(r => (inv[r][0] * e[0] + inv[r][1] * e[1] + inv[r][2] * e[2]) / det);
+      A.js.forEach((o, c) => {
+        let q = d.qpos[W.act[o.a].qadr] + dot(J[c], y);
+        if (m.jnt_limited[o.j]) q = Math.max(m.jnt_range[2 * o.j], Math.min(m.jnt_range[2 * o.j + 1], q));
+        out.push([o.a, q]);
+      });
+    }
+    // the neck: chin to the chest; when his face is what would hit (the surface is in front of him), turned aside
+    const set = (n, v) => { const i = W.act.findIndex(a => a.name === n); if (i >= 0) out.push([i, v]); };
+    const { f } = K.facing(), o0 = K.toWorld([0, 0, 0]), f1 = K.toWorld([f[0], f[1], 0]), fw = sub(f1, o0);
+    if (dot(fw, I.n) < -0.5) { set('Neck1_y', 0.35); set('Neck1_x', -0.05); set('Head_x', 0); }
+    else { set('Neck1_x', 0.4); set('Neck2_x', 0.15); set('Head_x', 0.1); }
+    return out;
   }
   // (user 18:50: "the most important part is that the feet stay planted ... keep balance and keep the feet planted")
   // a leg whose foot the recording has planted, and whose real foot is on the floor, follows the recording's leg angles
@@ -201,7 +280,7 @@ export class BrainDrive {
     // falling (user 18:23 "why does he get all floppy?"): his muscles stay at ~1/3, easing to 1/4 (was 12% -> 4%),
     // holding the pose he had when he went down, so he keeps his shape (with the joint limits) instead of folding
     if (falling && this.mode !== 'fall') {
-      this.mode = 'fall'; B.down = true; this.fallT = 0; this.curled = false; this.headFirst = false;
+      this.mode = 'fall'; B.down = true; this.fallT = 0; this.curled = false; this.headFirst = false; this.guardW = 0; this.hgLast = null; this.hgPrev = null; this.hgOut = null;
       // (falls worker) what his muscles hold while he goes down: his pose at that moment, turned within 0.35 s into a
       // protective pose that depends on which way he is falling (his centre of mass's motion relative to where he
       // faces): forward -> both hands forward and down to catch himself, head up; backward -> hands back and down,
@@ -272,9 +351,14 @@ export class BrainDrive {
         else {   // falling: hold the shape (see above) instead of the network
           B.tNext = d.time + 1 / B.hz - 1e-9;
           // turning head-down during the fall (the phone flipped while he was still upright): protect the head now
-          if (!this.headFirst && !this.curled && this.fallT < 2.5 && this.headDownNow() > 0.25) this.headBrace();
+          if (!this.headFirst && !this.curled && this.fallT < 2.5 && (this.headDownNow() > 0.25 || this.headThreat() < 0.35)) this.headBrace();
           const k = Math.min(1, (this.fallT - (this.headFirst ? this.headT || 0 : 0)) / (this.headFirst ? 0.25 : 0.35));
           W.act.forEach((a, j) => { B.targets[j] = this.hold[j] + (this.brace[j] - this.hold[j]) * k; });
+          // (head worker) arms to where his head would hit, ahead of it (see headGuard); faded in within 0.1 s
+          const hg = this.noGuard ? null : this.headGuard();
+          this.guardW = Math.max(0, Math.min(1, (this.guardW || 0) + (hg ? 1 / 3 : -1 / 12)));
+          if (hg) this.hgOut = hg;
+          if (this.guardW > 0 && this.hgOut) for (const [j, q] of this.hgOut) B.targets[j] += (q - B.targets[j]) * this.guardW;
         }
       }
       this.armHold();

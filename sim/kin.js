@@ -832,6 +832,10 @@ export class Kin {
     const nx = Math.min(this.anim.clip.n - 1, Math.floor(this.anim.x) + 2), headZ = this.anim.clip.body(nx, 6)[2];
     this.kneeling = this.G.room < 1.9 && headZ > this.G.room - 0.25;
     if (this.kneeling) { this.anim.speed = 0; this.getupHold = 0; if (this.last !== 'kneeling: no room to stand') this.event('kneeling: no room to stand'); return; }
+    // stuck: his hips more than 40 cm behind the recording for 4 s -> give this get-up up now (and start a new one
+    // from the pose he is really in), instead of creeping on at a quarter speed and waiting 4 s at its end
+    this.getupStuck = lag > 0.4 ? (this.getupStuck || 0) + dt : 0;
+    if (this.getupStuck > 4) { this.getupStuck = 0; this.getupHold = 0; return this.startFall('the get-up failed'); }
     const ended = this.anim.x >= this.anim.clip.n - 1.01;
     this.getupHold = ended ? (this.getupHold || 0) + dt : 0;
     if (ended && lag > 0.15 && this.getupHold < 4) return;
