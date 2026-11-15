@@ -353,7 +353,9 @@ export class BrainDrive {
   physArms() {
     const K = this.kin, W = this.W, m = W.m, mj = W.mj, nv = m.nv;
     if (!(this.armW > 0) || !K.hands) { this.armSmOn = false; K.armOverride = null; return; }
-    const sides = Object.keys(K.hands); if (!sides.length) return;
+    // a wall spot behind his shoulder (his body has turned): that arm doesn't reach for it (snapshot 22:37)
+    const sides = Object.keys(K.hands).filter(sd => !(this.pins && this.pins.awkward && !this.pins.on[sd + 'Hand'] && this.pins.awkward(sd, K.hands[sd].p)));
+    if (!sides.length) { this.armSmOn = false; return; }
     const D = this.ikD || (this.ikD = new mj.MjData(m));
     if (!this.jp2) { this.jp2 = new mj.DoubleBuffer(3 * nv); this.jr2 = new mj.DoubleBuffer(3 * nv); this.jp3 = new mj.DoubleBuffer(3 * nv); this.jr3 = new mj.DoubleBuffer(3 * nv); }
     const u0 = K.toWorld([0, 0, 0]), u1 = K.toWorld([0, 0, 1]), up = [u1[0] - u0[0], u1[1] - u0[1], u1[2] - u0[2]];

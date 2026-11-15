@@ -182,6 +182,12 @@ export class Pins {
         const sh = this.pos(this.id[s + 'Arm']), reach = Math.hypot(...[0, 1, 2].map(i => P.p[i] - sh[i]));
         if (!want) { this.release(n, 'hand done'); if (H) H.pinned = false; continue; }
         if (reach > 0.64) { this.release(n, 'hand reach'); H.pinned = false; continue; }
+        // (user 22:37 snapshot: "Left shoulder and arm is wrong": his body turned under a pinned hand until the hand was
+        // up and behind his shoulder, all three shoulder hinges at their stops) a hand behind the shoulder, or a
+        // shoulder pressed to its stops, lets go - a person would take the hand off and put it somewhere else
+        const awk = this.awkward(s, P.p);
+        P.awk = awk ? (P.awk || 0) + dt : 0;
+        if (P.awk > 0.15) { this.release(n, 'hand awkward'); H.pinned = false; this.cool[n] = 0.6; continue; }
         P.t += dt;
         if (P.to && P.k < 1) {   // still placing the palm: no letting go for pulling or slipping yet
           P.k = Math.min(1, P.k + dt / 0.15); const u = P.k * P.k * (3 - 2 * P.k);
@@ -212,7 +218,7 @@ export class Pins {
       const q0 = this.quat(b), pz = qrot(q0, [0, 0, -1]), nin = out.map(v => -v);
       if (dot(pz, nin) < Math.cos(25 / 57.3)) continue;
       const tp = [0, 1, 2].map(i => p[i] - (gap - PALM) * out[i]);
-      const sh = this.pos(this.id[s + 'Arm']); if (Math.hypot(tp[0] - sh[0], tp[1] - sh[1], tp[2] - sh[2]) > 0.62) continue;
+      const sh = this.pos(this.id[s + 'Arm']); if (Math.hypot(tp[0] - sh[0], tp[1] - sh[1], tp[2] - sh[2]) > 0.62 || this.awkward(s, tp)) continue;
       // flat: his hand turned the shortest way so the palm faces the wood (fingers keep their way); placed over 0.15 s
       const r = qbetween(pz, nin), tq = r ? qnorm(qmul(r, q0)) : q0;
       this.pin(n, p.slice(), q0, { out, from: { p: p.slice(), q: q0 }, to: { p: tp, q: tq }, k: 0 });
@@ -223,6 +229,18 @@ export class Pins {
     for (const s of SIDES) if (!this.on[s + 'Hand'] && this.handOff && this.handOff[s] !== undefined) {
       if (this.handOff[s] <= 0) { this.setHandContact(s, true); delete this.handOff[s]; }
     }
+  }
+  // the hand at p is behind his shoulder (more than 5 cm, along the chest's forward), or that shoulder's three hinges
+  // are within 4 deg of a stop
+  awkward(side, p) {
+    const W = this.W, m = W.m, d = W.d, ch = this.W.bodyId.Chest, sh = this.pos(this.id[side + 'Arm']);
+    const q = this.quat(ch), fwd = qrot(q, [0, -1, 0]);
+    if ((p[0] - sh[0]) * fwd[0] + (p[1] - sh[1]) * fwd[1] + (p[2] - sh[2]) * fwd[2] < -0.05) return true;
+    if (!this.armJ) this.armJ = {};
+    if (!this.armJ[side]) this.armJ[side] = ['x', 'y', 'z'].map(a => W.mj.mj_name2id(m, W.mj.mjtObj.mjOBJ_JOINT.value, side + 'Arm_' + a)).filter(j => j >= 0);
+    let stops = 0;
+    for (const j of this.armJ[side]) { if (!m.jnt_limited[j]) continue; const v = d.qpos[m.jnt_qposadr[j]], lo = m.jnt_range[2 * j], hi = m.jnt_range[2 * j + 1]; if (v < lo + 0.07 || v > hi - 0.07) stops++; }
+    return stops >= 2;
   }
   vel(b) {
     const d = this.W.d, prev = this.prevPos || (this.prevPos = {}), p = this.pos(b), t = d.time, o = prev[b];
