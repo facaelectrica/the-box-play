@@ -535,6 +535,8 @@ export class Kin {
         if (!c) lk.on = false;
         lk.w = clamp(lk.w + (lk.on ? 1 : -1) * dt / 0.12, 0, 1);
         if (!lk.on && lk.w <= 0) { this.locks[side] = null; continue; }
+        // his real foot is pinned (sim/pins.js): the recording's planted foot is exactly there
+        if (lk.pin) { lk.p = lk.pin.p.slice(); lk.q = lk.pin.q.slice(); continue; }
         // a planted foot far from where the recording has it (after a turn or a long ease) slides over slowly
         const e = [p[0] - lk.p[0], p[1] - lk.p[1], p[2] - lk.p[2]], el = Math.hypot(...e);
         if (el > 0.05 && this.offT > 2.5 * this.offHL) { const k = Math.min(1, 0.25 * dt / el); for (let i = 0; i < 3; i++) lk.p[i] += e[i] * k; }
@@ -564,6 +566,29 @@ export class Kin {
     if (dt > 0) { poseDiff(this.prev, this.cur, this.vel); for (let k = 0; k < 72; k++) this.vel[k] /= dt; }
     d.qvel.fill(0);
     mj.mj_forward(m, d);
+  }
+  // (user 19:12: "He always wants to protect the head so he doesn't hit it directly") the recordings were made in a
+  // room: getting up, his head swings 40-60 cm out past his hips, and in the box that is into a wall (most of the head
+  // hits left in version 10 were walls during get-ups, at ~1 m/s). Wherever the recording would bring his head within
+  // HEAD_GAP of a wall, the whole recording moves over, away from that wall (along the ground; planted feet stay put
+  // through the leg IK when he stands). Head and chest.
+  keepHeadIn(pl) {
+    const W = this.W; if (W.open || !W.box) return;
+    const d = W.d, b = W.box, mj = this.mj, M = 0.17;
+    this.writeWorld(pl); mj.mj_kinematics(W.m, d);
+    const lo = [-b.w / 2 + M, M, -b.h / 2 + M], hi = [b.w / 2 - M, b.D - M, b.h / 2 - M];
+    let push = [0, 0, 0], any = false;
+    for (const n of ['Head', 'Chest']) {
+      const id = W.bodyId[n], p = [d.xpos[3 * id], d.xpos[3 * id + 1], d.xpos[3 * id + 2]];
+      for (let k = 0; k < 3; k++) {
+        const e = p[k] < lo[k] ? lo[k] - p[k] : p[k] > hi[k] ? hi[k] - p[k] : 0;
+        if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; }
+      }
+    }
+    if (!any) return;
+    const a = this.toLocal([0, 0, 0]), c = this.toLocal(push), dx = c[0] - a[0], dy = c[1] - a[1];   // along the ground only
+    pl[0] += dx; pl[1] += dy; this.anchor.x += dx; this.anchor.y += dy;
+    this.headShift = (this.headShift || 0) + Math.hypot(dx, dy);
   }
   keepInBox(pl) {
     if (this.W.open || this.G.name !== 'floor' && this.G.name !== 'ceil') return;
@@ -623,8 +648,13 @@ export class Kin {
       const yw = [zw[1] * xw[2] - zw[2] * xw[1], zw[2] * xw[0] - zw[0] * xw[2], zw[0] * xw[1] - zw[1] * xw[0]];
       const q = matQ(xw, yw, zw);
       const H = this.hands[side];
-      if (!H) this.hands[side] = { p: tw, q };
-      else {   // follow the shoulder slowly: at most 12 cm/s along the wall
+      // the wall it goes on (world): its outward normal and a point on it (for the physical pin, sim/pins.js)
+      const at = pc.slice(); at[best.ax] = best.sg * best.lim;
+      const wall = { out: nw.map(v => -v), at: this.toWorld(at) };
+      if (!H) this.hands[side] = { p: tw, q, wall };
+      else if (H.pinned) H.wall = wall;   // pinned: the hand stays where it is (the arm and body move around it)
+      else {
+        H.wall = wall;   // follow the shoulder slowly: at most 12 cm/s along the wall
         const e = [tw[0] - H.p[0], tw[1] - H.p[1], tw[2] - H.p[2]], el = Math.hypot(...e), k = Math.min(1, 0.12 * dt / Math.max(el, 1e-6));
         for (let i = 0; i < 3; i++) H.p[i] += e[i] * k; H.q = q;
       }

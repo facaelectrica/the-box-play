@@ -10,6 +10,7 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
+import { Pins } from './pins.js';
 export class BrainDrive {
   // springs (sim/springs.js), optional: the network was never taught to get up from the floor (it gives up past
   // 0.5 m), so during a get-up the springs and their help carry him through the get-up recording instead
@@ -18,6 +19,8 @@ export class BrainDrive {
     kin.ext = W;   // the engine's falls follow this body
     this.ref = { pos: new Float64Array(NB * 3), rot: new Float64Array(NB * 4), vel: new Float64Array(NB * 3), ang: new Float64Array(NB * 3) };
     this.prevRef = null; this.lostT = 0; this.sup = null; this.stats = {}; this.getupBy = 'springs';
+    // supporting hands and feet pinned in place (needs the welds addPins puts in the body file)
+    const P = new Pins(W, kin); if (P.ok) this.pins = P;
   }
   reset() {
     const W = this.W, d = W.d, g = this.G.d;
@@ -25,6 +28,7 @@ export class BrainDrive {
     d.qvel.fill(0); d.xfrc_applied.fill(0); d.qfrc_applied.fill(0);
     W.mj.mj_forward(W.m, d); W.tControl = d.time;
     this.brain.attach(); this.brain.told = true; this.prevRef = null; this.lostT = 0; this.mode = 'follow';
+    if (this.pins) this.pins.reset();
   }
   // the ghost's 23 parts, in the brain's gravity frame (brain.G, set by readState), with speeds from tick to tick
   buildRef(dt) {
@@ -125,12 +129,16 @@ export class BrainDrive {
     // and keep his arms up and chin down through the whole lying-still part, into the get-up)
     if (Math.hypot(v[0], v[1], v[2]) < 0.7) return null;
     const planes = [[0, -b.w / 2, 1, 'left'], [0, b.w / 2, -1, 'right'], [1, 0, 1, 'glass'], [1, b.D, -1, 'back'], [2, -b.h / 2, 1, 'floor'], [2, b.h / 2, -1, 'ceil']];
+    // in the air (nothing of him touches the box: the phone flipped, he drops) gravity has all of him: full g
+    let touch = false; const m = W.m;
+    for (let i = 0; i < d.ncon && !touch; i++) { const c = d.contact.get(i), b1 = m.geom_bodyid[c.geom1], b2 = m.geom_bodyid[c.geom2]; c.delete(); if (W.isFig[b1] !== W.isFig[b2]) touch = true; }
+    const ga = touch ? 0.3 : 0.5, gv = touch ? 0.6 : 1.0;
     for (let t = 0; t <= 0.7; t += 1 / 60) {
-      const q = [0, 1, 2].map(i => p[i] + v[i] * t + 0.3 * g[i] * t * t);
+      const q = [0, 1, 2].map(i => p[i] + v[i] * t + ga * g[i] * t * t);
       for (const [ax, at, sg, nm] of planes) {
         if (W.open && nm !== 'floor') continue;
         if (sg * (q[ax] - at) > 0.13) continue;
-        const vin = -sg * (v[ax] + 0.6 * g[ax] * t);   // speed into that surface when it gets there
+        const vin = -sg * (v[ax] + gv * g[ax] * t);   // speed into that surface when it gets there
         if (vin < 0.5) continue;
         const n = [0, 0, 0]; n[ax] = sg; const P = q.slice(); P[ax] = at;
         return { t, P, n, nm, vin };
@@ -154,7 +162,7 @@ export class BrainDrive {
     for (const A of this.hgArms) {
       const S = pos(A.sh), hd = pos(A.hand);
       let lat = sub(S, hp); const ln = dot(lat, I.n); lat = lat.map((x, i) => x - ln * I.n[i]); const ll = Math.hypot(...lat) || 1;
-      let T = I.P.map((x, i) => x + I.n[i] * (this.hgOff ?? 0.07) + lat[i] / ll * (this.hgLat ?? 0.13));
+      let T = I.P.map((x, i) => x + I.n[i] * (this.hgOff ?? 0) + lat[i] / ll * (this.hgLat ?? 0.13));
       const ST = sub(T, S), sl = Math.hypot(...ST); if (sl > 0.56) T = S.map((x, i) => x + ST[i] * 0.56 / sl);
       let e = sub(T, hd); const el = Math.hypot(...e); if (el > 0.2) e = e.map(x => x * 0.2 / el);
       // Jacobian of the wrist position over this arm's hinges: axis x (wrist - joint anchor)
@@ -254,6 +262,8 @@ export class BrainDrive {
   height(dd, b) { return this.kin.toLocal([dd.xpos[3 * b], dd.xpos[3 * b + 1], dd.xpos[3 * b + 2]])[2]; }
   async update(dt, fingerPush) {
     const W = this.W, d = W.d, K = this.kin, B = this.brain, PH = 1 / 480;
+    if (this.pins && !this.noPins) this.pins.update(dt);
+    else if (this.pins) this.pins.reset();
     if (this.springs && K.state === 'getup' && this.getupBy === 'brain') {
       // the network moves his joints through the get-up recording; the springs' hips help (outside force) lifts
       if (this.mode !== 'getup') { this.mode = 'getup'; B.attach(); B.told = true; this.prevRef = null; this.springs.helpK = 0; this.springs.gPrev = null; }

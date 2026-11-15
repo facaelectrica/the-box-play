@@ -80,7 +80,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">Version 10</div><div id="brainver"></div>
+<div id="ver">Version 11</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -213,9 +213,10 @@ import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=10';
-import { Springs } from './sim/springs.js?v=10';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=10';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=11';
+import { Springs } from './sim/springs.js?v=11';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=11';
+import { addPins } from './sim/pins.js?v=11';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -540,7 +541,7 @@ const libP = loadKinLibrary('body/clips/', u => u.endsWith('kin.json') ? LOAD.ta
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
 let DOLL = await figP;
-const bodyXml = await bodyP;
+const bodyXml = addPins(await bodyP);
 const W = new BoxWorld(mj, bodyXml);
 // physics mode (user 17:30): the recordings run on a ghost copy of the world; his real body (W) is physical and
 // springs pull it toward the ghost (sim/springs.js)
