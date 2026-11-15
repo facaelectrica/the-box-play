@@ -89,14 +89,16 @@ export class Debris {
       for (const P of this.list) {
         P.v = add(P.v, g, h);
         P.R = q2m(P.q); P.Iinv = mmul(mmul(P.R, P.IinvB), mT(P.R));
-        P.on = false;
+        P.on = false; P.held = false;
       }
       for (const P of this.list) this.collide(P, planes, obs, h);
       // pieces against each other (bounding spheres first)
       for (let i = 0; i < this.list.length; i++) for (let j = i + 1; j < this.list.length; j++) this.pair(this.list[i], this.list[j]);
       for (const P of this.list) {
-        // resting on something and nearly still: it stays put (no creeping from the contact pushes)
-        if (P.on && len(P.v) < 0.04 && len(P.w) < 0.4) { P.v = [0, 0, 0]; P.w = [0, 0, 0]; continue; }
+        // resting ON something that holds it up against gravity (floor, a slope its friction can hold) and nearly still:
+        // it stays put (no creeping from the contact pushes). Against a wall or a steep slope it keeps sliding/falling
+        // (user 10:34: "they seem to end up glued on the surface")
+        if (P.held && len(P.v) < 0.04 && len(P.w) < 0.4) { P.v = [0, 0, 0]; P.w = [0, 0, 0]; continue; }
         const damp = P.on ? 1 - Math.min(0.5, 6 * h) : 1 - 0.05 * h;
         P.v = P.v.map(v => v * (P.on ? 1 - Math.min(0.3, 0.8 * h) : 1)); P.w = P.w.map(v => v * damp);
         P.x = add(P.x, P.v, h);
@@ -119,6 +121,7 @@ export class Debris {
     return -vn;
   }
   collide(P, planes, obs, h) {
+    const g = this.W.m.opt.gravity, gl = Math.hypot(g[0], g[1], g[2]) || 1, up = [-g[0] / gl, -g[1] / gl, -g[2] / gl];
     for (const s of P.s) {
       const c = add(P.x, mv(P.R, s.c));
       for (const pl of planes) {
@@ -126,6 +129,7 @@ export class Debris {
         const rp = add(sub(c, P.x), pl.n, -s.r), vp = add(P.v, cross(P.w, rp)), vn = -dot(vp, pl.n);
         const hit = this.impulse(P, rp, pl.n, vp, vn > 0.9 ? 0.25 : 0.02, 0.55);
         P.x = add(P.x, pl.n, -dd * 0.6); P.on = true;
+        if (dot(pl.n, up) > 0.88) P.held = true;   // within the friction cone (0.55 -> 29 deg)
         if (hit > 0.6 && P.clinkT <= 0) { P.clinkT = 0.07; this.events.push({ type: 'clink', v: hit, m: P.m }); }
       }
       if (P.age !== undefined && P.age < 0.06) continue;   // just broken off: let it clear his body first
@@ -555,58 +559,90 @@ export class CrackView {
   }
 }
 
-// ================= CrackSound: a stronger thump, the shell cracking, a break, the pieces' clinks =================
-// Made from noise and tones (nothing to download). Its own path to the speakers: the figure's other sounds go through
-// a soft low-pass (muffled wood), but a crack lives in the highs.
+// ================= CrackSound: wood cracking (user 10:32: "it should feel like wood cracking, not porcelain ... the
+// sound of cracking should be stronger") =================
+// Made from noise and tones (nothing to download), on its own path to the speakers (the figure's other sounds go through
+// a soft low-pass). A crack = a heavy thump, the hollow knock of the wooden part, a dry snap and the fibres tearing (a
+// burst of short ticks, each ringing a little like wood); a deep hit creaks first. A break = a bigger snap and a long
+// splintering crunch. Pieces landing = small wooden knocks.
 export class CrackSound {
   constructor(actx) { this.a = actx; this.out = null; this.last = -1; }
   init() {
     const a = this.a; if (!a || this.out) return !!this.out;
-    const comp = a.createDynamicsCompressor(); comp.threshold.value = -14; comp.ratio.value = 5; comp.attack.value = 0.001; comp.release.value = 0.15;
-    this.out = a.createGain(); this.out.gain.value = 1.4; this.out.connect(comp).connect(a.destination);
+    const comp = a.createDynamicsCompressor(); comp.threshold.value = -8; comp.knee.value = 6; comp.ratio.value = 6; comp.attack.value = 0.001; comp.release.value = 0.12;
+    this.out = a.createGain(); this.out.gain.value = 1.8;
+    const sh = a.createWaveShaper(), cv = new Float32Array(1025); for (let i = 0; i < 1025; i++) { const x = (i - 512) / 512 * 1.5; cv[i] = 0.95 * Math.tanh(x / 0.95); }
+    sh.curve = cv;   // never past full scale: the strongest cracks saturate a little instead of clipping
+    this.out.connect(comp).connect(sh).connect(a.destination);
     const n = a.sampleRate, buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
     for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
     this.noise = buf; return true;
   }
-  burst(t, dur, type, f, q, gain) {
+  burst(t, dur, type, f, q, gain) {   // filtered noise: a short burst (high q = it rings at f, like a struck board)
     const a = this.a, src = a.createBufferSource(); src.buffer = this.noise;
     const fl = a.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q;
-    const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.0015); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(fl).connect(g).connect(this.out); src.start(t, Math.random() * 0.9); src.stop(t + dur + 0.02);
+    const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.001); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(fl).connect(g).connect(this.out); src.start(t, Math.random() * 0.9); src.stop(t + dur + 0.05);
   }
-  tone(t, f, dur, gain, type = 'sine') {
-    const a = this.a, o = a.createOscillator(), g = a.createGain(); o.type = type; o.frequency.setValueAtTime(f, t);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(this.out); o.start(t); o.stop(t + dur + 0.02);
+  ring(t, f, q, dur, gain) {   // a click into a resonance: the wood's own note, dying away
+    const a = this.a, src = a.createBufferSource(); src.buffer = this.noise;
+    const g0 = a.createGain(); g0.gain.setValueAtTime(1, t); g0.gain.setValueAtTime(0, t + 0.003);
+    const fl = a.createBiquadFilter(); fl.type = 'bandpass'; fl.frequency.value = f; fl.Q.value = q;
+    const g = a.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(g0).connect(fl).connect(g).connect(this.out); src.start(t, Math.random() * 0.9); src.stop(t + dur + 0.05);
   }
-  thump(t, s) {   // the hit itself, stronger than an ordinary bump
+  thump(t, s) {   // the hit itself: heavy and low
     const a = this.a, o = a.createOscillator(), g = a.createGain();
-    o.frequency.setValueAtTime(75, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.2);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5 * s, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
-    o.connect(g).connect(this.out); o.start(t); o.stop(t + 0.25);
-    this.burst(t, 0.12, 'lowpass', 500, 0.5, 0.55 * s);
+    o.frequency.setValueAtTime(95, t); o.frequency.exponentialRampToValueAtTime(48, t + 0.22);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.9 * s, t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.26);
+    o.connect(g).connect(this.out); o.start(t); o.stop(t + 0.3);
+    this.burst(t, 0.14, 'lowpass', 700, 0.6, 0.9 * s);
   }
-  crackle(t, s, n, span) {   // the shell splitting: a sharp snap, then little ticks running along the crack
-    this.burst(t, 0.03, 'highpass', 2200, 0.7, 0.55 * s);
-    this.burst(t, 0.05, 'bandpass', 1400, 1.2, 0.35 * s);
-    for (let i = 0; i < n; i++) { const u = Math.pow(Math.random(), 1.6) * span; this.burst(t + 0.01 + u, 0.006 + 0.008 * Math.random(), 'bandpass', 2500 + Math.random() * 4500, 2.5, (0.12 + 0.25 * Math.random()) * s * (1 - u / span * 0.6)); }
-    // the glaze rings a little (porcelain)
-    const f = 2300 + Math.random() * 900; this.tone(t + 0.004, f, 0.14, 0.05 * s); this.tone(t + 0.004, f * 2.71, 0.08, 0.03 * s);
+  knock(t, s, low = 1) {   // the hollow knock of a wooden part
+    const f = (190 + Math.random() * 60) * low;
+    this.ring(t, f, 9, 0.16, 2.2 * s); this.ring(t, f * 2.3, 10, 0.09, 1.3 * s); this.ring(t, f * 4.1, 12, 0.05, 0.7 * s);
+  }
+  creak(t, s, dur) {   // fibres straining just before they give
+    const a = this.a, o = a.createOscillator(), fl = a.createBiquadFilter(), g = a.createGain();
+    o.type = 'sawtooth'; o.frequency.setValueAtTime(70 + Math.random() * 30, t); o.frequency.linearRampToValueAtTime(110 + Math.random() * 50, t + dur);
+    fl.type = 'bandpass'; fl.frequency.value = 900; fl.Q.value = 2.5;
+    g.gain.setValueAtTime(0.0001, t);
+    for (let k = 0, n = Math.round(dur / 0.012); k < n; k++) g.gain.setValueAtTime((0.15 + 0.35 * Math.random()) * s * (0.4 + 0.6 * k / n), t + k * 0.012);
+    g.gain.setValueAtTime(0.0001, t + dur);
+    o.connect(fl).connect(g).connect(this.out); o.start(t); o.stop(t + dur + 0.02);
+  }
+  snap(t, s) {   // the split: a dry, sharp crack with the wood ringing under it
+    this.burst(t, 0.022, 'bandpass', 1700, 0.7, 1.6 * s);
+    this.burst(t, 0.05, 'bandpass', 650, 1.0, 1.1 * s);
+    this.burst(t + 0.002, 0.012, 'highpass', 3500, 0.7, 0.5 * s);
+    this.ring(t, 420 + Math.random() * 120, 7, 0.1, 1.6 * s);
+  }
+  tear(t, s, n, span) {   // fibres tearing along the crack: irregular ticks, thinning out
+    for (let i = 0; i < n; i++) {
+      const u = Math.pow(Math.random(), 1.7) * span, k = 1 - 0.7 * u / span, f = 600 + Math.random() * 2200;
+      this.burst(t + u, 0.004 + 0.01 * Math.random(), 'bandpass', f, 2.2, (0.35 + 0.6 * Math.random()) * s * k);
+      if (Math.random() < 0.35) this.ring(t + u, 300 + Math.random() * 500, 8, 0.04, 0.6 * s * k);
+    }
   }
   crack(strength, level) {
-    if (!this.init()) return; const t = this.a.currentTime + 0.01, s = Math.min(1, 0.55 + 0.45 * strength);
-    this.thump(t, s); this.crackle(t + 0.006, s * (0.8 + 0.15 * level), 6 + 4 * level, 0.09 + 0.05 * level);
+    if (!this.init()) return; const now = this.a.currentTime + 0.01, s = Math.min(1, 0.65 + 0.35 * strength);
+    let t = now;
+    if (level >= 2) { this.creak(t, 0.8 * s, 0.07); t += 0.06; }   // a part already cracked creaks before it splits more
+    this.thump(t, s); this.knock(t, s); this.snap(t + 0.004, s * (0.9 + 0.1 * level)); this.tear(t + 0.01, s, 8 + 5 * level, 0.1 + 0.05 * level);
   }
-  shatter(strength) {
-    if (!this.init()) return; const t = this.a.currentTime + 0.01, s = Math.min(1, 0.7 + 0.3 * strength);
-    this.thump(t, s * 1.1); this.crackle(t + 0.004, s * 1.1, 22, 0.25);
-    this.burst(t + 0.01, 0.35, 'highpass', 3000, 0.5, 0.3 * s);
-    for (let i = 0; i < 18; i++) { const u = 0.03 + Math.pow(Math.random(), 1.4) * 0.6, f = 2600 + Math.random() * 5200; this.tone(t + u, f, 0.04 + 0.08 * Math.random(), (0.04 + 0.06 * Math.random()) * s * (1 - u)); this.burst(t + u, 0.008, 'bandpass', f, 3, 0.12 * s * (1 - u)); }
+  shatter(strength) {   // the part breaks off: a big snap and a splintering crunch
+    if (!this.init()) return; const t = this.a.currentTime + 0.01, s = Math.min(1, 0.8 + 0.2 * strength);
+    this.creak(t, s, 0.09);
+    const t1 = t + 0.08;
+    this.thump(t1, s * 1.1); this.knock(t1, s, 0.85); this.snap(t1, s * 1.25); this.snap(t1 + 0.035, s * 0.8);
+    this.tear(t1 + 0.01, s * 1.1, 40, 0.45);
+    this.burst(t1 + 0.01, 0.32, 'bandpass', 1100, 0.6, 0.45 * s);   // the crunch
   }
-  clink(v, m) {   // a piece landing
+  clink(v, m) {   // a piece landing: a small wooden knock (bigger piece = lower, louder)
     if (!this.init()) return; const now = this.a.currentTime; if (now - this.last < 0.03) return; this.last = now;
-    const t = now + 0.005, s = Math.min(1, v / 4) * (m > 0.5 ? 1 : 0.6), f = (m > 0.5 ? 1700 : 3200) + Math.random() * 1800;
-    this.burst(t, 0.012, 'bandpass', f, 2, 0.9 * s); this.tone(t, f * 1.03, m > 0.5 ? 0.09 : 0.05, 0.14 * s);
-    if (m > 0.5) this.burst(t, 0.08, 'lowpass', 400, 0.5, 0.3 * s);
+    const t = now + 0.005, big = m > 0.5, s = Math.min(1, v / 3.5) * (big ? 1 : 0.55);
+    this.ring(t, big ? 210 + Math.random() * 60 : 520 + Math.random() * 400, 8, big ? 0.12 : 0.05, 1.6 * s);
+    this.burst(t, 0.01, 'bandpass', big ? 900 : 1800, 1.5, 0.6 * s);
+    if (big) this.burst(t, 0.08, 'lowpass', 400, 0.5, 0.5 * s);
   }
 }
