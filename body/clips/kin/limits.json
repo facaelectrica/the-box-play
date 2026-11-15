@@ -1,266 +1,266 @@
 {
-"Spine1_x": [
--10,
-25
-],
-"Spine1_y": [
--17.6,
-13.0
-],
-"Spine1_z": [
--9.3,
-10.6
-],
-"Spine2_x": [
--10,
-15
-],
-"Spine2_y": [
--9.1,
-9.8
-],
-"Spine2_z": [
--14.4,
-10.7
-],
-"Chest_x": [
--15,
-30
-],
-"Chest_y": [
--17.9,
-21.6
-],
-"Chest_z": [
--21.0,
-16.2
-],
-"Neck1_x": [
--25,
-30
-],
-"Neck1_y": [
--18,
-18
-],
-"Neck1_z": [
--25,
-25
-],
-"Neck2_x": [
--20,
-10
-],
-"Neck2_y": [
--10,
-10
-],
-"Neck2_z": [
--25,
-25
-],
-"Head_x": [
--20,
-15
-],
-"Head_y": [
--12,
-12
-],
-"Head_z": [
--25,
-25
-],
-"RightShoulder_x": [
--5.3,
-33.3
-],
-"RightShoulder_y": [
--36.5,
-25.9
-],
-"RightShoulder_z": [
--7.6,
-33.9
-],
-"RightArm_x": [
--145.2,
-100.1
-],
-"RightArm_y": [
--91.6,
-24.8
-],
-"RightArm_z": [
--100.6,
-112.7
-],
-"RightForeArm_x": [
--25.0,
-15.7
-],
-"RightForeArm_y": [
--8,
-8
-],
-"RightForeArm_z": [
--5,
-150
-],
-"RightHand_x": [
--74.1,
-91.6
-],
-"RightHand_y": [
--32.1,
-87.4
-],
-"RightHand_z": [
--40.2,
-51.9
-],
-"LeftShoulder_x": [
--8.6,
-33.7
-],
-"LeftShoulder_y": [
--24.4,
-32.3
-],
-"LeftShoulder_z": [
--30.7,
-22.4
-],
-"LeftArm_x": [
--84.4,
-97.1
-],
-"LeftArm_y": [
--33.8,
-89.9
-],
-"LeftArm_z": [
--127.1,
-73.9
-],
-"LeftForeArm_x": [
--41.6,
-19.2
-],
-"LeftForeArm_y": [
--8,
-8
-],
-"LeftForeArm_z": [
--150,
-5
-],
-"LeftHand_x": [
--55.4,
-79.5
-],
-"LeftHand_y": [
--85.2,
-23.8
-],
-"LeftHand_z": [
--38.8,
-44.3
-],
-"RightLeg_x": [
--130.6,
-27.5
-],
-"RightLeg_y": [
--38.1,
-42.2
-],
-"RightLeg_z": [
--61.4,
-47.0
-],
-"RightShin_x": [
--15.0,
-169.5
-],
-"RightShin_y": [
--6,
-6
-],
-"RightShin_z": [
--25,
-25
-],
-"RightFoot_x": [
--43.3,
-62.7
-],
-"RightFoot_y": [
--38.8,
-38.6
-],
-"RightFoot_z": [
--35,
-35
-],
-"RightToeBase_x": [
--48.1,
-17.9
-],
-"RightToeBase_y": [
--12.0,
-13.5
-],
-"RightToeBase_z": [
--12.0,
-13.5
-],
-"LeftLeg_x": [
--130.6,
-26.3
-],
-"LeftLeg_y": [
--57.2,
-33.2
-],
-"LeftLeg_z": [
--48.4,
-48.7
-],
-"LeftShin_x": [
--15.6,
-166.3
-],
-"LeftShin_y": [
--6,
-6
-],
-"LeftShin_z": [
--25,
-25
-],
-"LeftFoot_x": [
--40.0,
-65.1
-],
-"LeftFoot_y": [
--26.1,
-41.7
-],
-"LeftFoot_z": [
--35,
-35
-],
-"LeftToeBase_x": [
--54.4,
-17.1
-],
-"LeftToeBase_y": [
--13.7,
-12.0
-],
-"LeftToeBase_z": [
--14.6,
-12.0
-]
+ "Spine1_x": [
+  -10,
+  25
+ ],
+ "Spine1_y": [
+  -17.6,
+  13.0
+ ],
+ "Spine1_z": [
+  -9.3,
+  10.6
+ ],
+ "Spine2_x": [
+  -10,
+  15
+ ],
+ "Spine2_y": [
+  -9.1,
+  9.8
+ ],
+ "Spine2_z": [
+  -14.4,
+  10.7
+ ],
+ "Chest_x": [
+  -15,
+  30
+ ],
+ "Chest_y": [
+  -17.9,
+  21.6
+ ],
+ "Chest_z": [
+  -21.0,
+  16.2
+ ],
+ "Neck1_x": [
+  -25,
+  30
+ ],
+ "Neck1_y": [
+  -18,
+  18
+ ],
+ "Neck1_z": [
+  -25,
+  25
+ ],
+ "Neck2_x": [
+  -20,
+  10
+ ],
+ "Neck2_y": [
+  -10,
+  10
+ ],
+ "Neck2_z": [
+  -25,
+  25
+ ],
+ "Head_x": [
+  -20,
+  15
+ ],
+ "Head_y": [
+  -12,
+  12
+ ],
+ "Head_z": [
+  -25,
+  25
+ ],
+ "RightShoulder_x": [
+  -5.3,
+  33.3
+ ],
+ "RightShoulder_y": [
+  -36.5,
+  25.9
+ ],
+ "RightShoulder_z": [
+  -7.6,
+  33.9
+ ],
+ "RightArm_x": [
+  -145.2,
+  100.1
+ ],
+ "RightArm_y": [
+  -91.6,
+  24.8
+ ],
+ "RightArm_z": [
+  -100.6,
+  112.7
+ ],
+ "RightForeArm_x": [
+  -25.0,
+  15.7
+ ],
+ "RightForeArm_y": [
+  -8,
+  8
+ ],
+ "RightForeArm_z": [
+  -5,
+  150
+ ],
+ "RightHand_x": [
+  -74.1,
+  91.6
+ ],
+ "RightHand_y": [
+  -32.1,
+  87.4
+ ],
+ "RightHand_z": [
+  -40.2,
+  51.9
+ ],
+ "LeftShoulder_x": [
+  -8.6,
+  33.7
+ ],
+ "LeftShoulder_y": [
+  -24.4,
+  32.3
+ ],
+ "LeftShoulder_z": [
+  -30.7,
+  22.4
+ ],
+ "LeftArm_x": [
+  -84.4,
+  97.1
+ ],
+ "LeftArm_y": [
+  -33.8,
+  89.9
+ ],
+ "LeftArm_z": [
+  -127.1,
+  73.9
+ ],
+ "LeftForeArm_x": [
+  -41.6,
+  19.2
+ ],
+ "LeftForeArm_y": [
+  -8,
+  8
+ ],
+ "LeftForeArm_z": [
+  -150,
+  5
+ ],
+ "LeftHand_x": [
+  -55.4,
+  79.5
+ ],
+ "LeftHand_y": [
+  -85.2,
+  23.8
+ ],
+ "LeftHand_z": [
+  -38.8,
+  44.3
+ ],
+ "RightLeg_x": [
+  -130.6,
+  27.5
+ ],
+ "RightLeg_y": [
+  -38.1,
+  42.2
+ ],
+ "RightLeg_z": [
+  -61.4,
+  47.0
+ ],
+ "RightShin_x": [
+  -15.0,
+  169.5
+ ],
+ "RightShin_y": [
+  -6,
+  6
+ ],
+ "RightShin_z": [
+  -25,
+  25
+ ],
+ "RightFoot_x": [
+  -40,
+  50
+ ],
+ "RightFoot_y": [
+  -20,
+  20
+ ],
+ "RightFoot_z": [
+  -12,
+  12
+ ],
+ "RightToeBase_x": [
+  -48.1,
+  17.9
+ ],
+ "RightToeBase_y": [
+  -12.0,
+  13.5
+ ],
+ "RightToeBase_z": [
+  -12.0,
+  13.5
+ ],
+ "LeftLeg_x": [
+  -130.6,
+  26.3
+ ],
+ "LeftLeg_y": [
+  -57.2,
+  33.2
+ ],
+ "LeftLeg_z": [
+  -48.4,
+  48.7
+ ],
+ "LeftShin_x": [
+  -15.6,
+  166.3
+ ],
+ "LeftShin_y": [
+  -6,
+  6
+ ],
+ "LeftShin_z": [
+  -25,
+  25
+ ],
+ "LeftFoot_x": [
+  -40.0,
+  50
+ ],
+ "LeftFoot_y": [
+  -20,
+  20
+ ],
+ "LeftFoot_z": [
+  -12,
+  12
+ ],
+ "LeftToeBase_x": [
+  -54.4,
+  17.1
+ ],
+ "LeftToeBase_y": [
+  -13.7,
+  12.0
+ ],
+ "LeftToeBase_z": [
+  -14.6,
+  12.0
+ ]
 }

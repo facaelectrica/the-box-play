@@ -134,13 +134,44 @@ export class Pins {
       this.pin(n, tp, tq);
       if (lk) lk.pin = { p: tp, q: tq };
     }
-    // ---------- hands (on a wall while he braces). Off for now (version 11): placing the palm with the weld dragged his
-    // whole body to the wall (feet sliding 35 cm/s while bracing) and the palm still ended 30+ deg off flat: the arm's
-    // own joints have to bring the palm flat first. Feet only until then.
+    // ---------- hands on the floor while he gets up (user 21:16: "they use their arms as levers to get up ... this
+    // guy is just waving them around"): where the recording has that hand on the floor (or puts it there within 0.3 s)
+    // and his real hand is down there (wrist within 7 cm of touching, palm within 35 deg of facing the floor), it is
+    // pinned flat where it is; his body then pushes up over it. Let go when the recording lifts the hand.
     if (this.handsOff) return;
     if (this.handOff) for (const s in this.handOff) { this.handOff[s] -= dt; }
+    const gettingUp = K.state === 'getup' && into > 0.65 && K.anim && K.anim.clip;
+    for (const s of SIDES) {
+      const n = s + 'Hand', b = this.id[n], P = this.on[n];
+      if (P && !P.ground) continue;
+      const k = s === 'Left' ? 2 : 3, rec = gettingUp && (K.anim.clip.contact(K.anim.x, k) > 0.5 || K.anim.clip.contact(K.anim.x + 9, k) > 0.5);
+      if (P) {
+        P.unwant = rec ? 0 : (P.unwant || 0) + dt;
+        if (!gettingUp || P.unwant > 0.1) { this.release(n, 'hand lifts'); continue; }
+        P.t += dt;
+        if (P.to && P.k < 1) { P.k = Math.min(1, P.k + dt / 0.12); const u = P.k * P.k * (3 - 2 * P.k);
+          P.p = [0, 1, 2].map(i => P.from.p[i] + (P.to.p[i] - P.from.p[i]) * u); P.q = qslerp(P.from.q, P.to.q, u); this.setPose(n, P.p, P.q); continue; }
+        const f = this.force(n), fo = dot(f, G.up), ft = Math.hypot(...[0, 1, 2].map(i => f[i] - fo * G.up[i]));
+        P.pull = fo < -30 ? P.pull + dt : 0;
+        P.slip = ft > 0.8 * Math.max(0, fo) + 25 ? P.slip + dt : 0;
+        const why = P.pull > 0.15 ? 'pull' : P.slip > 0.15 ? 'slip' : null;
+        if (why) this.release(n, 'floor hand ' + why);
+        continue;
+      }
+      if (!rec || this.cool[n] > 0) continue;
+      const p = this.pos(b), gap = dot([p[0] - G.o[0], p[1] - G.o[1], p[2] - G.o[2]], G.up);
+      if (gap > PALM + 0.07) continue;
+      const q0 = this.quat(b), pz = qrot(q0, [0, 0, -1]), down = G.up.map(v => -v);
+      if (dot(pz, down) < Math.cos(35 / 57.3)) continue;
+      const r = qbetween(pz, down), tq = r ? qnorm(qmul(r, q0)) : q0, tp = [0, 1, 2].map(i => p[i] - (gap - PALM) * G.up[i]);
+      this.pin(n, p.slice(), q0, { out: G.up.slice(), ground: true, from: { p: p.slice(), q: q0 }, to: { p: tp, q: tq }, k: 0 });
+      this.setHandContact(s, false);
+      this.stats.floorHands = (this.stats.floorHands || 0) + 1;
+    }
+    // ---------- hands on a wall while he braces
     for (const s of SIDES) {
       const n = s + 'Hand', b = this.id[n], H = K.hands && K.hands[s];
+      if (this.on[n] && this.on[n].ground) continue;
       const want = upright && H && (K.braceW || 0) > 0.4 && H.wall;
       const P = this.on[n];
       if (P) {

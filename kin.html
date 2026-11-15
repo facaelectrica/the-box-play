@@ -80,7 +80,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">Version 14</div><div id="brainver"></div>
+<div id="ver">Version 15</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -213,10 +213,10 @@ import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=14';
-import { Springs } from './sim/springs.js?v=14';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=14';
-import { addPins } from './sim/pins.js?v=14';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=15';
+import { Springs } from './sim/springs.js?v=15';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=15';
+import { addPins } from './sim/pins.js?v=15';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';

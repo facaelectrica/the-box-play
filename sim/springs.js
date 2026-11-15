@@ -116,6 +116,7 @@ export class Springs {
     } else {
       this.setGains(this.stiff, Math.sqrt(this.stiff));
       tg = W.act.map(a => this.G.d.qpos[a.qadr]);
+      if (K.state === 'getup' && this.armHook) this.armHook(tg);   // his own arms reach the floor (drive_brain getupArms)
       this.helpK = Math.min(1, this.helpK + dt / 0.6);
     }
     const ctl = () => tg; ctl.hz = 480;
