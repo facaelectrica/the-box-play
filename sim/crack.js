@@ -75,8 +75,8 @@ export class Debris {
   clear() { this.list.length = 0; this.events.length = 0; this.removed.length = 0; }
   add(p) {
     p.id = this.nid++; p.touch = new Set(); p.clinkT = 0; this.list.push(p);
-    // at most 80 small shards: the oldest goes (the view drops it too)
-    if (p.kind === 'shard') { let n = 0; for (const q of this.list) if (q.kind === 'shard') n++; if (n > 80) { const i = this.list.findIndex(q => q.kind === 'shard'); this.removed.push(this.list[i]); this.list.splice(i, 1); } }
+    // (user 16:30: nothing is ever erased until reset) every shard stays; resting ones sleep (no work), and the view
+    // draws them all in a few shared batches
     return p;
   }
   // his body's shapes as obstacles: [{a, b, r, body}] segments (sphere = a == b), skipping broken parts
@@ -96,22 +96,25 @@ export class Debris {
   }
   step(dt, skip) {
     if (!this.list.length) return;
+    dt = Math.min(dt, 1 / 30);   // a slow frame: the pieces go a bit slower instead of tiny shards taking huge steps and flying apart
     const W = this.W, g = W.m.opt.gravity, planes = W.faces().map(f => ({ n: f.n, p: f.p, name: f.name }));
-    const obs = this.obstacles(skip), n = Math.min(6, Math.max(1, Math.ceil(dt / (1 / 200)))), h = dt / n;
+    const obs = this.obstacles(skip), n = Math.min(6, Math.max(1, Math.ceil(dt / (1 / 200))));
     // his body's box (pieces far from it skip the body checks)
     const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
     for (const o of obs) for (const q of [o.a, o.b]) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], q[k] - o.r); hi[k] = Math.max(hi[k], q[k] + o.r); }
     this.box = { lo, hi };
     // (user 11:04: no freezes) pieces lying still sleep: no work until the phone turns or his body comes near
-    const gp = this.gPrev, gl = Math.hypot(g[0], g[1], g[2]) || 1, turned = !gp || (g[0] * gp[0] + g[1] * gp[1] + g[2] * gp[2]) / (gl * (Math.hypot(gp[0], gp[1], gp[2]) || 1)) < 0.99996;
-    if (turned) this.gPrev = [g[0], g[1], g[2]];
+    // a piece asleep wakes when gravity has turned more than ~4 deg since it fell asleep (a hand holding the phone moves it
+    // a little all the time: waking everything at every tiny change kept hundreds of resting pieces busy)
+    const gl = Math.hypot(g[0], g[1], g[2]) || 1, gd = [g[0] / gl, g[1] / gl, g[2] / gl];
     for (const P of this.list) if (P.sleep) {
-      if (turned) { P.sleep = false; P.stillT = 0; continue; }
-      for (const o of obs) { const ab = sub(o.b, o.a), L2 = dot(ab, ab), u = L2 > 1e-12 ? Math.max(0, Math.min(1, dot(sub(P.x, o.a), ab) / L2)) : 0; if (len(sub(P.x, add(o.a, ab, u))) < P.bound + o.r + 0.05) { P.sleep = false; P.stillT = 0; break; } }
+      const sg = P.sleepG; if (!sg || gd[0] * sg[0] + gd[1] * sg[1] + gd[2] * sg[2] < 0.9976) { P.sleep = false; P.stillT = 0; continue; }
+      const x = P.x, mg = P.bound + 0.01; if (x[0] < lo[0] - mg || x[0] > hi[0] + mg || x[1] < lo[1] - mg || x[1] > hi[1] + mg || x[2] < lo[2] - mg || x[2] > hi[2] + mg) continue;   // nowhere near him
+      for (const o of obs) { const ab = sub(o.b, o.a), L2 = dot(ab, ab), u = L2 > 1e-12 ? Math.max(0, Math.min(1, dot(sub(P.x, o.a), ab) / L2)) : 0; if (len(sub(P.x, add(o.a, ab, u))) < P.bound + o.r + 0.004) { P.sleep = false; P.stillT = 0; break; } }
     }
-    const awake = this.list.filter(P => !P.sleep);
+    const awake = this.list.filter(P => !P.sleep), big = this.list.filter(P => P.kind !== 'shard');
     if (!awake.length) return;
-    for (let it = 0; it < n; it++) {
+    const run = (awake, ns) => { if (!awake.length) return; const h = dt / ns; for (let it = 0; it < ns; it++) {
       for (const P of awake) {
         P.v = add(P.v, g, h);
         P.R = q2m(P.q); P.Iinv = mmul(mmul(P.R, P.IinvB), mT(P.R));
@@ -119,20 +122,24 @@ export class Debris {
       }
       for (const P of awake) this.collide(P, planes, obs, h);
       // pieces against each other (bounding spheres first; little shards don't bother each other)
-      for (const A of awake) for (const B of this.list) { if (A === B || (A.kind === 'shard' && B.kind === 'shard') || (!B.sleep && B.id < A.id)) continue; this.pair(A, B); }
+      // (only the big pieces are walked: hundreds of shards would make this shards x shards per step)
+      for (const A of awake) for (const B of big) { if (A === B || (!B.sleep && B.id < A.id && A.kind !== 'shard')) continue; this.pair(A, B); }
       for (const P of awake) {
         // resting ON something that holds it up against gravity (floor, a slope its friction can hold) and nearly still:
         // it stays put (no creeping from the contact pushes). Against a wall or a steep slope it keeps sliding/falling
         // (user 10:34: "they seem to end up glued on the surface")
-        if (P.held && len(P.v) < 0.04 && len(P.w) < 0.4) { P.v = [0, 0, 0]; P.w = [0, 0, 0]; P.stillT = (P.stillT || 0) + h; if (P.stillT > 0.4) P.sleep = true; continue; }
-        P.stillT = 0;
+        if (P.held && (P.kind === 'shard' ? len(P.v) < 0.15 : len(P.v) < 0.04 && len(P.w) < 0.4)) {   // (a shard is a flat splinter, not the ball it is simulated as: it doesn't roll down a gentle slope)
+        P.v = [0, 0, 0]; P.w = [0, 0, 0]; P.stillT = (P.stillT || 0) + h; if (P.stillT > 0.4) { P.sleep = true; P.sleepG = gd; } continue; }
+        if (len(P.v) > 0.3) P.stillT = 0;   // (only a real move restarts the count: a piece wedged in a corner jiggles a little)
         const damp = P.on ? 1 - Math.min(0.5, 6 * h) : 1 - 0.05 * h;
         P.v = P.v.map(v => v * (P.on ? 1 - Math.min(0.3, 0.8 * h) : 1)); P.w = P.w.map(v => v * damp);
         P.x = add(P.x, P.v, h);
         const wq = [0, P.w[0], P.w[1], P.w[2]], dq = qmul(wq, P.q);
         P.q = qnorm(P.q.map((v, k) => v + 0.5 * h * dq[k]));
       }
-    }
+    } };
+    // the big pieces with full substeps; the little shards with at most 2 (hundreds of them stay cheap)
+    run(awake.filter(P => P.kind !== 'shard'), n); run(awake.filter(P => P.kind === 'shard'), Math.min(n, 2));
     for (const P of this.list) P.clinkT = Math.max(0, P.clinkT - dt);
   }
   impulse(P, rp, nrm, vrel, e, mu) {
@@ -167,6 +174,7 @@ export class Debris {
         const dv = sub(c, q), dl = len(dv), pen = s.r + o.r - dl; if (pen <= 0 || dl < 1e-6) continue;
         const nrm = dv.map(v => v / dl), rp = add(sub(c, P.x), nrm, -s.r), vp = add(P.v, cross(P.w, rp));
         this.impulse(P, rp, nrm, vp, 0.1, 0.4); P.x = add(P.x, nrm, pen * 0.5); P.on = true;
+        if (P.kind === 'shard' && dot(nrm, up) > 0.88) P.held = true;   // a splinter lying on top of him can rest too (it wakes when he moves into it)
       }
     }
   }
@@ -500,6 +508,7 @@ export class CrackView {
     this.crackMat.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n\tmvPosition.xyz += normalize( - mvPosition.xyz ) * 0.03;\n\tgl_Position = projectionMatrix * mvPosition;'); };
     this.crackMat.customProgramCacheKey = () => 'crackGroove';
     this.splMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide });   // splinters at a hole's rim
+    this.shardMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.75 });   // the fragments (instanced)
     this.marks = [];
   }
   // heavy drawing work waits for the next frames (a few ms per frame), so a hit never stalls a frame
@@ -510,7 +519,7 @@ export class CrackView {
   prewarm(at) {
     const T = this.T, g = new T.Group(); g.position.set(...at); g.scale.setScalar(0.001);
     const tri = new T.BufferGeometry(); tri.setAttribute('position', new T.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3)); tri.setAttribute('normal', new T.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3)); tri.setAttribute('color', new T.Float32BufferAttribute([1, 1, 1, 1, 1, 1, 1, 1, 1], 3));
-    g.add(new T.Mesh(tri, this.crackMask)); g.add(new T.Mesh(tri, this.crackMat)); g.add(new T.Mesh(tri, this.splMat));
+    g.add(new T.Mesh(tri, this.crackMask)); g.add(new T.Mesh(tri, this.crackMat)); g.add(new T.Mesh(tri, this.splMat)); { const im = new T.InstancedMesh(tri, this.shardMat, 1); im.castShadow = true; g.add(im); }
     for (const m of [this.inner, this.shell]) { const me = new T.Mesh(new T.IcosahedronGeometry(1, 0), m); me.castShadow = true; me.receiveShadow = true; g.add(me); }
     this.markMats = [0, 1, 2, 3].map(k => this.markMat(0.4 + 0.2 * k, 1000 + k * 77));
     for (const mt of this.markMats) { const mm = new T.Mesh(new T.PlaneGeometry(1, 1), mt); mm.receiveShadow = true; g.add(mm); }   // (also sends their textures to the graphics chip now)
@@ -518,12 +527,13 @@ export class CrackView {
     this.root.add(g); this.warm = { g, n: 0 };
   }
   reset(all = true) {
-    if (all) { for (const m of this.marks) this.dropMark(m); this.marks.length = 0; }
+    if (all) { if (this.walls) for (const W of this.walls.values()) { this.root.remove(W.grp); for (const B of [W.mask, W.groove, W.spl]) if (B.mesh) B.mesh.geometry.dispose(); } this.walls = new Map(); this.marks.length = 0; }
     for (const m of this.crackMeshes) { if (m.parent) m.parent.remove(m); m.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     this.crackMeshes.length = 0;
     this.nets = new Map();
-    for (const [, o] of this.debris) { this.root.remove(o); const i = this.movers.indexOf(o); if (i >= 0) this.movers.splice(i, 1); }
+    for (const [, o] of this.debris) if (!o.shard) { this.root.remove(o); const i = this.movers.indexOf(o); if (i >= 0) this.movers.splice(i, 1); }
     this.debris.clear();
+    if (this.shards) { for (const B of this.shards.batch) if (B.mesh) { this.root.remove(B.mesh); const i = this.movers.indexOf(B.mesh); if (i >= 0) this.movers.splice(i, 1); B.mesh.dispose(); } this.shards = null; }
     for (const g of this.groups()) if (g) g.visible = true;
     if (all && this.jobs) this.jobs = this.jobs.filter(f => f.keep);   // (the parts' surface lists stay queued)
   }
@@ -818,25 +828,55 @@ export class CrackView {
     const off = new T.Vector3(...w.off).addScaledVector(rt, cx - hx).addScaledVector(up, cy - hy);
     return { size, off: [off.x, off.y, off.z], pts, cx, cy };
   }
+  // (user 16:30: "All marks have to stay on the walls until reset. You cannot erase any of them.") every hole stays.
+  // So they cost almost nothing to keep: all the holes on one wall share three growing meshes (the holes' mark, their
+  // insides + cracks, the splinters) - 3 draw calls per wall however many holes; a new hole is copied into the end of
+  // the buffers (only that part is sent to the graphics chip).
   wallMark(w, s, seed, fp = null) {
     if (!w || w.name === 'glass') return;
-    const T = this.T, V = this.markMats || (this.markMats = [0, 1, 2, 3].map(k => this.markMat(0.4 + 0.2 * k, 1000 + k * 77)));
-    const R = rng(seed), mat = fp ? this.markMat(s, seed, fp) : V[Math.floor(R() * V.length)], size = fp ? fp.size : 0.2 + 0.1 * s;
-    const dec = new T.Mesh(this.markGeo || (this.markGeo = new T.PlaneGeometry(1, 1)), mat);
-    dec.renderOrder = 1; dec.receiveShadow = true;
-    const mesh = new T.Group(); mesh.add(dec);
-    if (fp) { dec.scale.set(size, size, 1); mesh.userData.own = true; w = { ...w, off: fp.off }; mesh.add(this.holeMesh(fp, s, seed)); }
-    else dec.scale.set(size * (R() < 0.5 ? -1 : 1), size * (R() < 0.5 ? -1 : 1), 1);   // mirrored either way: the grain stays along
-    // the decal's up = the wood's grain: up the walls; along the floor/ceiling boards (x)
+    const T = this.T;
+    if (!fp) {   // a part with no drawn surface of its own (inside the trunk): a small round print
+      const pts = []; for (let i = 0; i < 24; i++) { const a = i / 24 * 2 * Math.PI; for (const r of [0.004, 0.008, 0.012]) pts.push(Math.cos(a) * r, Math.sin(a) * r, 1 - r / 0.02); }
+      fp = { pts, cx: 0, cy: 0, size: 0.06, off: w.off };
+    }
     const n = new T.Vector3(...w.n), up = Math.abs(n.z) > 0.7 ? new T.Vector3(1, 0, 0) : new T.Vector3(0, 0, 1), rt = up.clone().cross(n).normalize(); up.copy(n).cross(rt).normalize();
-    mesh.quaternion.setFromRotationMatrix(new T.Matrix4().makeBasis(rt, up, n));
-    mesh.userData.mark = { name: w.name, off: w.off };
-    this.root.add(mesh); this.marks.push(mesh);
-    while (this.marks.length > 30) this.dropMark(this.marks.shift());   // the oldest marks go: the walls never fill up
+    const M = new T.Matrix4().makeBasis(rt, up, n).setPosition(new T.Vector3(...fp.off).addScaledVector(n, 0.0006));
+    const W = this.wallSet(w.name), g = this.holeMesh(fp, s, seed);
+    g.traverse(o => {
+      if (!o.isMesh) return;
+      const geo = o.geometry; geo.applyMatrix4(M);
+      const B = o.material === this.crackMask ? W.mask : o.material === this.splMat ? W.spl : W.groove;
+      B.add(geo.attributes.position.array, geo.attributes.normal ? geo.attributes.normal.array : null, geo.attributes.color ? geo.attributes.color.array : null);
+      geo.dispose();
+    });
+    this.marks.push({ name: w.name });
   }
-  dropMark(m) {
-    this.root.remove(m);
-    if (m.userData.own) m.traverse(o => { if (!o.isMesh) return; if (o.geometry !== this.markGeo) o.geometry.dispose(); const mt = o.material; if (mt && mt.map && !(this.markMats || []).includes(mt)) { mt.map.dispose(); mt.normalMap.dispose(); mt.dispose(); } });
+  // one wall's holes: a group that follows the wall, with the three shared meshes
+  wallSet(name) {
+    const T = this.T, Ws = this.walls || (this.walls = new Map()); let W = Ws.get(name); if (W) return W;
+    const grp = new T.Group(); grp.userData.wall = name; this.root.add(grp);
+    const mk = (mat, ro, normals, colors) => {
+      const B = { n: 0, cap: 0, mesh: null, normals, colors };
+      B.grow = need => {
+        let cap = Math.max(3072, B.cap); while (cap < need) cap *= 2; if (cap === B.cap) return;
+        const geo = new T.BufferGeometry(), old = B.mesh ? B.mesh.geometry : null;
+        const at = (k, w) => { const A = new Float32Array(cap * w); if (old) A.set(old.attributes[k].array.subarray(0, B.n * w)); const ba = new T.BufferAttribute(A, w); ba.setUsage(T.DynamicDrawUsage); geo.setAttribute(k, ba); };
+        at('position', 3); if (normals) at('normal', 3); if (colors) at('color', 3);
+        geo.setDrawRange(0, B.n);
+        if (B.mesh) { B.mesh.geometry = geo; old.dispose(); }
+        else { B.mesh = new T.Mesh(geo, mat); B.mesh.renderOrder = ro; B.mesh.frustumCulled = false; B.mesh.receiveShadow = mat !== this.crackMask; B.mesh.castShadow = mat === this.splMat; grp.add(B.mesh); }
+        B.cap = cap;
+      };
+      B.add = (pos, nor, col) => {
+        const k = pos.length / 3; B.grow(B.n + k); const geo = B.mesh.geometry;
+        const put = (name, src, w) => { const at = geo.attributes[name]; if (!at) return; at.array.set(src || new Float32Array(k * w).fill(1), B.n * w); at.addUpdateRange(B.n * w, k * w); at.needsUpdate = true; };
+        put('position', pos, 3); put('normal', nor, 3); put('color', col, 3);
+        B.n += k; geo.setDrawRange(0, B.n);
+      };
+      return B;
+    };
+    W = { grp, mask: mk(this.crackMask, 5, false, false), groove: mk(this.crackMat, 6, true, true), spl: mk(this.splMat, 4, true, true) };
+    Ws.set(name, W); return W;
   }
   // (user 15:45, photo of a hole knocked into plywood) the hole in the wood, in the mark's frame (x along the wall, y =
   // the grain, z out of the wall): its outline = the print's outline; inside, the plies torn away layer by layer, each
@@ -976,26 +1016,51 @@ export class CrackView {
       }
       o.add(this.cap(P));   // the broken face: raw wood where it came off
     } else {
-      // (user 15:41: "a bunch of triangles all bunched together") a fragment = one solid splinter: a box stretched along
-      // its grain, each corner moved a little (the same corner moves the same way on all its faces, so it stays closed),
-      // flat-shaded; a coat fragment keeps the white coat on one big face, wood on the rest
-      const R = rng(P.seed), sx = P.size * (1.3 + 1.1 * R()), sy = P.size * (0.55 + 0.45 * R()), sz = P.size * (0.25 + 0.3 * R());
-      let geo = new T.BoxGeometry(1, 1, 1); const pa = geo.attributes.position, off = new Map();
-      for (let i = 0; i < pa.count; i++) {
-        const x = pa.getX(i), y = pa.getY(i), z = pa.getZ(i), k = `${x > 0}${y > 0}${z > 0}`;
-        if (!off.has(k)) off.set(k, [(R() - 0.5) * 0.5, (R() - 0.5) * 0.35, (R() - 0.5) * 0.3]);
-        const d = off.get(k); pa.setXYZ(i, (x + d[0]) * sx, (y + d[1]) * sy, (z + d[2]) * sz);
-      }
-      geo = geo.toNonIndexed(); geo.computeVertexNormals();
-      const mats = [0, 1, 2, 3, 4, 5].map(i => (!P.wood && i === 4) ? this.shell : this.inner);
-      const me = new T.Mesh(geo, mats); me.castShadow = true; me.receiveShadow = true; o.add(me);
+      // (user 15:41: "a bunch of triangles all bunched together") a fragment = one solid splinter (see shardSet); every
+      // fragment stays until reset (user 16:30), so they're drawn as instances: 16 batches for all of them
+      const R = rng(P.seed), sc = [P.size * (1.3 + 1.1 * R()), P.size * (0.55 + 0.45 * R()), P.size * (0.25 + 0.3 * R())];
+      const sh = this.shardSet(), B = sh.batch[(P.seed >>> 0) % 8 + (P.wood ? 0 : 8)], idx = B.take();
+      const prox = { shard: true, B, idx, sc, last: null };
+      this.debris.set(P, prox); return prox;
     }
     o.userData.P = P; this.root.add(o); this.movers.push(o); this.debris.set(P, o);
     return o;
   }
   // the drawn copy of body b on a broken-off piece
   chunkPart(P, b) { const o = this.debris.get(P); return o ? o.children.find(c => c.userData.body === b) || null : null; }
-  removeDebris(P) { const o = this.debris.get(P); if (!o) return; this.root.remove(o); const i = this.movers.indexOf(o); if (i >= 0) this.movers.splice(i, 1); this.debris.delete(P); }
+  removeDebris(P) { const o = this.debris.get(P); if (!o) return; this.dropObj(o); this.debris.delete(P); }
+  dropObj(o) {
+    if (o.shard) { o.B.free(o.idx); return; }
+    this.root.remove(o); const i = this.movers.indexOf(o); if (i >= 0) this.movers.splice(i, 1);
+  }
+  // the fragments' batches: 8 splinter shapes x (raw wood / with the white coat on one face), each an InstancedMesh
+  // that grows as needed; a fragment = one slot (its own size, place and turn); a freed slot is scaled to nothing
+  shardSet() {
+    if (this.shards) return this.shards;
+    const T = this.T, S = { batch: [] }, SHELLC = new T.Color(0xebe5da), WOODC = new T.Color(0xc98a4a), ZERO = new T.Matrix4().makeScale(0, 0, 0);
+    for (let v = 0; v < 2; v++) for (let k = 0; k < 8; k++) {
+      const R = rng(4242 + k * 31);
+      let geo = new T.BoxGeometry(1, 1, 1); const pa = geo.attributes.position, off = new Map();
+      for (let i = 0; i < pa.count; i++) {
+        const x = pa.getX(i), y = pa.getY(i), z = pa.getZ(i), key = `${x > 0}${y > 0}${z > 0}`;
+        if (!off.has(key)) off.set(key, [(R() - 0.5) * 0.5, (R() - 0.5) * 0.35, (R() - 0.5) * 0.3]);
+        const d = off.get(key); pa.setXYZ(i, x + d[0], y + d[1], z + d[2]);
+      }
+      geo = geo.toNonIndexed(); geo.computeVertexNormals(); geo.clearGroups();
+      const col = []; for (let i = 0; i < geo.attributes.position.count; i++) { const c = (v === 1 && i >= 24 && i < 30) ? SHELLC : WOODC; col.push(c.r, c.g, c.b); }
+      geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
+      const B = { geo, mesh: null, cap: 0, used: 0, freeList: [] };
+      B.make = cap => {
+        const m = new T.InstancedMesh(geo, this.shardMat, cap); m.count = 0; m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
+        if (B.mesh) { m.instanceMatrix.array.set(B.mesh.instanceMatrix.array); m.count = B.mesh.count; this.root.remove(B.mesh); const i = this.movers.indexOf(B.mesh); if (i >= 0) this.movers.splice(i, 1); B.mesh.dispose(); }
+        B.mesh = m; B.cap = cap; this.root.add(m); this.movers.push(m);
+      };
+      B.free = i => { B.mesh.setMatrixAt(i, ZERO); B.mesh.instanceMatrix.needsUpdate = true; B.freeList.push(i); };
+      B.take = () => { if (B.freeList.length) return B.freeList.pop(); if (!B.mesh || B.used >= B.cap) B.make(Math.max(32, B.cap * 2)); const i = B.used++; B.mesh.count = B.used; return i; };
+      S.batch.push(B);
+    }
+    return (this.shards = S);
+  }
   // a piece split in two (or more): its drawn parts move to the new pieces, each with a raw-wood face where it broke
   split(e) {
     const T = this.T, o = this.debris.get(e.P); if (!o) { for (const Q of e.parts) this.addDebris(Q); return; }
@@ -1044,13 +1109,19 @@ export class CrackView {
     const gs = this.groups();
     if (this.warm && ++this.warm.n > 3) { this.root.remove(this.warm.g); this.warm = null; }
     this.runJobs();
-    if (this.marks.length) { const F = {}; for (const f of C.W.faces()) F[f.name] = f; for (const m of this.marks) { const f = F[m.userData.mark.name]; m.visible = !!f; if (f) m.position.set(f.p[0] + m.userData.mark.off[0] + f.n[0] * 0.0006, f.p[1] + m.userData.mark.off[1] + f.n[1] * 0.0006, f.p[2] + m.userData.mark.off[2] + f.n[2] * 0.0006); } }
-    for (const P of C.debris.removed.splice(0)) { const o = this.debris.get(P); if (o) { this.root.remove(o); const i = this.movers.indexOf(o); if (i >= 0) this.movers.splice(i, 1); this.debris.delete(P); } }
+    if (this.walls && this.walls.size) { const F = {}; for (const f of C.W.faces()) F[f.name] = f; for (const W of this.walls.values()) { const f = F[W.grp.userData.wall]; W.grp.visible = !!f; if (f) W.grp.position.set(f.p[0], f.p[1], f.p[2]); } }
+    for (const P of C.debris.removed.splice(0)) this.removeDebris(P);
     for (const b of C.broken) if (gs[b]) gs[b].visible = false;
     for (const [P, o] of this.debris) {
       if (P.kind === 'chunk') {
         o.position.set(P.x[0], P.x[1], P.x[2]); o.quaternion.set(P.q[1], P.q[2], P.q[3], P.q[0]);
-      } else { o.position.set(P.x[0], P.x[1], P.x[2]); o.quaternion.set(P.q[1], P.q[2], P.q[3], P.q[0]); }
+      } else if (o.shard) {   // only fragments that moved are written (resting ones cost nothing)
+        const L = o.last; if (L && L[0] === P.x[0] && L[1] === P.x[1] && L[2] === P.x[2] && L[3] === P.q[0] && L[4] === P.q[1] && L[5] === P.q[2]) continue;
+        o.last = [P.x[0], P.x[1], P.x[2], P.q[0], P.q[1], P.q[2]];
+        const m = this._m || (this._m = new this.T.Matrix4()), q = this._q || (this._q = new this.T.Quaternion()), v = this._v || (this._v = new this.T.Vector3()), sv = this._s || (this._s = new this.T.Vector3());
+        m.compose(v.set(P.x[0], P.x[1], P.x[2]), q.set(P.q[1], P.q[2], P.q[3], P.q[0]), sv.set(o.sc[0], o.sc[1], o.sc[2]));
+        o.B.mesh.setMatrixAt(o.idx, m); o.B.mesh.instanceMatrix.needsUpdate = true;
+      }
     }
   }
 }

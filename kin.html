@@ -111,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V56</div><div id="brainver"></div>
+<div id="ver">V57</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -293,18 +293,18 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import loadMujoco from '@mujoco/mujoco';
-import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=56';
+import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=57';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=56';
-import { Springs, humanCap } from './sim/springs.js?v=56';
-import { Balance } from './sim/balance.js?v=56';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=56';
-import { AnatGuard } from './sim/anat.js?v=56';
-import { PhysBrain } from './sim/physctl.js?v=56';
-import { addPins } from './sim/pins.js?v=56';
-import { rigHand, poseHand } from './sim/fingers.js?v=56';
-import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=56';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=57';
+import { Springs, humanCap } from './sim/springs.js?v=57';
+import { Balance } from './sim/balance.js?v=57';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=57';
+import { AnatGuard } from './sim/anat.js?v=57';
+import { PhysBrain } from './sim/physctl.js?v=57';
+import { addPins } from './sim/pins.js?v=57';
+import { rigHand, poseHand } from './sim/fingers.js?v=57';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=57';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -634,7 +634,7 @@ let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
 try { const bb = (window.BOXBRAIN || {}).id; if (bb) document.getElementById('ver').textContent += bb === 'nvidia' ? ' · NVIDIA brain' : bb === 'phys' ? ' · physics' : bb === 'b08' ? ' · brain 08' : ' · no brain'; } catch (_) {}
-const KINV = 56;
+const KINV = 57;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(LOAD.url(u), 'Recordings'));   // (V40) address = name + fingerprint (BOXLOAD)
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
