@@ -350,6 +350,12 @@ export class Kin {
       else this.tilted = tilt > this.fallTilt ? this.tilted + dt : 0;
       if (this.tilted > 0.25) return this.startFall('floor too steep (' + Math.round(tilt * 57.3) + ' deg)');
     }
+    // (Version 26) get-ups played as recorded (drive_brain getupBy 'kin') don't feel the slope: the floor tilting past
+    // what he can stand on during a get-up puts him down again (he falls, the physics takes him)
+    if (this.state === 'getup') {
+      this.tiltedG = tilt > this.fallTilt * 0.85 ? (this.tiltedG || 0) + dt : 0;
+      if (this.tiltedG > 0.25) { this.tiltedG = 0; return this.startFall('floor too steep during the get-up (' + Math.round(tilt * 57.3) + ' deg)'); }
+    }
     if (this.state === 'stand') this.updateStand(dt, gl, gn);
     else if (this.state === 'react') this.updateReact(dt, gl, gn);
     else if (this.state === 'getup') this.updateGetup(dt);

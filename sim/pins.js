@@ -115,9 +115,10 @@ export class Pins {
         const pn = this.pos(b), hNow = dot([pn[0] - P.p[0], pn[1] - P.p[1], pn[2] - P.p[2]], G.up);
         if (hNow > 0.015) { this.release(n, 'foot lift'); if (lk) lk.pin = null; continue; }
         this.anchor(n, [0, 1, 2].map(i => P.p[i] + hNow * G.up[i]));
-        P.pull = fn + C < -20 ? P.pull + dt : 0;             // floor + pin holding the foot DOWN (a sole can't)
-        P.slip = ft > 0.8 * N + 25 ? P.slip + dt : 0;         // more sideways grip than the floor has
-        P.roll = th > 0.11 * N + 15 ? P.roll + dt : 0;        // his weight past the sole's edge: it would roll
+        P.pull = fn + C < -(globalThis.PIN_PULL ?? 12) ? P.pull + dt : 0;             // floor + pin holding the foot DOWN (a sole can't)
+        P.slip = ft > 0.8 * N + (globalThis.PIN_SLIP ?? 15) ? P.slip + dt : 0;         // more sideways grip than the floor has
+        P.roll = th > 0.11 * N + (globalThis.PIN_ROLL ?? 8) ? P.roll + dt : 0;        // his weight past the sole's edge: it would roll
+        // (Version 26; balance measure: the pins held him with up to 15 N m / 25 N / 20 N more than a sole on wood can) halved
         const why = P.pull > 0.08 ? 'pull' : P.slip > 0.08 ? 'slip' : P.roll > 0.12 ? 'roll' : null;
         if (why) { this.release(n, 'foot ' + why); if (lk) lk.pin = null; continue; }
         if (lk) lk.pin = { p: P.floor || P.p, q: P.q };   // the recording's planted foot = where his foot is pinned, on the floor
@@ -128,7 +129,7 @@ export class Pins {
       const p = this.pos(b), h = dot([p[0] - G.o[0], p[1] - G.o[1], p[2] - G.o[2]], G.up) - SOLE;
       const vel = this.vel(b);
       // (user 21:40: "the feet are always a bit too high") only once the sole is really down (within 1 cm; was 2.5 cm)
-      if (h > 0.025 || Math.hypot(...vel) > 0.35) continue;
+      if (h > (globalThis.PIN_H ?? 0.025) || Math.hypot(...vel) > 0.35) continue;
       // flat: his foot turned the shortest way so its rest "up" (local z) is the ground's up; on the ground
       const q = this.quat(b), uz = qrot(q, [0, 0, 1]), r = qbetween(uz, G.up); if (!r) continue;
       const tq = qnorm(qmul(r, q)), tp = p.slice();   // where it is (the floor itself keeps it out of the wood)

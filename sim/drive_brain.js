@@ -10,8 +10,8 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=25';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=25';
+import { Pins } from './pins.js?v=26';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=26';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function hullPts(P) {
   const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
@@ -655,7 +655,20 @@ export class BrainDrive {
       W.mj.mj_kinematics(m, d);
       // his legs: feet planted flat while he sits, toes tucked under while he kneels (getupLegs; user 23:03, 23:22)
       if (!this.noKinLegs) { const tg = W.act.map(ac => d.qpos[ac.qadr]); this.getupLegs(tg); W.act.forEach((ac, j) => { if (/^(Left|Right)(Leg|Shin|Foot|ToeBase)_/.test(ac.name)) d.qpos[ac.qadr] = tg[j]; }); }
-      d.qvel.fill(0); W.mj.mj_forward(m, d); d.time += dt;
+      d.qvel.fill(0); W.mj.mj_forward(m, d);
+      // the blend from his fallen pose and his planted legs can still put a limb into a wall or the floor: his whole
+      // body moves out of it (the recording itself is kept out by kin.keepLimbsIn)
+      for (let it = 0; it < 3; it++) {
+        const push = [0, 0, 0]; let any = false;
+        for (let i = 0; i < d.ncon; i++) {
+          const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
+          if (dist > -0.005) continue; const f1 = W.isFig[m.geom_bodyid[g1]], f2 = W.isFig[m.geom_bodyid[g2]]; if (f1 === f2) continue;
+          const dir = f2 ? n : n.map(v => -v); for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
+        }
+        if (!any) break;
+        for (let k = 0; k < 3; k++) d.qpos[k] += push[k]; W.mj.mj_forward(m, d);
+      }
+      d.time += dt;
       if (this.pins) this.pins.reset();
       K.getupLag = 0; K.getupHandWait = false; K.getupLeanWait = false;
       this.stats.err = 0; this.stats.help = 0; return;
