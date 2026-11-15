@@ -111,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V38</div><div id="brainver"></div>
+<div id="ver">V39</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -247,16 +247,16 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import loadMujoco from '@mujoco/mujoco';
-import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=38';
+import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=39';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=38';
-import { Springs, humanCap } from './sim/springs.js?v=38';
-import { Balance } from './sim/balance.js?v=38';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=38';
-import { addPins } from './sim/pins.js?v=38';
-import { rigHand, poseHand } from './sim/fingers.js?v=38';
-import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=38';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=39';
+import { Springs, humanCap } from './sim/springs.js?v=39';
+import { Balance } from './sim/balance.js?v=39';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=39';
+import { addPins } from './sim/pins.js?v=39';
+import { rigHand, poseHand } from './sim/fingers.js?v=39';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=39';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -277,7 +277,7 @@ const OPTS = [
   { k: 'view', label: 'View depth', min: 0, max: 1.5, step: 0.01, def: 0.3, fmt: pct, help: 'How much the view shifts as you turn the phone.' },
   { k: 'viewReturn', label: 'View re-centre', min: 0.5, max: 12, step: 0.1, def: 3, fmt: v => v.toFixed(1) + ' s', help: 'How fast the view settles back after you turn.' },
   { grp: 'Look and sound' },
-  { k: 'hiQ', label: 'High detail', tog: true, def: false, help: 'Sharper picture and shadows. Slower on phones.' },
+  { k: 'hiQ', label: 'High detail', tog: true, def: false, help: 'Sharper picture and shadows, and every frame a 120 Hz screen can show (otherwise 60 there). Uses more battery.' },
   { k: 'sound', label: 'Sound', tog: true, def: true, help: 'Footsteps, scuffs, hands on the wood, bumps and slides.' },
 ];
 const SET = {};
@@ -529,7 +529,10 @@ function updateEnv() {
   const was = movers.map(m => m.visible);
   for (const m of movers) m.visible = false;
   scene.background = ROOM;   // what comes in through the glass: the room
-  cubeCam.update(renderer, scene);
+  // (V39) the key light's shadow map is the same for all six faces (it is drawn from the light, not the camera): drawn
+  // once for the first face, kept for the other five (was six times; same picture)
+  const sm = renderer.shadowMap, au = sm.autoUpdate; sm.autoUpdate = false; sm.needsUpdate = true;
+  try { cubeCam.update(renderer, scene); } finally { sm.autoUpdate = au; sm.needsUpdate = false; }
   scene.background = bgNow();
   // each one back as it was (v15.35: this used to switch them all on, so the skeleton, once built, came back frozen
   // over the figure whenever the bounce light was redrawn: pause, resize, app switch; user Nov 13 20:18)
@@ -582,7 +585,7 @@ const figP = loadFig(FIG);
 let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
-const KINV = 38;
+const KINV = 39;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(u + '?v=' + KINV, 'Recordings'));   // ?v: phones keep old copies
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -598,7 +601,7 @@ let control = null;
 let kin = null, springs = null;
 try { kin = new Kin(G, mj, await libP); kin.onWarn = m => logErr(m); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
-try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=38', 'Body')))); } catch (e) { console.warn('joint limits', e); }
+try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=39', 'Body')))); } catch (e) { console.warn('joint limits', e); }
 if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupCap: 0 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
 // round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
@@ -1524,7 +1527,9 @@ const hist = [];   // last 3 s of his body, 30 times a second (filled by the fra
 function recordHist() {
   if (look.on || !W) return;
   const t = W.d.time; if (hist.length && t - hist[hist.length - 1][0] < 1 / 30 - 1e-6) return;
-  hist.push([+t.toFixed(3), ...Array.from(W.d.qpos, v => +v.toFixed(4))]); if (hist.length > 90) hist.shift();
+  // (V39) kept as raw numbers (was ~2,200 number->text->number roundings a second); rounded when a snapshot is made
+  const q = W.d.qpos, h = new Float64Array(q.length + 1); h[0] = t; h.set(q, 1);
+  hist.push(h); if (hist.length > 90) hist.shift();
 }
 function makeSnap() {
   const r = a => Array.from(a, v => +(+v).toFixed(5)), d = look.snap || snapBody();
@@ -1537,7 +1542,7 @@ function makeSnap() {
     qpos: r(d.qpos), qvel: r(d.qvel), ghostQpos: G && G !== W ? r(G.d.qpos) : null,
     camera: { yaw: +look.yaw.toFixed(3), pitch: +look.pitch.toFixed(3), dist: +look.dist.toFixed(3), target: [look.tgt.x, look.tgt.y, look.tgt.z].map(v => +v.toFixed(3)), box: !!look.box },
     balance: bal && bal.last ? Object.fromEntries(Object.entries(bal.last).filter(([k, v]) => typeof v !== 'function').map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(4) : v])) : null,
-    hist, errors: ERRS.slice(), wasmMB: +(W.d.qpos.buffer.byteLength / 1048576).toFixed(1) };
+    hist: hist.map(h => Array.from(h, (v, i) => +v.toFixed(i ? 4 : 3))), errors: ERRS.slice(), wasmMB: +(W.d.qpos.buffer.byteLength / 1048576).toFixed(1) };
 }
 $('snap').onclick = async e => {
   e.stopPropagation();
@@ -1624,8 +1629,32 @@ function logErr(what, e) {
 const allFinite = a => { for (let i = 0; i < a.length; i++) if (!Number.isFinite(a[i])) return false; return true; };
 function bodyOK() { return allFinite(W.d.qpos) && allFinite(W.d.qvel) && (G === W || allFinite(G.d.qpos)); }
 let loopGen = 0, frameT0 = 0, frameBusy = false, failRun = 0;
+// ---- battery (V39; user Nov 15 12:25: "optimizations ... to help preserve phone battery, performance") ----
+// - paused (look mode) nothing moves unless you touch the screen: the picture is drawn only when the view changes or
+//   in the 0.7 s after a touch/button/turn of the phone, instead of 60-120 times a second
+// - phones with 90-144 Hz screens asked for a frame up to 144 times a second: the whole page (his drawing, shadows) ran
+//   twice for the same 60 frames people see in games; now at most ~1 frame per 10 ms (120 Hz -> 60, 90 Hz stays 90).
+//   Options > High detail lifts the cap (the screen's full rate). His physics runs the same number of steps a second
+//   either way (480 a second, each frame steps for the time since the last one).
+let drawnAt = -1e9, lookSig = '', wakeUntil = 0, lookDrawn = -1e9;
+const wake = () => { wakeUntil = performance.now() + 700; };
+for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'click', 'wheel', 'keydown', 'resize', 'orientationchange', 'visibilitychange'])
+  addEventListener(ev, wake, { capture: true, passive: true });
+function skipFrame(now) {
+  if (look.on) {
+    const t = look.tgt, sig = [look.yaw, look.pitch, look.dist, t.x, t.y, t.z, look.box, poseIdx, dbgMode, balOn, place, innerWidth, innerHeight, dpr].join();
+    const pn = performance.now();
+    if (sig === lookSig && pn > wakeUntil && pn - lookDrawn < 2000) return true;
+    lookDrawn = pn;   // (and a fresh picture every 2 s, just in case)
+    lookSig = sig;
+  } else lookSig = '';
+  if (!SET.hiQ && now - drawnAt < 10) return true;
+  drawnAt = now; return false;
+}
 async function frame(now) {
-  const gen = loopGen; frameBusy = true; frameT0 = performance.now();
+  const gen = loopGen;
+  if (skipFrame(now)) { if (gen === loopGen) requestAnimationFrame(frame); return; }
+  frameBusy = true; frameT0 = performance.now();
   try {
     await frameStep(now);
     failRun = 0;
@@ -1811,6 +1840,8 @@ $('go').onclick = async () => {
   setTimeout(() => { if (mode !== 'sensor') { mode = 'touch'; note('No motion sensors here, so drag to turn the box.', 4500); } }, 1300);
 };
 
+// (V39) another app or the screen off: the sound engine sleeps (it kept the phone's audio running, silent); back on return
+document.addEventListener('visibilitychange', () => { if (!actx) return; try { (document.hidden ? actx.suspend() : actx.resume()).catch(() => {}); } catch (_) {} });
 // a resize (the phone's bars, the address bar) only reshapes the box: he carries on where he is
 let reshapeT = 0;
 addEventListener('resize', () => { resizeAll(); clearTimeout(reshapeT); reshapeT = setTimeout(() => buildBox(), 250); });

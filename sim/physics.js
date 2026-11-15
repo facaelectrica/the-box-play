@@ -84,6 +84,45 @@ export function makeServos(mj, m) {
 // at 2 GB (a phone gives up sooner) MuJoCo aborts, the frame loop throws and stops: the figure froze, the menu (plain
 // DOM) still worked. Each copy is now deleted once the code that read it has run (the next microtask; the loops use it
 // synchronously, and a contact taken out with .get(i) is its own copy).
+// (perf, V39) every read of a MuJoCo field (d.xpos, d.qpos, m.geom_bodyid, m.nq ...) went through the binding and made a
+// NEW typed-array view on the wasm memory: ~0.1 us each, ~40x a plain array read, ~3,000 reads a frame (the figure's
+// drawing, the get-up IK, the balance, the sounds), and garbage for the collector (small stalls). The views now stay:
+// one per field per MjData/MjModel, made again only if the wasm memory grew (the old view is then empty). Same numbers,
+// same memory: only the wrapper is reused. Only fields whose size never changes (MjData: the per-body/joint/geom arrays
+// below - not contacts or constraint rows; MjModel: everything, it never changes size) and the model's counts.
+const KEEP_D = ['qpos', 'qvel', 'qacc', 'act', 'ctrl', 'xpos', 'xquat', 'xmat', 'xipos', 'ximat', 'xaxis', 'xanchor',
+  'geom_xpos', 'geom_xmat', 'site_xpos', 'site_xmat', 'subtree_com', 'cvel', 'cacc', 'cinert', 'cfrc_ext', 'cfrc_int',
+  'qfrc_applied', 'xfrc_applied', 'qfrc_bias', 'qfrc_smooth', 'qfrc_constraint', 'qfrc_actuator', 'qfrc_passive',
+  'qacc_warmstart', 'qacc_smooth', 'mocap_pos', 'mocap_quat', 'eq_active', 'actuator_force', 'actuator_length',
+  'actuator_velocity', 'sensordata', 'xfrc_applied'];
+const VIEWS = Symbol('views');
+function keepViews(mj) {
+  if (mj.__keepViews) return; mj.__keepViews = true;
+  const wrap = (C, ok) => {
+    if (!C || !C.prototype) return;
+    const p = C.prototype;
+    for (const k of Object.getOwnPropertyNames(p)) {
+      if (!ok(k)) continue;
+      const ds = Object.getOwnPropertyDescriptor(p, k); if (!ds || !ds.get || !ds.configurable) continue;
+      const g = ds.get, s = ds.set;
+      Object.defineProperty(p, k, { configurable: true, enumerable: ds.enumerable,
+        get() {
+          const c = this[VIEWS] || (this[VIEWS] = {});
+          let v = c[k];
+          if (v !== undefined && (typeof v === 'number' || v.length !== 0 || k === 'opt')) return v;
+          v = g.call(this);
+          if (ArrayBuffer.isView(v) ? v.length > 0 : typeof v === 'number' ? C === mj.MjModel && /^n/.test(k) : k === 'opt') c[k] = v;
+          return v;
+        },
+        set: s ? function (x) { s.call(this, x); if (this[VIEWS]) delete this[VIEWS][k]; } : undefined });
+    }
+  };
+  const keepD = new Set(KEEP_D);
+  wrap(mj.MjData, k => keepD.has(k));
+  wrap(mj.MjModel, k => true);            // arrays + counts (n...) + the opt struct; other scalars are read each time
+  wrap(mj.MjOption, k => k === 'gravity' || k === 'wind' || k === 'magnetic');
+}
+
 function freeContactCopies(d, mj) {
   let p = Object.getPrototypeOf(d), ds = null;
   while (p && !(ds = Object.getOwnPropertyDescriptor(p, 'contact'))) p = Object.getPrototypeOf(p);
@@ -126,6 +165,7 @@ export function freeWasm(...objs) {
 export class BoxWorld {
   constructor(mj, bodyXml) {
     this.mj = mj;
+    keepViews(mj);
     this.m = mj.MjModel.from_xml_string(sceneXML(bodyXml));
     this.d = new mj.MjData(this.m);
     freeContactCopies(this.d, mj);
