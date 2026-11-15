@@ -51,6 +51,9 @@
   #bal::before{content:"";position:absolute;left:8px;top:20px;width:14px;height:2px;background:rgba(255,235,205,.95)}
   #bal::after{content:"";position:absolute;left:12px;top:9px;width:6px;height:6px;border-radius:50%;background:rgba(255,235,205,.95)}
   #bal.on{background:rgba(60,140,70,.7)}
+  #crk{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(188px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #crk svg{position:absolute;left:6px;top:6px;width:18px;height:18px}#crk svg path{stroke:rgba(255,235,205,.95)}
+  #crk.on{background:#ffd400;border-color:#ffd400}#crk.on svg path{stroke:#111}
   #balTxt{display:none;position:fixed;left:calc(10px + env(safe-area-inset-left));bottom:calc(64px + env(safe-area-inset-bottom));z-index:6;font:12px/1.35 -apple-system,system-ui,sans-serif;color:rgba(255,235,205,.95);background:rgba(28,18,10,.55);padding:5px 8px;border-radius:8px;pointer-events:none;white-space:pre}
   #tilt{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(188px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #tilt::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:16px;margin:-8px 0 0 -5px;border:2px solid rgba(255,235,205,.9);border-radius:3px;box-sizing:border-box}
@@ -60,18 +63,18 @@
   #place.floor{background:#ffd400;border-color:#ffd400}#place.floor::after{border:0;height:3px;margin-top:2px;background:#111;width:16px;margin-left:-8px;border-radius:2px}
   #look.on{background:#ffd400;border-color:#ffd400}#look.on::before{display:none}#look.on::after{left:12px;width:0;height:0;margin-top:-6.5px;border-radius:0;background:none;border-style:solid;border-width:6.5px 0 6.5px 11px;border-color:transparent transparent transparent #111}
   /* (user 09:30: "a button that's like the debug button ... it shows the other buttons ... so the UI stays clean")
-     clean: pause, box, figure, tilt, debug; debug on: wireframe, balance, poses, snapshot below, and the state label */
+     clean: pause, box, figure, tilt, cracking (K, Nov 15), debug; debug on: wireframe, balance, poses, snapshot below, and the state label */
   #tilt{top:calc(144px + env(safe-area-inset-top))!important}
-  #dbgui{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(188px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #dbgui{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(232px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #dbgui::before{content:"";position:absolute;left:50%;top:50%;width:10px;height:13px;margin:-5px 0 0 -5px;border-radius:5px 5px 6px 6px;background:rgba(255,235,205,.95)}
   #dbgui::after{content:"";position:absolute;left:50%;top:6px;width:14px;height:7px;margin-left:-7px;border:2px solid rgba(255,235,205,.95);border-bottom:0;border-radius:7px 7px 0 0;box-sizing:border-box}
   #dbgui.on{background:#ffd400;border-color:#ffd400}#dbgui.on::before{background:#111}#dbgui.on::after{border-color:#111}
   body:not(.debug) #dbg,body:not(.debug) #bal,body:not(.debug) #pose,body:not(.debug) #snap,body:not(.debug) #balTxt,body:not(.debug) #brainver{display:none!important}
   body.debug #pose,body.debug #snap{display:block!important}
-  #dbg{top:calc(232px + env(safe-area-inset-top))!important}
-  #bal{top:calc(276px + env(safe-area-inset-top))!important}
-  #pose{top:calc(320px + env(safe-area-inset-top))!important}
-  #snap{top:calc(364px + env(safe-area-inset-top))!important}
+  #dbg{top:calc(276px + env(safe-area-inset-top))!important}
+  #bal{top:calc(320px + env(safe-area-inset-top))!important}
+  #pose{top:calc(364px + env(safe-area-inset-top))!important}
+  #snap{top:calc(408px + env(safe-area-inset-top))!important}
   #ver{font-size:15px!important;padding:3px 9px!important}
   /* (user 09:30: "once the game has finished loading, we see this text on top of everything for like 3 seconds") */
   #title{position:fixed;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity 1.1s ease}
@@ -108,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V29</div><div id="brainver"></div>
+<div id="ver">V30</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -210,6 +213,7 @@ window.BOXLOAD = (() => {
 <button id="snap" aria-label="Save a snapshot for Claude (paused)"></button>
 <button id="bal" aria-label="Balance view: where his weight is vs what holds him up, and how hard his muscles work"></button>
 <div id="balTxt"></div>
+<button id="crk" aria-label="Cracking mode: hard hits crack his parts, the third breaks them off"><svg viewBox="0 0 18 18" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.5 L7.2 6.5 L10.4 8.6 L7.6 12.4 L9.4 16.5"/><path d="M10.4 8.6 L14.5 7.4"/><path d="M7.2 6.5 L3.6 5.2"/></svg></button>
 <button id="dbgui" aria-label="Debug: wireframe, balance, poses, snapshot and what he is doing"></button>
 <div id="title" aria-hidden="true"><div>YOU<br>CAN’T<br>BREAK<br>ME.</div></div>
 <button id="tilt" class="on" aria-label="Phone tilt moves the box (off: gravity stays straight down)"></button>
@@ -246,12 +250,13 @@ import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=29';
-import { Springs, humanCap } from './sim/springs.js?v=29';
-import { Balance } from './sim/balance.js?v=29';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=29';
-import { addPins } from './sim/pins.js?v=29';
-import { rigHand, poseHand } from './sim/fingers.js?v=29';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=30';
+import { Springs, humanCap } from './sim/springs.js?v=30';
+import { Balance } from './sim/balance.js?v=30';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=30';
+import { addPins } from './sim/pins.js?v=30';
+import { rigHand, poseHand } from './sim/fingers.js?v=30';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=30';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -577,7 +582,7 @@ const figP = loadFig(FIG);
 let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
-const KINV = 29;
+const KINV = 30;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(u + '?v=' + KINV, 'Recordings'));   // ?v: phones keep old copies
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -593,7 +598,7 @@ let control = null;
 let kin = null, springs = null;
 try { kin = new Kin(G, mj, await libP); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
-try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=29', 'Body')))); } catch (e) { console.warn('joint limits', e); }
+try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=30', 'Body')))); } catch (e) { console.warn('joint limits', e); }
 if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupCap: 0 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
 // round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
@@ -611,6 +616,11 @@ if (kin && PHYSICAL) try {
   LOAD.state('Brain', 'ready');
 } catch (e) { console.warn('brain did not load: springs only', e); LOAD.state('Brain', 'fail'); drive = null; }
 if (drive) { kin.ext = W; brain = drive.brain; }   // gaze() picks where he looks for this brain
+// cracking mode (sim/crack.js; user, Nov 15 09:33): hard hits crack the part that hit, the third breaks it off; the
+// button turns it on and off (remembered); a double tap makes him new
+const crack = drive ? new Cracks(W, { drive }) : null;
+let crackView = null, crackSnd = null;
+try { if (crack) crack.on = localStorage.getItem('box.crack') === '1'; } catch (_) {}
 function newController() { control = null; }
 let S = 1;   // drawing units per metre
 function figureScale() {
@@ -638,6 +648,7 @@ function keepInside() {
   mj.mj_forward(W.m, d);
 }
 function standUp() {
+  if (crack) { crack.reset(); if (crackView) crackView.reset(); }
   levelPending = true; levelT = 0;   // the phone's angle right now becomes "level" (see setLevel)
   W.standAt(STAND); W.started = true; W.tControl = 0;
   if (G !== W) { G.standAt(STAND); G.started = true; }
@@ -708,6 +719,7 @@ function buildFigure() {
   syncFigure();
   applyDebug();
   rigHands();
+  if (crackView) crackView.rebuild(crack);
 }
 // (user 09:15, Nov 15: "The torso and neck parts are bent in a way that seems broken ... it's the way the pieces of the
 // mannequin rotate or are assembled or they're pivoted in relation to the skeleton") the figure file has one rigid
@@ -842,6 +854,7 @@ function footShadows() {
   ['Left', 'Right'].forEach((side, k) => {
     const pad = footPads[k], a = W.bodyId[side + 'Foot'], t = W.bodyId[side + 'ToeBase'];
     if (a === undefined || t === undefined) { pad.visible = false; return; }
+    if (crack && crack.broken.has(a)) { pad.visible = false; return; }   // that foot broke off
     let lo = 9;   // the foot's lowest collision point
     for (let g = 0; g < m.ngeom; g++) {
       const b = m.geom_bodyid[g]; if (b !== a && b !== t) continue;
@@ -1012,7 +1025,7 @@ const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 function figureAt(cx, cy) {
   ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  const hits = ray.intersectObjects(bodyGroup.filter(Boolean), true);
+  const hits = ray.intersectObjects(bodyGroup.filter(g => g && g.visible), true);   // (a broken-off part is hidden)
   if (!hits.length) return null;
   let o = hits[0].object; while (o && o.userData.body === undefined) o = o.parent;
   if (!o) return null;
@@ -1229,6 +1242,41 @@ function sfxUpdate(dt) {
   }
 }
 
+
+// ================= cracking mode: what happens after each frame's physics =================
+function crackFrame(dt) {
+  const ev = crack.update(dt, !crack.dead && kin && kin.state === 'getup' && drive && drive.getupBy === 'kin');
+  if (!crackView) return;
+  if (ev.length && actx && SET.sound && !crackSnd) crackSnd = new CrackSound(actx);
+  const snd = actx && SET.sound ? crackSnd : null;
+  for (const e of ev) {
+    if (e.type === 'crack') { crackView.addCrack(e.hit); if (snd) snd.crack(e.hit.s, e.level); }
+    else if (e.type === 'break') {
+      crackView.addCrack(e.hit); crackView.addDebris(e.chunk); for (const P of e.shards) crackView.addDebris(P);
+      if (snd) snd.shatter(e.hit.s);
+      note(e.dead ? 'His ' + partName(e.piece) + ' broke. He has stopped. Double-tap for a new one.' : 'His ' + partName(e.piece) + ' broke off.', 2600);
+    } else if (e.type === 'clink' && snd) snd.clink(e.v, e.m);
+  }
+  crackView.sync(crack);
+  // the skinned trunk (skinTorso) draws the hips/belly/chest/neck: a broken-off piece of it is drawn by its debris copy
+  if (torso && (crack.broken.size || crack.torsoHid)) { crack.torsoHid = crack.broken.size > 0; for (const sk of torso.meshes) sk.visible = !crack.broken.has(W.bodyId[sk.userData.torsoPiece]); }
+}
+function partName(p) {
+  const side = /^Left/.test(p) ? 'left ' : /^Right/.test(p) ? 'right ' : '', b = p.replace(/^(Left|Right)/, '');
+  return side + ({ Arm: 'arm', ForeArm: 'forearm', Hand: 'hand', Leg: 'thigh', Shin: 'leg', Foot: 'foot', Head: 'head', Neck1: 'neck', Neck2: 'neck', Chest: 'chest', Spine1: 'body', Spine2: 'body', Hips: 'hips' }[b] || b.toLowerCase());
+}
+$('crk').classList.toggle('on', !!(crack && crack.on));
+if (!crack) $('crk').style.display = 'none';
+$('crk').onclick = e => {
+  e.stopPropagation(); if (!crack) return;
+  const on = !crack.on, hurt = crack.broken.size > 0 || crack.dead;
+  crack.setOn(on); if (!on && crackView) crackView.reset();
+  if (!on && hurt) standUp();
+  $('crk').classList.toggle('on', on);
+  try { localStorage.setItem('box.crack', on ? '1' : '0'); } catch (_) {}
+  note(on ? 'Cracking on: hard hits crack him where he hits; the third hit on a part breaks it off. Double-tap for a new one.' : 'Cracking off.', on ? 3200 : 1200);
+};
+for (const ev of ['pointerdown', 'pointerup']) $('crk').addEventListener(ev, e => e.stopPropagation());
 
 // ================= full screen =================
 async function goFull() {
@@ -1577,7 +1625,8 @@ async function frame(now) {
 
   // the recordings engine: kinematic while he stands, steps and gets up; MuJoCo physics while he falls
   if (brain) gaze(dt);   // where he looks: at you, now and then the floor, where he's falling (drives brain.lookAt)
-  if (kin && !look.on) {
+  if (crack && crack.dead && !look.on) { if (poke.on) poke.t += dt; crack.stepDead(dt, fingerPush); showState(); }   // he has stopped: physics only
+  else if (kin && !look.on) {
     // your finger: its push (into the box and the way you drag) goes to his balance; while he falls, to the physics
     fingerPush();
     const x = W.d.xfrc_applied; let fx = 0, fy = 0, fz = 0;
@@ -1597,6 +1646,7 @@ async function frame(now) {
     }
     showState();
   }
+  if (crack && !look.on) crackFrame(dt);
   sfxUpdate(dt);
   recordHist();
   syncFigure();
@@ -1685,10 +1735,10 @@ function gaze(dt) {
 // what he's doing, under the release label (recording names help tell the user what he sees)
 let stateShown = '';
 function showState() {
-  const t = kin.state === 'stand' ? 'standing' : kin.state === 'react' ? 'recovering' : kin.state === 'fall' ? 'falling' : 'getting up';
+  const t = crack && crack.dead ? 'broken' : kin.state === 'stand' ? 'standing' : kin.state === 'react' ? 'recovering' : kin.state === 'fall' ? 'falling' : 'getting up';
   if (t !== stateShown) { stateShown = t; try { document.getElementById('brainver').textContent = t; } catch (_) {} }
 }
-window.__kin = () => kin;
+window.__kin = () => kin; window.__crack = () => crack;
 // ================= start =================
 $('go').onclick = async () => {
   goFull();
@@ -1714,6 +1764,7 @@ LOAD.state('Building the room', 'build');
 await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
 buildOptions();
 buildBox();
+if (crack) crackView = new CrackView(THREE, figRoot, () => bodyGroup, o => o.material === SHELL && !o.userData.joint && !o.userData.crack, movers, SHELL);
 buildFigure();
 standUp();
 applyQuality();
