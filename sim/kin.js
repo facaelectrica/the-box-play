@@ -653,7 +653,7 @@ export class Kin {
     const d = W.d, m = W.m, mj = this.mj, up = qv(qc(this.G.q), [0, 0, 1]);
     for (let it = 0; it < 3; it++) {
       this.writeWorld(pl); mj.mj_forward(m, d);
-      let push = [0, 0, 0], any = false, lift = 0; const sides = [];
+      let push = [0, 0, 0], any = false, lift = 0; const sides = [], pp = [0, 0, 0], pn = [0, 0, 0];
       for (let i = 0; i < d.ncon; i++) {
         const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
         if (dist > -0.003) continue;
@@ -662,7 +662,7 @@ export class Kin {
         const du = dir[0] * up[0] + dir[1] * up[1] + dir[2] * up[2];
         if (du > 0.7) { lift = Math.max(lift, -dist); continue; }   // the floor: the whole recording comes up out of it
         if (du < -0.7) continue;   // the ceiling (kneeling handles a low room)
-        for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
+        for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } if (e > 0.01) pp[k] = 1; if (e < -0.01) pn[k] = 1; }
         if (dist < -0.02) sides.push(dir);
       }
       if (lift > 0.01) pl[2] += lift - 0.005;
@@ -678,6 +678,10 @@ export class Kin {
       }
       if (!any && !(lift > 0.01)) break;
       if (!any) continue;
+      // (V43 hotfix, rule 1) wedged between two opposite walls along an axis: no slide along it (the pushes alternated
+      // +-20 cm a frame, grew with the 1.1 gain and threw the recording - and him - 2 m out through the wall); at most
+      // 5 cm a pass otherwise
+      if (!globalThis.NOWEDGE) { for (let k = 0; k < 3; k++) { if (pp[k] && pn[k]) push[k] = 0; push[k] = clamp(push[k], -0.05, 0.05); } if (Math.hypot(...push) < 1e-4) continue; }
       const a = this.toLocal([0, 0, 0]), cc = this.toLocal([push[0], push[1], push[2]]), dx = (cc[0] - a[0]) * 1.1, dy = (cc[1] - a[1]) * 1.1;
       pl[0] += dx; pl[1] += dy; if (this.anchor) { this.anchor.x += dx; this.anchor.y += dy; }
     }

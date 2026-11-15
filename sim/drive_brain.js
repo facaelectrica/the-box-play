@@ -10,8 +10,8 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=43';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=43';
+import { Pins } from './pins.js?v=44';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=44';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function hullPts(P) {
   const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
@@ -706,6 +706,15 @@ export class BrainDrive {
     }
     this.stats.locks = (this.stats.locks || 0) + Object.keys(want).length;
   }
+  // (V43 hotfix, rule 1) pushed both ways along an axis = wedged between two opposite walls (lying across the narrow
+  // box): no translation can fix that, the passes threw him back and forth and, with the recording's placement moving
+  // each time, out through the wall (2.3 m jumps in the narrow box). Then: no push along that axis; and never more than
+  // 5 cm a pass (a deep contact is fixed over a few frames, not by a jump)
+  wallPushSafe(push, pp, pn) {
+    let any = false;
+    for (let k = 0; k < 3; k++) { if (pp[k] && pn[k] && !globalThis.NOWEDGE) push[k] = 0; push[k] = clamp(push[k], -0.05, 0.05); if (Math.abs(push[k]) > 1e-4) any = true; }
+    return any;
+  }
   // (V38) a figure body that is part of an arm: its push out of a wall is kept for that arm (the deepest per side)
   armWallSide(b, dir, dist) {
     if (globalThis.NOARMWALL || this.armBody) return false;
@@ -898,15 +907,15 @@ export class BrainDrive {
       // at once and the passes threw him 6-9 cm left and right each frame, his planted feet with him
       this.armPush = {};
       for (let it = 0; it < 3; it++) {
-        const push = [0, 0, 0]; let any = false;
+        const push = [0, 0, 0], pp = [0, 0, 0], pn = [0, 0, 0]; let any = false;
         for (let i = 0; i < d.ncon; i++) {
           const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
           if (dist > -0.005) continue; const f1 = W.isFig[m.geom_bodyid[g1]], f2 = W.isFig[m.geom_bodyid[g2]]; if (f1 === f2) continue;
           const dir = f2 ? n : n.map(v => -v);
           if (this.armWallSide(m.geom_bodyid[f1 ? g1 : g2], dir, dist)) continue;
-          for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
+          for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } if (e > 0.01) pp[k] = 1; if (e < -0.01) pn[k] = 1; }
         }
-        if (!any) break;
+        if (!any) break; any = this.wallPushSafe(push, pp, pn); if (!any) break;
         for (let k = 0; k < 3; k++) d.qpos[k] += push[k]; W.mj.mj_forward(m, d);
       }
       if (globalThis.SLDBG) { W.mj.mj_kinematics(m, d); const b = W.bodyId.LeftFoot, a = K.anim; const cf = a.clip.body(Math.round(a.x), 21); const A = K.anchor; this._sl = { t: d.time, preLock: [d.xpos[3 * b], d.xpos[3 * b + 1]], ghost: [this.G.d.xpos[3 * b], this.G.d.xpos[3 * b + 1]], clipF: [cf[0], cf[1]], anc: [A.x, A.y, A.yaw], x: a.x, offT: K.offT }; }
@@ -916,16 +925,16 @@ export class BrainDrive {
       // frame pulls him back in and his feet creep)
       let wallMoved = false;
       for (let it = 0; it < 3 && !this.noGetupLocks; it++) {
-        const push = [0, 0, 0]; let any = false;
+        const push = [0, 0, 0], pp = [0, 0, 0], pn = [0, 0, 0]; let any = false;
         for (let i = 0; i < d.ncon; i++) {
           const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
           if (dist > -0.005) continue; const f1 = W.isFig[m.geom_bodyid[g1]], f2 = W.isFig[m.geom_bodyid[g2]]; if (f1 === f2) continue;
           if (globalThis.GLDBG === 3) console.error('WP', d.time.toFixed(2), it, W.mj.mj_id2name(m, 1, m.geom_bodyid[f1 ? g1 : g2]), W.mj.mj_id2name(m, 1, m.geom_bodyid[f1 ? g2 : g1]), (dist * 100).toFixed(1));
           const dir = f2 ? n : n.map(v => -v);
           if (this.armWallSide(m.geom_bodyid[f1 ? g1 : g2], dir, dist)) continue;
-          for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
+          for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } if (e > 0.01) pp[k] = 1; if (e < -0.01) pn[k] = 1; }
         }
-        if (!any) break;
+        if (!any) break; any = this.wallPushSafe(push, pp, pn); if (!any) break;
         for (let k = 0; k < 3; k++) d.qpos[k] += push[k]; W.mj.mj_forward(m, d); if (globalThis.GLCLS) this.glWall = (this.glWall || 0) + Math.hypot(...push);
         if (K.anchor) { const a0 = K.toLocal([0, 0, 0]), c0 = K.toLocal(push); K.anchor.x += c0[0] - a0[0]; K.anchor.y += c0[1] - a0[1]; }
         if (this.gLocks) for (const nn in this.gLocks) { if (globalThis.GL_WALLKEEP && /Foot/.test(nn)) continue; const P = this.gLocks[nn].p; for (let k = 0; k < 3; k++) P[k] += push[k]; }
@@ -938,11 +947,11 @@ export class BrainDrive {
         // an arm its own joints can't get out of a wall (the box turned narrow, both arms in the walls): rule 1 wins, his
         // body moves out as before
         if (Object.values(this.armPush || {}).some(x => x.depth > 0.03)) { this.armBody = true;
-          for (let it = 0; it < 3; it++) { const push = [0, 0, 0]; let any = false;
+          for (let it = 0; it < 3; it++) { const push = [0, 0, 0], pp = [0, 0, 0], pn = [0, 0, 0]; let any = false;
             for (let i = 0; i < d.ncon; i++) { const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
               if (dist > -0.005) continue; const f1 = W.isFig[m.geom_bodyid[g1]], f2 = W.isFig[m.geom_bodyid[g2]]; if (f1 === f2) continue;
-              const dir = f2 ? n : n.map(v => -v); for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } } }
-            if (!any) break;
+              const dir = f2 ? n : n.map(v => -v); for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } if (e > 0.01) pp[k] = 1; if (e < -0.01) pn[k] = 1; } }
+            if (!any) break; any = this.wallPushSafe(push, pp, pn); if (!any) break;
             for (let k = 0; k < 3; k++) d.qpos[k] += push[k]; W.mj.mj_forward(m, d); if (globalThis.GLCLS) this.glWall = (this.glWall || 0) + Math.hypot(...push);
             if (K.anchor) { const a0 = K.toLocal([0, 0, 0]), c0 = K.toLocal(push); K.anchor.x += c0[0] - a0[0]; K.anchor.y += c0[1] - a0[1]; }
             if (this.gLocks) for (const nn in this.gLocks) { const P = this.gLocks[nn].p; for (let k = 0; k < 3; k++) P[k] += push[k]; } }

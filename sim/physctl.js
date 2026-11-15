@@ -19,7 +19,7 @@
 //  5. handed to the joints' servos as targets (torque = kp (target - q) - kd qd, so the servo gives exactly that torque
 //     now and stays a soft spring between ticks)
 import { Brain, ND } from './brain.js';
-import { humanCap } from './springs.js?v=43';
+import { humanCap } from './springs.js?v=44';
 
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const qv = (q, v) => { const [w, x, y, z] = q, tx = 2 * (y * v[2] - z * v[1]), ty = 2 * (z * v[0] - x * v[2]), tz = 2 * (x * v[1] - y * v[0]); return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)]; };
