@@ -10,8 +10,8 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=44';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=44';
+import { Pins } from './pins.js?v=45';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=45';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function hullPts(P) {
   const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
@@ -38,6 +38,8 @@ export class BrainDrive {
     kin.ext = W;   // the engine's falls follow this body
     this.ref = { pos: new Float64Array(NB * 3), rot: new Float64Array(NB * 4), vel: new Float64Array(NB * 3), ang: new Float64Array(NB * 3) };
     this.prevRef = null; this.lostT = 0; this.sup = null; this.stats = {}; this.getupBy = 'kin';
+    this.catchFirst = true;
+    this.flipGuard = true;    // head first / turned over: forearms wrapped over the head, fast, at full arm strength (user 12:40)   // falling: catch himself (turn + hands to the surface) before guarding the head (user 12:21)
     // supporting hands and feet pinned in place (needs the welds addPins puts in the body file)
     const P = new Pins(W, kin); if (P.ok) this.pins = P;
     if (springs) springs.armHook = tg => { this.getupArms(tg); if (!this.getupRise(tg)) this.getupLegs(tg); this.getupLean(tg); };
@@ -96,7 +98,8 @@ export class BrainDrive {
     const T = (a, b) => a + (b - a) * u;
     for (let i = 0; i < B.meta.kp.length; i++) {
       const a = B.actIdx[i], n = this.W.act[a].name;
-      const f = /Neck|Head/.test(n) ? T(0.9, 0.7) : /Spine|Chest/.test(n) ? T(0.75, 0.6) : /Shoulder|Arm|Hand/.test(n) ? Math.max(T(0.55, 0.35), (this.headWallT > 0 ? 1 + ((this.hwTone ?? 1.3) - 1) * (this.hwPushK || 0) : 0.85) * (this.guardW || 0)) : T(0.4, 0.3);
+      const wrapT = this.flipGuard && (this.headFirst || this.curled) && !(this.unbrace > 0) ? 1 : 0;
+      const f = wrapT && /Shoulder|Arm|Hand/.test(n) ? 1 : /Neck|Head/.test(n) ? T(0.9, 0.7) : /Spine|Chest/.test(n) ? T(0.75, 0.6) : /Shoulder|Arm|Hand/.test(n) ? Math.max(T(0.55, 0.35), (this.headWallT > 0 ? 1 + ((this.hwTone ?? 1.3) - 1) * (this.hwPushK || 0) : 0.85) * (this.guardW || 0)) : T(0.4, 0.3);
       const kp = B.meta.kp[i] * f, kd = B.meta.kd[i] * Math.sqrt(f);
       m.actuator_gainprm[10 * a] = kp; m.actuator_biasprm[10 * a + 1] = -kp; m.actuator_biasprm[10 * a + 2] = -kd;
     }
@@ -227,6 +230,61 @@ export class BrainDrive {
       if (!best || dist < best.dist) { const n = [0, 0, 0]; n[ax] = sg; const P = p.map((x, i) => x + g[i] / gn * dist); P[ax] = at; best = { P, n, nm, dist }; }
     }
     return best;
+  }
+  // (user 12:21: "a real human, when they realize they're losing balance, they turn towards the direction they're about
+  // to fall, and then use the hands or legs to support themselves") falling, his chest turns toward the surface he is
+  // going onto (I.n: out of it): the angle between his chest's forward and that surface, about his trunk's own axis,
+  // is taken out by the three spine twists (~45% of it x turnGain 3 per tick, each within +-20 deg) and the hips (the rest, both hip twists,
+  // within +-30 deg), resolved each tick from his real pose (each hinge's axis along his trunk gives its sign), faded in
+  // over 0.15 s and out over 0.3 s. A surface straight along his trunk (the floor under his feet, the ceiling) or the
+  // nearly-square-on case needs no turn. Up to 80 deg each way (a person twists ~90 deg in a fall; past that he takes
+  // the side instead).
+  turnTo(I, dt) {
+    const W = this.W, d = W.d, m = W.m, B = this.brain;
+    this.turnW = clamp((this.turnW || 0) + (I ? dt / 0.15 : -dt / 0.3), 0, 1);
+    if (!(this.turnW > 0)) return;
+    if (!this.twJ) this.twJ = ['Spine1_z', 'Spine2_z', 'Chest_z', 'LeftLeg_z', 'RightLeg_z'].map(n => ({ a: W.act.findIndex(x => x.name === n), j: W.mj.mj_name2id(m, W.mj.mjtObj.mjOBJ_JOINT.value, n), hip: /Leg/.test(n) })).filter(o => o.a >= 0 && o.j >= 0);
+    if (I) {
+      const P = b => [d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]], cb = W.bodyId.Chest, hb = W.bodyId.Hips, c = P(cb), h = P(hb);
+      let t = [c[0] - h[0], c[1] - h[1], c[2] - h[2]]; const tl = Math.hypot(...t) || 1; t = t.map(v => v / tl);
+      const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2], flat = v => { const k = dot(v, t); return v.map((x, i) => x - k * t[i]); };
+      const fw = flat([-d.xmat[9 * cb + 1], -d.xmat[9 * cb + 4], -d.xmat[9 * cb + 7]]), u = flat(I.n.map(v => -v));
+      const fl = Math.hypot(...fw), ul = Math.hypot(...u);
+      let phi = 0;
+      if (fl > 0.3 && ul > 0.35) { const cr = [fw[1] * u[2] - fw[2] * u[1], fw[2] * u[0] - fw[0] * u[2], fw[0] * u[1] - fw[1] * u[0]]; phi = Math.atan2(dot(cr, t), dot(fw, u)); }
+      phi = clamp(phi, -1.4, 1.4); this.turnPhi = phi;
+      this.twT = this.twJ.map(o => {
+        const ax = [d.xaxis[3 * o.j], d.xaxis[3 * o.j + 1], d.xaxis[3 * o.j + 2]], s = dot(ax, t), q = d.qpos[m.jnt_qposadr[o.j]];
+        if (Math.abs(s) < 0.3) return q;
+        // a spine twist turns his chest with it; a hip twist turns the leg under a planted pelvis, so the pelvis the other way
+        const dq = (o.hip ? -0.275 : 0.15) * phi * (this.turnGain ?? 3) / s;
+        const lim = o.hip ? 0.52 : 0.35; let v = clamp(q + dq, -lim, lim);
+        if (m.jnt_limited[o.j]) { const lo = m.jnt_range[2 * o.j], hi = m.jnt_range[2 * o.j + 1], mid = (lo + hi) / 2, half = (hi - lo) / 2 * 0.9; v = clamp(v, mid - half, mid + half); }
+        return v;
+      });
+    }
+    if (this.twT) this.twJ.forEach((o, i) => { B.targets[o.a] += (this.twT[i] - B.targets[o.a]) * this.turnW; });
+  }
+  // (user 12:40, reference photo: both forearms over the top/back of the head, elbows forward, hands on the back of the
+  // head) both wrists to 10 cm above his head's middle, 12 cm either side of it, palms facing forward
+  // (solveArms on a scratch copy; wrapRR: armsTo's one-step IK instead - slower, his hands hung by the head); the neck flexion of headBrace stays
+  headWrap() {
+    const W = this.W, d = W.d, hb = W.bodyId.Head, cb = W.bodyId.Chest, p = [d.xpos[3 * hb], d.xpos[3 * hb + 1], d.xpos[3 * hb + 2]], c = [d.xpos[3 * cb], d.xpos[3 * cb + 1], d.xpos[3 * cb + 2]];
+    let up = [p[0] - c[0], p[1] - c[1], p[2] - c[2]]; const ul = Math.hypot(...up) || 1; up = up.map(v => v / ul);
+    let fw = [-d.xmat[9 * hb + 1], -d.xmat[9 * hb + 4], -d.xmat[9 * hb + 7]]; const k = fw[0] * up[0] + fw[1] * up[1] + fw[2] * up[2]; fw = fw.map((v, i) => v - k * up[i]); const fl = Math.hypot(...fw) || 1; fw = fw.map(v => v / fl);
+    const P = p.map((v, i) => v + up[i] * (this.wrapUp ?? globalThis.WRAPUP ?? 0.10) - fw[i] * (this.wrapBack ?? globalThis.WRAPBACK ?? 0));
+    if (this.wrapRR) return this.armsTo({ P, n: fw.map(v => -v) }, this.wrapLat ?? 0.07, 0, hb);
+    // the whole reach solved at once (solveArms: 10 rounds on a scratch copy of his body), so the muscles get the
+    // final arm pose, not a step toward it: the arms get there in a few tenths of a second
+    if (!this.armJ) this.armJ = W.act.map((a, j) => /(Arm|ForeArm|Hand)_/.test(a.name) && !/Shoulder/.test(a.name) ? j : -1).filter(j => j >= 0);
+    const tgt = {}, NIN = {};
+    for (const sd of ['Left', 'Right']) { const sb = W.bodyId[sd + 'Arm'], v = [d.xpos[3 * sb] - p[0], d.xpos[3 * sb + 1] - p[1], d.xpos[3 * sb + 2] - p[2]];
+      const a = v[0] * up[0] + v[1] * up[1] + v[2] * up[2], b = v[0] * fw[0] + v[1] * fw[1] + v[2] * fw[2]; let l = v.map((x, i) => x - a * up[i] - b * fw[i]); const ll = Math.hypot(...l) || 1;
+      tgt[sd] = P.map((x, i) => x + l[i] / ll * (this.wrapLat ?? globalThis.WRAPLAT ?? 0.12)); NIN[sd] = fw.slice(); }
+    this.solveArms(['Left', 'Right'], tgt, NIN, up, false);
+    const D = this.ikD;
+    if (globalThis.WRAPDBG) { W.mj.mj_kinematics(W.m, D); const r = ['Left', 'Right'].map(sd => { const b = W.bodyId[sd + 'Hand']; return [Math.hypot(...[0, 1, 2].map(i => D.xpos[3 * b + i] - tgt[sd][i])), Math.hypot(...[0, 1, 2].map(i => d.xpos[3 * b + i] - tgt[sd][i]))].map(v => (v * 100).toFixed(0)).join('/'); }); console.log('WRAP', d.time.toFixed(2), 'ik/real cm', r.join(' '), 'gW', (this.guardW || 0).toFixed(2)); }
+    return this.armJ.map(j => [j, D.qpos[W.act[j].qadr]]);
   }
   // his head within 20 cm of a box face other than the one he stands/lies on: that face (point under his head, its
   // normal into the box)
@@ -748,6 +806,45 @@ export class BrainDrive {
     }
   }
   // (V36) his legs reach their planted spots again after the walls pass moved his body (only the legs, feet held)
+  // (user 13:00 "a ton of floating feet"; helper F's stage probes: the legs' IK, its smoothing, the first push-out and the
+  // foot locks each left planted feet 3-9 cm up) the last word in a get-up frame, while his hips are under 55 cm: each
+  // foot his legs are planting (getupLegs 'plant') or the recording has on the floor, whose sole is 1-35 cm above the
+  // floor, is lowered straight down to 4 mm over the floor (up to 35 cm), sole flat (a kneeling foot keeps its turn), by
+  // that leg's own joints (limbIK, hip to toes). Upstream re-solves from the recording each frame, so this is not a jump
+  // after the first frame. NOGROUNDFEET=1 turns it off
+  groundFeet() {
+    const K = this.kin, W = this.W, m = W.m, d = W.d, G = this.G.d;
+    if (!this.glChain || !this.ikG) return;
+    const o = K.toWorld([0, 0, 0]), u1 = K.toWorld([0, 0, 1]), up = [u1[0] - o[0], u1[1] - o[1], u1[2] - o[2]];
+    const P3 = (dd, b) => [dd.xpos[3 * b], dd.xpos[3 * b + 1], dd.xpos[3 * b + 2]], ht = p => (p[0] - o[0]) * up[0] + (p[1] - o[1]) * up[1] + (p[2] - o[2]) * up[2];
+    W.mj.mj_kinematics(m, d);
+    if (ht(P3(d, W.bodyId.Hips)) > (this.gfHips ?? 0.55)) return;
+    const sole = (dd, sd) => Math.min(ht(P3(dd, W.bodyId[sd + 'Foot'])) - 0.045, ht(P3(dd, W.bodyId[sd + 'ToeBase'])) + 0.0055);
+    const qm = (a, b) => [a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3], a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2], a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1], a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]];
+    const want = {}, drop = {};
+    for (const sd of ['Left', 'Right']) {
+      const n = sd + 'Foot', lk = this.gLocks && this.gLocks[n];
+      if (lk && (lk.step || lk.from)) continue;   // a foot being lifted or put down by the locks: theirs
+      const should = (this.legWhy && this.legWhy[sd] === 'plant') || sole(G, sd) < (this.gfRec ?? 0.06);
+      const s = sole(d, sd); if (!should || s < 0.01 || s > 0.35) continue;
+      const b = W.bodyId[n], q = [d.xquat[4 * b], d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3]];
+      const fz = [2 * (q[1] * q[3] + q[0] * q[2]), 2 * (q[2] * q[3] - q[0] * q[1]), 1 - 2 * (q[1] * q[1] + q[2] * q[2])];   // the foot's local z in the world
+      const c = [fz[1] * up[2] - fz[2] * up[1], fz[2] * up[0] - fz[0] * up[2], fz[0] * up[1] - fz[1] * up[0]], w = 1 + fz[0] * up[0] + fz[1] * up[1] + fz[2] * up[2];
+      let r = w > 1e-6 ? [w, c[0], c[1], c[2]] : [1, 0, 0, 0]; const rl = Math.hypot(...r); r = r.map(v => v / rl);
+      const dz = Math.min(s - 0.004, this.gfStep ?? globalThis.GFSTEP ?? 0.35), p = P3(d, b).map((v, i) => v - up[i] * dz);
+      // a kneeling leg (toes tucked under) keeps its foot's turn: only lowered; else the sole goes flat
+      want[n] = { p, q: this.legWhy && this.legWhy[sd] === 'tuck' ? q : qm(r, q) }; drop[n] = dz;
+    }
+    if (!Object.keys(want).length) return;
+    const D = this.ikG; D.qpos.set(d.qpos);
+    this.limbIK(D, want, this.glChain, this.glRw, 6);
+    for (const n in want) { const C = this.glChain(n); for (let c = 0; c < C.N; c++) { const qa = C.dof + 1 + c; d.qpos[qa] = D.qpos[qa]; }
+      // (its held spot is NOT lowered with it: lowered each frame, spots sank into the floor and the walls pass lifted his
+      // whole body 6 cm out of it; GF_LOCKDROP=1 to try)
+      const lk = this.gLocks && this.gLocks[n]; if (lk && lk.p && globalThis.GF_LOCKDROP) for (let k = 0; k < 3; k++) lk.p[k] -= up[k] * drop[n];
+      this.stats.ground = (this.stats.ground || 0) + 1; }
+    W.mj.mj_forward(m, d);
+  }
   reachFeet() {
     const W = this.W, m = W.m, mj = W.mj, d = W.d, L = this.gLocks, want = {};
     for (const n of ['LeftFoot', 'RightFoot']) if (L[n] && !L[n].step && !L[n].from) want[n] = L[n];
@@ -956,6 +1053,18 @@ export class BrainDrive {
             if (K.anchor) { const a0 = K.toLocal([0, 0, 0]), c0 = K.toLocal(push); K.anchor.x += c0[0] - a0[0]; K.anchor.y += c0[1] - a0[1]; }
             if (this.gLocks) for (const nn in this.gLocks) { const P = this.gLocks[nn].p; for (let k = 0; k < 3; k++) P[k] += push[k]; } }
           this.armBody = false; } }
+      // (user 13:00: "I still see a ton of floating feet") last: a foot that should be on the floor (his legs are planting
+      // it, or the recording has it down) and isn't, while he is low, goes down - only that leg moves (groundFeet)
+      if (this.groundFeetOn ?? (globalThis.NOGROUNDFEET ? false : true)) { this.groundFeet(); if (globalThis.FSTAGE && this.fstage) this.fstage("ground"); }
+      // (helper B; cornerFall p1, getupPush p2: the walls/arms passes fought in the narrow box, the recording's spot jumped
+      // left and right each frame and once threw him 2 m out through the side wall; standing up out there, his body and
+      // the recording were 3 m apart and he fell at once) his hips never leave the box: moved back inside (15 cm from
+      // each face), the recording's spot and his held hands/feet with him
+      if (W.box && !globalThis.NOBOXKEEP) { const bx = W.box, hb = W.bodyId.Hips, lim = [[-bx.w / 2, bx.w / 2], [0, bx.D], [-bx.h / 2, bx.h / 2]], mg = 0.15, sh = [0, 0, 0];
+        for (let k = 0; k < 3; k++) { const v = d.xpos[3 * hb + k], lo = lim[k][0] + mg, hi = lim[k][1] - mg; if (hi > lo) sh[k] = v < lo ? lo - v : v > hi ? hi - v : 0; }
+        if (sh.some(v => Math.abs(v) > 1e-4)) { for (let k = 0; k < 3; k++) d.qpos[k] += sh[k]; W.mj.mj_forward(m, d); this.stats.boxKeep = (this.stats.boxKeep || 0) + 1;
+          if (K.anchor) { const a0 = K.toLocal([0, 0, 0]), c0 = K.toLocal(sh); K.anchor.x += c0[0] - a0[0]; K.anchor.y += c0[1] - a0[1]; }
+          if (this.gLocks) for (const nn in this.gLocks) { const P = this.gLocks[nn].p; if (P) for (let k = 0; k < 3; k++) P[k] += sh[k]; } } }
       if (globalThis.SLDBG && this._sl) { const b = W.bodyId.LeftFoot, S = this._sl, P = this._slP; if (P) { const f = v => (v * 100).toFixed(1); console.log('SL', S.t.toFixed(3), 'x', S.x.toFixed(1), 'clip', f(S.clipF[0] - P.clipF[0]), f(S.clipF[1] - P.clipF[1]), 'anc', f(S.anc[0] - P.anc[0]), f(S.anc[1] - P.anc[1]), ((S.anc[2] - P.anc[2]) * 57.3).toFixed(1), 'ghost', f(S.ghost[0] - P.ghost[0]), f(S.ghost[1] - P.ghost[1]), 'preLock', f(S.preLock[0] - P.preLock[0]), f(S.preLock[1] - P.preLock[1]), 'final', f(d.xpos[3 * b] - P.final[0]), f(d.xpos[3 * b + 1] - P.final[1])); } S.final = [d.xpos[3 * b], d.xpos[3 * b + 1]]; this._slP = S; }
       d.time += dt;
       if (this.pins) this.pins.reset();
@@ -973,7 +1082,7 @@ export class BrainDrive {
     // falling (user 18:23 "why does he get all floppy?"): his muscles stay at ~1/3, easing to 1/4 (was 12% -> 4%),
     // holding the pose he had when he went down, so he keeps his shape (with the joint limits) instead of folding
     if (falling && this.mode !== 'fall') {
-      this.mode = 'fall'; B.down = true; this.fallT = 0; this.curled = false; this.headFirst = false; this.guardW = 0; this.hgLast = null; this.hgPrev = null; this.hgOut = null; this.stillT = 0; this.unbrace = 0; this.cgPrev = null; this.stillPrev = null;
+      this.mode = 'fall'; B.down = true; this.fallT = 0;  this.armSettled = null; this.curled = false; this.headFirst = false; this.guardW = 0; this.hgLast = null; this.hgPrev = null; this.hgOut = null; this.stillT = 0; this.unbrace = 0; this.cgPrev = null; this.stillPrev = null;
       // (falls worker) what his muscles hold while he goes down: his pose at that moment, turned within 0.35 s into a
       // protective pose that depends on which way he is falling (his centre of mass's motion relative to where he
       // faces): forward -> both hands forward and down to catch himself, head up; backward -> hands back and down,
@@ -1002,7 +1111,7 @@ export class BrainDrive {
       // (user 19:06: "If he's suddenly falling because someone flipped the phone, he should curl as a ball ... the knees
       // near the head and brace yourself") the box turned over: knees pulled to the chest, back rounded, head tucked
       // between the arms
-      if (/turned over/.test(this.kin.fallWhy || '')) this.curlBall();
+      if (/turned over/.test(this.kin.fallWhy || '') || (this.flipGuard && /turning over/.test(this.kin.fallWhy || ''))) this.curlBall();
       else if (this.headFirst) this.headBrace();
       else if (Math.abs(dir) < 55) {          // forward
         set('RightArm_y', -0.55); set('RightArm_z', 1.0); set('LeftArm_y', 0.55); set('LeftArm_z', -1.0);
@@ -1057,8 +1166,12 @@ export class BrainDrive {
         else {   // falling: hold the shape (see above) instead of the network
           B.tNext = d.time + 1 / B.hz - 1e-9;
           // turning head-down during the fall (the phone flipped while he was still upright): protect the head now
-          if (!this.headFirst && !this.curled && this.fallT < 2.5 && (this.headDownNow() > 0.25 || this.headThreat() < 0.35)) this.headBrace();
-          const k = Math.min(1, (this.fallT - (this.headFirst ? this.headT || 0 : 0)) / (this.headFirst ? 0.25 : 0.35));
+          // (user 12:21: "Only when he's unable to do this would he protect his head with his arms") catching first: the
+          // crossed-arms head brace mid-fall only when his head is going down first, or about to hit with no time left
+          // for the hands (catchFirst: 0.12 s; before: 0.35 s, which put his arms over his head in most side falls)
+          if (!this.headFirst && !this.curled && this.fallT < 2.5) { const hd = this.headDownNow(), ht = this.headThreat();
+            if (hd > 0.25 || ht < (this.catchFirst ? (this.hbSoon ?? 0.12) : 0.35)) this.headBrace(); }
+          const k = Math.min(1, (this.fallT - (this.headFirst ? this.headT || 0 : 0)) / (this.headFirst ? (this.flipGuard ? 0.12 : 0.25) : 0.35));
           W.act.forEach((a, j) => { B.targets[j] = this.hold[j] + (this.brace[j] - this.hold[j]) * k; });
           // (head worker) arms to where his head would hit, ahead of it (see headGuard); faded in within 0.1 s
           let hg = this.noGuard ? null : this.headGuard();
@@ -1077,15 +1190,34 @@ export class BrainDrive {
           const hw = !hg && !this.noHeadWall && (settled || this.headWallT > 0) ? this.headWall() : null;   // once he's stopped (the falling guard does the rest)
           if (hw) { this.hwPushK = clamp(((this.hwGap ?? 0.17) - hw.dist) / 0.08, 0, 1); hg = this.armsTo(hw, this.hwLat ?? 0.2, -(this.hwPush ?? 0.06) * this.hwPushK, W.bodyId.Head); const set = (n, v) => { const i = W.act.findIndex(a => a.name === n); if (i >= 0) hg.push([i, v]); }; set('Neck1_y', 0.4); set('Neck1_x', 0.05); set('Head_x', 0); }   // (pushing only while his face is close - head centre within 17 cm, ~7 cm of air - then just resting the hands there)
           this.headWallT = hw ? (this.headWallT || 0) + 1 / B.hz : 0;
-          let cg = null;
-          if (!hg && !this.noCatch && !(this.curled && this.fallT < 1.5)) { const I = this.bodyImpact(); if (I) cg = this.armsTo(I, 0.17, 0.06, W.bodyId.Chest); }
-          const want = hg || cg;
+          let cg = null, I = null;
+          if (!this.noCatch && !(this.curled && this.fallT < 1.5)) {
+            // (catchFirst) the surface his chest is going to, every tick (its speed estimate needs each tick)
+            if (this.catchFirst || !hg) I = this.bodyImpact();
+            // catching first (user 12:21): the hands go to where his body will land, unless his head is about to hit
+            // (under hgSoon s away) or this is a head-first/turned-over fall: then the head guard as before
+            const headSoon = this.hgLast ? this.hgLast.t - (this.fallT - this.hgLast.at) : 9;
+            const catchNow = I && (!hg || (this.catchFirst && !hw && !settled && !this.headFirst && headSoon > (this.hgSoon ?? 0.2)));
+            if (catchNow) { cg = this.armsTo(I, 0.17, 0.06, W.bodyId.Chest); if (hg) { hg = null; this.hgCaught = true; } }
+          }
+          // (user 12:40, flipGuard) head first or turned over, not yet still: both forearms wrapped over the back and top of
+          // his head, hands there, elbows forward (headWrap), at full arm strength, until he lies still
+          let wrap = null;
+          if (this.flipGuard && (this.headFirst || this.curled) && !settled) { wrap = this.headWrap(); if (wrap) { hg = null; cg = null; } }
+          let want = wrap || hg || cg;
+          // (helper B) once he lies still the arms stop re-aiming: the pose they reached is held (re-solving every tick from
+          // his own slightly moving pose kept the wrists going over 2.5 rad/s, so he never counted as still and got up
+          // 3-9 s late or never); they aim again if he moves (not settled)
+          if (settled && !this.noArmSettle) { if (!this.armSettled && want) this.armSettled = want.map(([j]) => [j, d.qpos[W.act[j].qadr]]); if (this.armSettled) want = this.armSettled; }
+          else this.armSettled = null;
+          // ... and he turns toward it: trunk and hips twist so his chest faces the surface he is falling onto
+          this.turnTo(this.catchFirst && I && !settled && !this.headFirst && !this.curled && this.fallT < 1.2 ? I : null, 1 / B.hz);
           this.guardW = Math.max(0, Math.min(1, (this.guardW || 0) + (want ? 1 / 3 : -1 / 12)));
           if (want) this.hgOut = want;
           // the crossed-arms brace (headBrace/curlBall) eases off once he is still
           if (settled && (this.headFirst || this.curled)) this.unbrace = Math.min(1, (this.unbrace || 0) + 1 / B.hz / 0.6);
           if (this.unbrace > 0) W.act.forEach((a, j) => { if (/Arm|Hand|Neck|Head/.test(a.name)) B.targets[j] += (this.rest[j] - B.targets[j]) * this.unbrace; });
-          if (this.guardW > 0 && this.hgOut) for (const [j, q] of this.hgOut) B.targets[j] += (q - B.targets[j]) * this.guardW * (hg || settled ? 1 : 0.8);   // (user 09:05: lying there "she should put the hands on the floor to get up") still: fully
+          if (this.guardW > 0 && this.hgOut) for (const [j, q] of this.hgOut) B.targets[j] += (q - B.targets[j]) * this.guardW * (hg || wrap || settled ? 1 : 0.8);   // (user 09:05: lying there "she should put the hands on the floor to get up") still: fully
         }
       }
       this.armHold();

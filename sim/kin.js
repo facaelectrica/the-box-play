@@ -376,7 +376,18 @@ export class Kin {
       // 0.4 s): the raw angle read as a 36 deg slope and he fell at once (phone test, version 6)
       if (this.t - (this.resetT || 0) < 1.2) { this.tilted = 0; const w2 = Math.max(1, gn) / this.hc; this.c = [-gl[0] / w2, -gl[1] / w2]; this.cv = [0, 0]; }   // already leaning as the slope asks, no jolt when it ends
       else this.tilted = tilt > this.fallTilt ? this.tilted + dt : 0;
-      if (this.tilted > 0.25) return this.startFall('floor too steep (' + Math.round(tilt * 57.3) + ' deg)');
+      // (user 12:21: "when they realize they're losing balance, they turn towards the direction they're about to fall")
+      // the floor tipping fast (over ~25 deg/s) past what he can stand on: he knows at once (0.08 s, not 0.25 s), so the
+      // turn and the reach for the surface start while there is still time
+      const tr = (tilt - (this.tiltPrev ?? tilt)) / Math.max(dt, 1e-3); this.tiltPrev = tilt;
+      this.tiltRate = (this.tiltRate || 0) + (tr - (this.tiltRate || 0)) * (1 - Math.exp(-dt / 0.1));
+      // (user 12:40: "just flip him upside down, because he's not reacting fast enough to protect his head") the box
+      // turning fast toward upside down (over ~85 deg/s, and at that rate past 90 deg within 0.3 s): he knows he is
+      // going over at once, before the floor has become a wall (faceChanged waits for 45 deg, the slope rule 0.25 s more)
+      this.flipRate = (this.flipRate || 0) + (tr - (this.flipRate || 0)) * (1 - Math.exp(-dt / 0.04));
+      if (this.earlyFlip !== false && this.t - (this.resetT || 0) >= 1.2 && this.flipRate > 1.5 && tilt + this.flipRate * 0.3 > 1.6)
+        return this.startFall('the box is turning over (' + Math.round(this.flipRate * 57.3) + ' deg/s)');
+      if (this.tilted > (this.quickFall === true && this.tiltRate > 0.45 ? 0.08 : 0.25)) return this.startFall('floor too steep (' + Math.round(tilt * 57.3) + ' deg)');
     }
     // (Version 26) get-ups played as recorded (drive_brain getupBy 'kin') don't feel the slope: the floor tilting past
     // what he can stand on during a get-up puts him down again (he falls, the physics takes him)
@@ -902,7 +913,10 @@ export class Kin {
     this.pickFace();
     // lying still?
     const hipsV = Math.hypot(d.qvel[0], d.qvel[1], d.qvel[2]);
-    let jv = 0, jk = 6; for (let k = 6; k < m.nv; k++) if (Math.abs(d.qvel[k]) > jv) { jv = Math.abs(d.qvel[k]); jk = k; }
+    // (helper B) option restArms = false: his arms don't count for lying still (default: they do - the arms now hold
+    // their pose once he is still, drive_brain armSettled, which fixed the late get-ups on its own)
+    if (!this.armDof) { this.armDof = new Uint8Array(m.nv); for (let k = 6; k < m.nv; k++) this.armDof[k] = /(Shoulder|Arm|ForeArm|Hand)_/.test(this.mj.mj_id2name(m, this.mj.mjtObj.mjOBJ_JOINT.value, m.dof_jntid[k]) || '') ? 1 : 0; }
+    let jv = 0, jk = 6; for (let k = 6; k < m.nv; k++) if (((this.restArms ?? (globalThis.RESTARMS_OFF ? false : true)) || !this.armDof[k]) && Math.abs(d.qvel[k]) > jv) { jv = Math.abs(d.qvel[k]); jk = k; }
     // (Version 29; snapshot 09:05: on a ~22 deg slope held in the hand he lay 6 s without getting up: the phone's small
     // shakes kept him from counting as still, and 24 deg was the limit) still enough with a little jiggle; get-ups on
     // slopes up to ~27 deg (a person gets up on a steep ramp too)
