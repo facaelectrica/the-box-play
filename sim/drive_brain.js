@@ -10,8 +10,8 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=42';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=42';
+import { Pins } from './pins.js?v=43';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=43';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function hullPts(P) {
   const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
@@ -323,6 +323,7 @@ export class BrainDrive {
     if (!this.armJ) this.armJ = W.act.map((a, j) => /(Arm|ForeArm|Hand)_/.test(a.name) && !/Shoulder/.test(a.name) ? j : -1).filter(j => j >= 0);   // collarbones stay the network's
     this.armW = w * w * (3 - 2 * w);
     if (this.armW <= 0) return;
+    if (B.meta.physics) return;   // (V43) the physics controller reaches with its own torques (physArms hands it the goal)
     for (const j of this.armJ) { const a = W.act[j]; B.targets[j] += (this.G.d.qpos[a.qadr] - B.targets[j]) * this.armW; }
   }
   // (user 20:49: "the hands are still not flat against the wall") copying the recording's arm ANGLES puts his hand
@@ -777,7 +778,7 @@ export class BrainDrive {
   }
   physArms() {
     const K = this.kin, W = this.W, m = W.m, mj = W.mj, nv = m.nv;
-    if (!(this.armW > 0) || !K.hands) { this.armSmOn = false; K.armOverride = null; return; }
+    if (!(this.armW > 0) || !K.hands) { this.armSmOn = false; K.armOverride = null; if (this.brain.meta.physics) this.brain.armW = 0; return; }
     // a wall spot behind his shoulder (his body has turned): that arm doesn't reach for it (snapshot 22:37)
     K.armSkip = K.armSkip || { Left: 0, Right: 0 };
     for (const sd of ['Left', 'Right']) K.armSkip[sd] = Math.max(0, K.armSkip[sd] - 1 / 30);
@@ -825,13 +826,16 @@ export class BrainDrive {
     // them, his whole body (feet slid 26 cm/s on a slow tilt)
     if (!this.armSm) this.armSm = new Float64Array(m.nq);
     const k = this.armSmOn ? 1 - Math.exp(-(1 / 30) / 0.2) : 1; this.armSmOn = true;
-    for (const j of this.armJ) { const a = W.act[j], qa = a.qadr; this.armSm[qa] += (D.qpos[qa] - this.armSm[qa]) * k; this.brain.targets[j] += (this.armSm[qa] - this.brain.targets[j]) * this.armW; }
+    const phys = this.brain.meta.physics;   // (V43) the physics controller: the reach is its goal, not a servo target
+    for (const j of this.armJ) { const a = W.act[j], qa = a.qadr; this.armSm[qa] += (D.qpos[qa] - this.armSm[qa]) * k; if (!phys) this.brain.targets[j] += (this.armSm[qa] - this.brain.targets[j]) * this.armW; }
+    if (phys) { this.brain.armGoal = this.armSm; this.brain.armJ = this.armJ; this.brain.armW = this.armW; }
     if (this.armRef) K.armOverride = this.armJ.map(j => [W.act[j].qadr, this.armSm[W.act[j].qadr]]);
   }
   armHold() {
     const W = this.W, d = W.d;
     if (!this.armJ) return;
-    for (const j of this.armJ) { const dof = W.act[j].qadr - 1; d.qfrc_applied[dof] = (this.armW || 0) > 0 && this.kin.state !== 'fall' ? d.qfrc_bias[dof] * this.armW : 0; }
+    const phys = this.brain.meta.physics;   // (V43) the physics controller holds the arms' weight itself
+    for (const j of this.armJ) { const dof = W.act[j].qadr - 1; d.qfrc_applied[dof] = !phys && (this.armW || 0) > 0 && this.kin.state !== 'fall' ? d.qfrc_bias[dof] * this.armW : 0; }
   }
   height(dd, b) { return this.kin.toLocal([dd.xpos[3 * b], dd.xpos[3 * b + 1], dd.xpos[3 * b + 2]])[2]; }
   async update(dt, fingerPush) {
