@@ -689,7 +689,7 @@ export class Kin {
   // ---------- falling: MuJoCo takes over ----------
   startFall(why) {
     const W = this.W, mj = this.mj, m = W.m, d = W.d;
-    this.havePre = false;
+    this.havePre = false; this.fallWhy = why;
     if (this.ext) {   // a real body (sim/springs.js) falls; the ghost only watches it
       this.state = 'fall'; this.fallT = 0; this.restT = 0; this.restoreGains();
       return this.event('fall: ' + why);
@@ -741,7 +741,10 @@ export class Kin {
     this.localPose(d.qpos, this.cur); this.vel.fill(0);
     const g = W.m.opt.gravity, gl = qv(this.G.q, [g[0], g[1], g[2]]), G = Math.hypot(g[0], g[1], g[2]) || 9.81;
     const tilt = Math.acos(clamp(-gl[2] / G, -1, 1));
-    if (this.fallT > 1.0 && this.restT > 0.6 && tilt < this.fallTilt * 0.75 && this.G.room >= 1.9) this.startGetup();
+    // (user 19:06: "if the phone is rotated like this and he has less space, he would still get on his knees") a floor
+    // with less than standing room (the back wall when the phone lies flat: ~1.3-1.5 m) still gets a get-up, held where
+    // his head would reach the opposite wall (kneeling), see updateGetup
+    if (this.fallT > 1.0 && this.restT > 0.6 && tilt < this.fallTilt * 0.75 && this.G.room >= 1.15) this.startGetup();
   }
 
   // ---------- getting up ----------
@@ -824,6 +827,11 @@ export class Kin {
     // until his hips are within 15 cm of standing (or 4 s past its end: then he is down, and falls again)
     const lag = this.getupLag || 0;
     this.anim.speed = clamp(1 - (lag - 0.08) / 0.33, 0.25, 1);
+    // not enough room above him to stand: the recording waits at the moment its head would come within 25 cm of the
+    // opposite wall (on his knees, or sitting up) until the room is there (the phone turned back)
+    const nx = Math.min(this.anim.clip.n - 1, Math.floor(this.anim.x) + 2), headZ = this.anim.clip.body(nx, 6)[2];
+    this.kneeling = this.G.room < 1.9 && headZ > this.G.room - 0.25;
+    if (this.kneeling) { this.anim.speed = 0; this.getupHold = 0; if (this.last !== 'kneeling: no room to stand') this.event('kneeling: no room to stand'); return; }
     const ended = this.anim.x >= this.anim.clip.n - 1.01;
     this.getupHold = ended ? (this.getupHold || 0) + dt : 0;
     if (ended && lag > 0.15 && this.getupHold < 4) return;

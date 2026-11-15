@@ -90,6 +90,13 @@ export class BrainDrive {
     set('Neck1_x', 0.35); set('Neck2_x', 0.15); set('Head_x', 0.1);
     this.headFirst = true; this.headT = this.fallT || 0;
   }
+  curlBall() {
+    const W = this.W, set = (n, v) => { const i = W.act.findIndex(a => a.name === n); if (i >= 0) this.brace[i] = v; };
+    this.headBrace();
+    for (const side of ['Right', 'Left']) { set(side + 'Leg_x', -1.7); set(side + 'Shin_x', 2.1); set(side + 'Foot_x', 0.3); }
+    set('Spine1_x', 0.35); set('Spine2_x', 0.3); set('Chest_x', 0.25); set('Neck1_x', 0.45); set('Neck2_x', 0.2); set('Head_x', 0.15);
+    this.curled = true;
+  }
   headDownNow() {
     const W = this.W, d = W.d, hb = W.bodyId.Head, hp = W.bodyId.Hips, g0 = W.m.opt.gravity, gn0 = Math.hypot(g0[0], g0[1], g0[2]) || 9.81;
     const ux = d.xpos[3 * hb] - d.xpos[3 * hp], uy = d.xpos[3 * hb + 1] - d.xpos[3 * hp + 1], uz = d.xpos[3 * hb + 2] - d.xpos[3 * hp + 2], ul = Math.hypot(ux, uy, uz) || 1;
@@ -194,7 +201,7 @@ export class BrainDrive {
     // falling (user 18:23 "why does he get all floppy?"): his muscles stay at ~1/3, easing to 1/4 (was 12% -> 4%),
     // holding the pose he had when he went down, so he keeps his shape (with the joint limits) instead of folding
     if (falling && this.mode !== 'fall') {
-      this.mode = 'fall'; B.down = true; this.fallT = 0;
+      this.mode = 'fall'; B.down = true; this.fallT = 0; this.curled = false; this.headFirst = false;
       // (falls worker) what his muscles hold while he goes down: his pose at that moment, turned within 0.35 s into a
       // protective pose that depends on which way he is falling (his centre of mass's motion relative to where he
       // faces): forward -> both hands forward and down to catch himself, head up; backward -> hands back and down,
@@ -220,14 +227,30 @@ export class BrainDrive {
       const ux = d.xpos[3 * hb] - d.xpos[3 * hp], uy = d.xpos[3 * hb + 1] - d.xpos[3 * hp + 1], uz = d.xpos[3 * hb + 2] - d.xpos[3 * hp + 2], ul = Math.hypot(ux, uy, uz) || 1;
       const headDown = (ux * g0[0] + uy * g0[1] + uz * g0[2]) / ul / gn0;   // 1 = head straight down
       this.headFirst = headDown > 0.25;
-      if (this.headFirst) this.headBrace();
+      // (user 19:06: "If he's suddenly falling because someone flipped the phone, he should curl as a ball ... the knees
+      // near the head and brace yourself") the box turned over: knees pulled to the chest, back rounded, head tucked
+      // between the arms
+      if (/turned over/.test(this.kin.fallWhy || '')) this.curlBall();
+      else if (this.headFirst) this.headBrace();
       else if (Math.abs(dir) < 55) {          // forward
         set('RightArm_y', -0.55); set('RightArm_z', 1.0); set('LeftArm_y', 0.55); set('LeftArm_z', -1.0);
         set('RightForeArm_z', 0.35); set('LeftForeArm_z', -0.35); set('Neck1_x', -0.15); set('Head_x', -0.1);
         atLeast('RightLeg_x', -0.3); atLeast('LeftLeg_x', -0.3);
       } else if (Math.abs(dir) > 125) {         // backward
+        // (user 19:09: "If he's about to fall on his back, he would stretch his arms backwards so that his hands hit
+        // the wall before his back") a wall behind him within 0.9 m: arms stretched back toward it, elbows almost
+        // straight, palms back; no wall: hands back and down toward the floor
+        const hipL = K.toLocal([d.xpos[3 * W.bodyId.Hips], d.xpos[3 * W.bodyId.Hips + 1], d.xpos[3 * W.bodyId.Hips + 2]]), bx = W.box;
+        const back = [-f[0], -f[1]]; let wallD = 9;
+        for (const [ax, lim] of [[0, bx.w / 2], [1, bx.D / 2]]) for (const sg of [1, -1]) if (back[ax] * sg > 0.3) wallD = Math.min(wallD, (sg * lim - hipL[ax]) / back[ax]);
+        if (!W.open && wallD < 0.9) {
+          set('RightArm_y', -0.8); set('RightArm_z', -1.1); set('LeftArm_y', 0.8); set('LeftArm_z', 1.1);
+          set('RightForeArm_z', 0.15); set('LeftForeArm_z', -0.15); set('RightHand_x', -0.4); set('LeftHand_x', -0.4);
+          this.reachBack = true;
+        } else {
         set('RightArm_y', -0.95); set('RightArm_z', -0.55); set('LeftArm_y', 0.95); set('LeftArm_z', 0.55);
         set('RightForeArm_z', 0.3); set('LeftForeArm_z', -0.3);
+        }
         set('Neck1_x', 0.4); set('Neck2_x', 0.1); set('Head_x', 0.1); set('Spine1_x', 0.2); set('Spine2_x', 0.1);
         atLeast('RightLeg_x', -0.7); atLeast('LeftLeg_x', -0.7); atLeast('RightShin_x', 0.8); atLeast('LeftShin_x', 0.8);
       } else {                                  // sideways: dir > 0 = toward his left
@@ -249,7 +272,7 @@ export class BrainDrive {
         else {   // falling: hold the shape (see above) instead of the network
           B.tNext = d.time + 1 / B.hz - 1e-9;
           // turning head-down during the fall (the phone flipped while he was still upright): protect the head now
-          if (!this.headFirst && this.fallT < 2.5 && this.headDownNow() > 0.25) this.headBrace();
+          if (!this.headFirst && !this.curled && this.fallT < 2.5 && this.headDownNow() > 0.25) this.headBrace();
           const k = Math.min(1, (this.fallT - (this.headFirst ? this.headT || 0 : 0)) / (this.headFirst ? 0.25 : 0.35));
           W.act.forEach((a, j) => { B.targets[j] = this.hold[j] + (this.brace[j] - this.hold[j]) * k; });
         }
