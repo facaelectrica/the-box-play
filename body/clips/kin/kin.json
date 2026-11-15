@@ -1,476 +1,526 @@
 {
-"note": "Recordings mode library (kin.html, sim/kin.js). Idles: BONES-SEED (private use). Recoveries: Inria push-recovery (Zenodo 10512652, CC BY 4.0, Inria) and BONES backward walk start+stop spliced (kback_*). Get-ups: BONES-SEED stand_up_lying*, glued to the floor per frame.",
-"idles": [
-{
-"file": "seed_idle_soft_A077.bin",
-"label": "neutral, soft knees (11 deg)"
-},
-{
-"file": "seed_idle_weight_A268.bin",
-"label": "weight on one leg, knees 17 deg"
-},
-{
-"file": "seed_idle_back_A056.bin",
-"label": "hands on the back, knees 14 deg"
-},
-{
-"file": "seed_idle_rightleg_A419.bin",
-"label": "right leg forward"
-},
-{
-"file": "seed_idle_weightL_A018.bin",
-"label": "weight shifting, relaxed arms"
-}
-],
-"reacts": [
-{
-"file": "kin/kreact_00.bin",
-"src": "S12_NI_PH180_2",
-"ang": -90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_01.bin",
-"src": "S4_NI_PH180_1",
-"ang": -90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_02.bin",
-"src": "S2_SI_PH180_1",
-"ang": -90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_03.bin",
-"src": "S15_NI_PM180_2",
-"ang": -90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_04.bin",
-"src": "S2_NI_PH180_2",
-"ang": -90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_05.bin",
-"src": "S4_NI_PH180_2",
-"ang": -90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_06.bin",
-"src": "S17_NI_PM180_1",
-"ang": -90,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_07.bin",
-"src": "S17_SI_PM180_2",
-"ang": -90,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_08.bin",
-"src": "S17_SI_PM180_1",
-"ang": -90,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_09.bin",
-"src": "S15_SI_PM135_2",
-"ang": -45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_10.bin",
-"src": "S4_SI_PM135_1",
-"ang": -45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_11.bin",
-"src": "S4_NI_PM135_1",
-"ang": -45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_12.bin",
-"src": "S7_SI_PH135_1",
-"ang": -45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_13.bin",
-"src": "S11_NI_PH135_1",
-"ang": -45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_14.bin",
-"src": "S4_NI_PM135_2",
-"ang": -45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_15.bin",
-"src": "S17_SI_PM135_2",
-"ang": -45,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_16.bin",
-"src": "S1_SI_PM135_1",
-"ang": -45,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_17.bin",
-"src": "S7_NI_PM135_1",
-"ang": -45,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_18.bin",
-"src": "S19_SI_PM90_2",
-"ang": 0,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_19.bin",
-"src": "S4_NI_PM90_2",
-"ang": 0,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_20.bin",
-"src": "S1_SI_PH90_1",
-"ang": 0,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_21.bin",
-"src": "S17_SI_PH90_1",
-"ang": 0,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_22.bin",
-"src": "S19_NI_PH90_2",
-"ang": 0,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_23.bin",
-"src": "S12_SI_PH90_1",
-"ang": 0,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_24.bin",
-"src": "S15_SI_PH90_1",
-"ang": 0,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 0
-},
-{
-"file": "kin/kreact_25.bin",
-"src": "S1_NI_PM90_2",
-"ang": 0,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_26.bin",
-"src": "S1_NI_PM90_1",
-"ang": 0,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_27.bin",
-"src": "S2_SI_PH45_1",
-"ang": 45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_28.bin",
-"src": "S6_NI_PM0_1",
-"ang": 45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_29.bin",
-"src": "S4_NI_PM45_2",
-"ang": 45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_30.bin",
-"src": "S2_NI_PH45_1",
-"ang": 45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_31.bin",
-"src": "S17_NI_PH45_1",
-"ang": 45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_32.bin",
-"src": "S1_SI_PH45_1",
-"ang": 45,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_33.bin",
-"src": "S17_SI_PM45_2",
-"ang": 45,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_34.bin",
-"src": "S17_SI_PM45_1",
-"ang": 45,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_35.bin",
-"src": "S7_NI_PH45_1",
-"ang": 45,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_36.bin",
-"src": "S4_NI_PM0_1",
-"ang": 90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_37.bin",
-"src": "S15_SI_PM0_2",
-"ang": 90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_38.bin",
-"src": "S16_NI_PH0_2",
-"ang": 90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_39.bin",
-"src": "S20_SI_PH0_2",
-"ang": 90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_40.bin",
-"src": "S2_NI_PM0_1",
-"ang": 90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_41.bin",
-"src": "S17_SI_PH0_2",
-"ang": 90,
-"kind": "step",
-"steps": 1,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_42.bin",
-"src": "S17_NI_PM0_1",
-"ang": 90,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_43.bin",
-"src": "S17_SI_PM0_2",
-"ang": 90,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kreact_44.bin",
-"src": "S17_SI_PM0_1",
-"ang": 90,
-"kind": "inplace",
-"steps": 0,
-"push_frame": 3
-},
-{
-"file": "kin/kback_A028.bin",
-"src": "BONES walk_backward_stop A028 (spliced)",
-"ang": 180,
-"kind": "step",
-"push_frame": 0
-},
-{
-"file": "kin/kback_A030.bin",
-"src": "BONES walk_backward_stop A030 (spliced)",
-"ang": 180,
-"kind": "step",
-"push_frame": 0
-},
-{
-"file": "kin/kback_A044.bin",
-"src": "BONES walk_backward_stop A044 (spliced)",
-"ang": 180,
-"kind": "step",
-"push_frame": 0
-}
-],
-"getups": {
-"back": [
-{
-"file": "kin/getup_back_A472.bin",
-"frames": 186,
-"chestFrontUp": 0.99,
-"lieSide": -0.05
-},
-{
-"file": "kin/getup_back_A473.bin",
-"frames": 183,
-"chestFrontUp": 0.99,
-"lieSide": 0.11
-},
-{
-"file": "kin/getup_back_A474.bin",
-"frames": 226,
-"chestFrontUp": 0.99,
-"lieSide": 0.11
-}
-],
-"front": [
-{
-"file": "kin/getup_front_A472.bin",
-"frames": 234,
-"chestFrontUp": -1.0,
-"lieSide": 0.01
-},
-{
-"file": "kin/getup_front_A473.bin",
-"frames": 276,
-"chestFrontUp": -1.0,
-"lieSide": -0.07
-},
-{
-"file": "kin/getup_front_A474.bin",
-"frames": 263,
-"chestFrontUp": -1.0,
-"lieSide": -0.01
-}
-],
-"side": [
-{
-"file": "kin/getup_side_A472.bin",
-"frames": 210,
-"chestFrontUp": -0.1,
-"lieSide": 0.99
-},
-{
-"file": "kin/getup_side_A473.bin",
-"frames": 197,
-"chestFrontUp": -0.17,
-"lieSide": 0.98
-},
-{
-"file": "kin/getup_side_A474.bin",
-"frames": 187,
-"chestFrontUp": 0.05,
-"lieSide": 1.0
-},
-{
-"file": "kin/getup_side_A475.bin",
-"frames": 199,
-"chestFrontUp": 0.17,
-"lieSide": 0.98
-}
-]
-}
+ "note": "Recordings mode library (kin.html, sim/kin.js). Idles: BONES-SEED (private use). Recoveries: Inria push-recovery (Zenodo 10512652, CC BY 4.0, Inria) and BONES backward walk start+stop spliced (kback_*). Get-ups: BONES-SEED stand_up_lying*, glued to the floor per frame.",
+ "idles": [
+  {
+   "file": "seed_idle_soft_A077.bin",
+   "label": "neutral, soft knees (11 deg)"
+  },
+  {
+   "file": "seed_idle_weight_A268.bin",
+   "label": "weight on one leg, knees 17 deg"
+  },
+  {
+   "file": "seed_idle_back_A056.bin",
+   "label": "hands on the back, knees 14 deg"
+  },
+  {
+   "file": "seed_idle_rightleg_A419.bin",
+   "label": "right leg forward"
+  },
+  {
+   "file": "seed_idle_weightL_A018.bin",
+   "label": "weight shifting, relaxed arms"
+  }
+ ],
+ "reacts": [
+  {
+   "file": "kin/kreact_00.bin",
+   "src": "S12_NI_PH180_2",
+   "ang": -90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_01.bin",
+   "src": "S4_NI_PH180_1",
+   "ang": -90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_02.bin",
+   "src": "S2_SI_PH180_1",
+   "ang": -90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_03.bin",
+   "src": "S15_NI_PM180_2",
+   "ang": -90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_04.bin",
+   "src": "S2_NI_PH180_2",
+   "ang": -90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_05.bin",
+   "src": "S4_NI_PH180_2",
+   "ang": -90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_06.bin",
+   "src": "S17_NI_PM180_1",
+   "ang": -90,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_07.bin",
+   "src": "S17_SI_PM180_2",
+   "ang": -90,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_08.bin",
+   "src": "S17_SI_PM180_1",
+   "ang": -90,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_09.bin",
+   "src": "S15_SI_PM135_2",
+   "ang": -45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_10.bin",
+   "src": "S4_SI_PM135_1",
+   "ang": -45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_11.bin",
+   "src": "S4_NI_PM135_1",
+   "ang": -45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_12.bin",
+   "src": "S7_SI_PH135_1",
+   "ang": -45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_13.bin",
+   "src": "S11_NI_PH135_1",
+   "ang": -45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_14.bin",
+   "src": "S4_NI_PM135_2",
+   "ang": -45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_15.bin",
+   "src": "S17_SI_PM135_2",
+   "ang": -45,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_16.bin",
+   "src": "S1_SI_PM135_1",
+   "ang": -45,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_17.bin",
+   "src": "S7_NI_PM135_1",
+   "ang": -45,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_18.bin",
+   "src": "S19_SI_PM90_2",
+   "ang": 0,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_19.bin",
+   "src": "S4_NI_PM90_2",
+   "ang": 0,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_20.bin",
+   "src": "S1_SI_PH90_1",
+   "ang": 0,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_21.bin",
+   "src": "S17_SI_PH90_1",
+   "ang": 0,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_22.bin",
+   "src": "S19_NI_PH90_2",
+   "ang": 0,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_23.bin",
+   "src": "S12_SI_PH90_1",
+   "ang": 0,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_24.bin",
+   "src": "S15_SI_PH90_1",
+   "ang": 0,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 0
+  },
+  {
+   "file": "kin/kreact_25.bin",
+   "src": "S1_NI_PM90_2",
+   "ang": 0,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_26.bin",
+   "src": "S1_NI_PM90_1",
+   "ang": 0,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_27.bin",
+   "src": "S2_SI_PH45_1",
+   "ang": 45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_28.bin",
+   "src": "S6_NI_PM0_1",
+   "ang": 45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_29.bin",
+   "src": "S4_NI_PM45_2",
+   "ang": 45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_30.bin",
+   "src": "S2_NI_PH45_1",
+   "ang": 45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_31.bin",
+   "src": "S17_NI_PH45_1",
+   "ang": 45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_32.bin",
+   "src": "S1_SI_PH45_1",
+   "ang": 45,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_33.bin",
+   "src": "S17_SI_PM45_2",
+   "ang": 45,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_34.bin",
+   "src": "S17_SI_PM45_1",
+   "ang": 45,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_35.bin",
+   "src": "S7_NI_PH45_1",
+   "ang": 45,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_36.bin",
+   "src": "S4_NI_PM0_1",
+   "ang": 90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_37.bin",
+   "src": "S15_SI_PM0_2",
+   "ang": 90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_38.bin",
+   "src": "S16_NI_PH0_2",
+   "ang": 90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_39.bin",
+   "src": "S20_SI_PH0_2",
+   "ang": 90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_40.bin",
+   "src": "S2_NI_PM0_1",
+   "ang": 90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_41.bin",
+   "src": "S17_SI_PH0_2",
+   "ang": 90,
+   "kind": "step",
+   "steps": 1,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_42.bin",
+   "src": "S17_NI_PM0_1",
+   "ang": 90,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_43.bin",
+   "src": "S17_SI_PM0_2",
+   "ang": 90,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kreact_44.bin",
+   "src": "S17_SI_PM0_1",
+   "ang": 90,
+   "kind": "inplace",
+   "steps": 0,
+   "push_frame": 3
+  },
+  {
+   "file": "kin/kback_A028.bin",
+   "src": "BONES walk_backward_stop A028 (spliced)",
+   "ang": 180,
+   "kind": "step",
+   "push_frame": 0
+  },
+  {
+   "file": "kin/kback_A030.bin",
+   "src": "BONES walk_backward_stop A030 (spliced)",
+   "ang": 180,
+   "kind": "step",
+   "push_frame": 0
+  },
+  {
+   "file": "kin/kback_A044.bin",
+   "src": "BONES walk_backward_stop A044 (spliced)",
+   "ang": 180,
+   "kind": "step",
+   "push_frame": 0
+  }
+ ],
+ "getups": {
+  "back": [
+   {
+    "file": "kin/getup_back_A472.bin",
+    "frames": 186,
+    "chestFrontUp": 0.99,
+    "lieSide": -0.05
+   },
+   {
+    "file": "kin/getup_back_A473.bin",
+    "frames": 183,
+    "chestFrontUp": 0.99,
+    "lieSide": 0.11
+   },
+   {
+    "file": "kin/getup_back_A474.bin",
+    "frames": 226,
+    "chestFrontUp": 0.99,
+    "lieSide": 0.11
+   }
+  ],
+  "front": [
+   {
+    "file": "kin/getup_front_A472.bin",
+    "frames": 234,
+    "chestFrontUp": -1.0,
+    "lieSide": 0.01
+   },
+   {
+    "file": "kin/getup_front_A473.bin",
+    "frames": 276,
+    "chestFrontUp": -1.0,
+    "lieSide": -0.07
+   },
+   {
+    "file": "kin/getup_front_A474.bin",
+    "frames": 263,
+    "chestFrontUp": -1.0,
+    "lieSide": -0.01
+   }
+  ],
+  "side": [
+   {
+    "file": "kin/getup_side_A472.bin",
+    "frames": 210,
+    "chestFrontUp": -0.1,
+    "lieSide": 0.99
+   },
+   {
+    "file": "kin/getup_side_A473.bin",
+    "frames": 197,
+    "chestFrontUp": -0.17,
+    "lieSide": 0.98
+   },
+   {
+    "file": "kin/getup_side_A474.bin",
+    "frames": 187,
+    "chestFrontUp": 0.05,
+    "lieSide": 1.0
+   },
+   {
+    "file": "kin/getup_side_A475.bin",
+    "frames": 199,
+    "chestFrontUp": 0.17,
+    "lieSide": 0.98
+   }
+  ],
+  "sit": [
+   {
+    "file": "kin/sit_back_A063_1.bin",
+    "src": "BONES sitting_legs_bend_arms_back_stop"
+   },
+   {
+    "file": "kin/sit_back_A244_1.bin",
+    "src": "BONES sitting_legs_bend_arms_back_stop"
+   },
+   {
+    "file": "kin/sit_back_A245_1.bin",
+    "src": "BONES sitting_legs_bend_arms_back_stop"
+   },
+   {
+    "file": "kin/sit_back_A248_1.bin",
+    "src": "BONES sitting_legs_bend_arms_back_stop"
+   },
+   {
+    "file": "kin/sit_back_A245_2.bin",
+    "src": "BONES sitting_legs_bend_arms_back_stop"
+   },
+   {
+    "file": "kin/sit_back_A064_3.bin",
+    "src": "BONES sitting_legs_bend_arms_back_stop"
+   },
+   {
+    "file": "kin/sit_back_A063_4.bin",
+    "src": "BONES sitting_legs_bend_arms_back_stop"
+   },
+   {
+    "file": "kin/sit_back_A167_4.bin",
+    "src": "BONES sitting_legs_bend_arms_back_stop"
+   },
+   {
+    "file": "kin/sit_front_A051_1.bin",
+    "src": "BONES sitting_legs_bend_arms_front_stop"
+   },
+   {
+    "file": "kin/sit_front_A063_2.bin",
+    "src": "BONES sitting_legs_bend_arms_front_stop"
+   },
+   {
+    "file": "kin/sit_front_A165_4.bin",
+    "src": "BONES sitting_legs_bend_arms_front_stop"
+   },
+   {
+    "file": "kin/sit_front_A167_4.bin",
+    "src": "BONES sitting_legs_bend_arms_front_stop"
+   }
+  ]
+ }
 }
