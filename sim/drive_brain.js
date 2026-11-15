@@ -10,8 +10,8 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=30';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=30';
+import { Pins } from './pins.js?v=31';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=31';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function hullPts(P) {
   const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
@@ -592,7 +592,7 @@ export class BrainDrive {
     const Q = (dd, b) => [dd.xquat[4 * b], dd.xquat[4 * b + 1], dd.xquat[4 * b + 2], dd.xquat[4 * b + 3]];
     const qmu = (a, b) => [a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3], a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2], a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1], a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]];
     const rvec = q => { if (q[0] < 0) q = q.map(v => -v); const sn = Math.hypot(q[1], q[2], q[3]); if (sn < 1e-9) return [0, 0, 0]; const a = 2 * Math.atan2(sn, q[0]); return [q[1] / sn * a, q[2] / sn * a, q[3] / sn * a]; };
-    const L = this.gLocks || (this.gLocks = {});
+    const L = this.gLocks || (this.gLocks = {}); this.lockUp = up;
     mj.mj_kinematics(m, d);
     // down: a foot's ankle within 4 cm of where it sits on the floor (or its toes on it); a hand's wrist within 6 cm
     const isDown = (dd, n) => { const b = W.bodyId[n];
@@ -601,8 +601,9 @@ export class BrainDrive {
     const want = {};
     for (const n of ['LeftFoot', 'RightFoot', 'LeftHand', 'RightHand']) {
       const recDown = isDown(G, n), b = W.bodyId[n];
-      if (L[n] && !recDown) { delete L[n]; continue; }            // the recording lifts it
-      if (!L[n] && recDown && isDown(d, n)) L[n] = { p: P3(d, b), q: Q(d, b), t: 0 };
+      // (V30) the feet's spots come from the recording: where the recorded person's foot plants, frozen there; his leg
+      // reaches it (locked where his own foot happened to be - often still 5-8 cm up, coming down from the blend - it crept)
+      if (!L[n] && recDown && (/Foot/.test(n) || isDown(d, n))) L[n] = /Foot/.test(n) ? { p: P3(G, b), q: Q(G, b), t: 0 } : { p: P3(d, b), q: Q(d, b), t: 0 };
       if (L[n]) { L[n].t += 1 / 30; want[n] = L[n]; }
     }
     if (!Object.keys(want).length) return;
@@ -611,29 +612,55 @@ export class BrainDrive {
     D.qpos.set(d.qpos);
     const chain = n => /Foot/.test(n) ? { dof: LEGS[n.startsWith('Left') ? 'Left' : 'Right'].dof, N: 9, LW: [1, 1, 0.3, 1, 0, 0, 1, 1, 0.5] }
       : { dof: ARMS[n.startsWith('Left') ? 'Left' : 'Right'].dof, N: 12, LW: ARM_W };
-    const rw = 0.25;
-    for (let it = 0; it < 14; it++) {
+    const rw = globalThis.GL_RW ?? (ht([d.qpos[0], d.qpos[1], d.qpos[2]]) > 0.8 ? 0.08 : 0.25);   // standing up: the spot matters more than a perfectly flat sole
+    // the planted feet are the fixed points (a person's body moves over their feet, not the feet under it): first his
+    // whole body moves along the floor so the planted feet can be reached where they are (the recording's placement
+    // moves with it), then his legs and arms reach them
+    const feetIn = Object.keys(want).filter(n => /Foot/.test(n));
+    if (feetIn.length && !globalThis.GL_NOSHIFT) for (let pass = 0; pass < 3; pass++) {
+      this.limbIK(D, want, chain, rw, 10);
+      mj.mj_kinematics(m, D);
+      const r = [0, 0, 0]; for (const n of feetIn) { const b = W.bodyId[n]; for (let k = 0; k < 3; k++) r[k] += (want[n].p[k] - D.xpos[3 * b + k]) / feetIn.length; }
+      // along the floor fully; up/down only downward (his hips higher than his legs reach: he stays a little lower)
+      const rn = dot(r, up); for (let k = 0; k < 3; k++) r[k] -= Math.max(0, rn) * up[k];
+      if (Math.hypot(...r) < 0.003) break;
+      for (let k = 0; k < 3; k++) { r[k] *= 0.8; D.qpos[k] += r[k]; d.qpos[k] += r[k]; }
+      this.stats.lockShift = (this.stats.lockShift || 0) + Math.hypot(...r);
+    }
+    this.limbIK(D, want, chain, rw, globalThis.GL_IT ?? 14);
+    mj.mj_kinematics(m, D);
+    for (const n in want) {
+      const b = W.bodyId[n], lk = want[n], C = chain(n), err = Math.hypot(lk.p[0] - D.xpos[3 * b], lk.p[1] - D.xpos[3 * b + 1], lk.p[2] - D.xpos[3 * b + 2]);
+      // out of reach: the spot creeps toward where the limb can be (a slow slide, not a jump); far out, it lets go
+      if (err > 0.05) { const bp = [D.xpos[3 * b], D.xpos[3 * b + 1], D.xpos[3 * b + 2]]; for (let k = 0; k < 3; k++) lk.p[k] += (bp[k] - lk.p[k]) * 0.25; }
+      for (let c = 0; c < C.N; c++) { const qa = C.dof + 1 + c; d.qpos[qa] = D.qpos[qa]; }
+    }
+    this.stats.locks = (this.stats.locks || 0) + Object.keys(want).length;
+  }
+  // damped least squares on a scratch body D: each part in `want` to its locked spot and turn (chains from chain(n))
+  limbIK(D, want, chain, rw, iters) {
+    const W = this.W, m = W.m, mj = W.mj, nv = m.nv;
+    const qmu = (a, b) => [a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3], a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2], a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1], a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]];
+    const rvec = q => { if (q[0] < 0) q = q.map(v => -v); const sn = Math.hypot(q[1], q[2], q[3]); if (sn < 1e-9) return [0, 0, 0]; const a = 2 * Math.atan2(sn, q[0]); return [q[1] / sn * a, q[2] / sn * a, q[3] / sn * a]; };
+    for (let it = 0; it < iters; it++) {
       mj.mj_kinematics(m, D);
       for (const n in want) {
         const lk = want[n], b = W.bodyId[n], C = chain(n);
         const r = rvec(qmu(lk.q, [D.xquat[4 * b], -D.xquat[4 * b + 1], -D.xquat[4 * b + 2], -D.xquat[4 * b + 3]]));
+        // (a planted foot may swivel on the floor: its turn about "up" is free, it only stays flat)
+        if (this.lockUp && /Foot/.test(n)) { const u = this.lockUp, ru = r[0] * u[0] + r[1] * u[1] + r[2] * u[2]; for (let k = 0; k < 3; k++) r[k] -= ru * u[k]; }
         const e = [lk.p[0] - D.xpos[3 * b], lk.p[1] - D.xpos[3 * b + 1], lk.p[2] - D.xpos[3 * b + 2], r[0] * rw, r[1] * rw, r[2] * rw];
         mj.mj_jacBody(m, D, this.jpG, this.jrG, b);
         const JP = this.jpG.GetView(), JR = this.jrG.GetView(), J = [];
-        for (let rr = 0; rr < 6; rr++) { const row = []; for (let c = 0; c < C.N; c++) row.push(rr < 3 ? JP[rr * nv + C.dof + c] : JR[(rr - 3) * nv + C.dof + c] * rw); J.push(row); }
+        const U = this.lockUp && /Foot/.test(n) ? this.lockUp : null;
+        for (let rr = 0; rr < 6; rr++) { const row = []; for (let c = 0; c < C.N; c++) { let v = rr < 3 ? JP[rr * nv + C.dof + c] : JR[(rr - 3) * nv + C.dof + c] * rw;
+          if (U && rr >= 3) { const ju = (JR[C.dof + c] * U[0] + JR[nv + C.dof + c] * U[1] + JR[2 * nv + C.dof + c] * U[2]) * rw; v -= ju * U[rr - 3]; } row.push(v); } J.push(row); }
         const M = []; for (let i = 0; i < 6; i++) { M.push([]); for (let j = 0; j < 6; j++) { let s2 = 0; for (let c = 0; c < C.N; c++) s2 += J[i][c] * C.LW[c] * J[j][c]; M[i].push(s2 + (i === j ? 0.002 : 0)); } }
         const y = solve6(M, e);
         for (let c = 0; c < C.N; c++) { let s2 = 0; for (let i = 0; i < 6; i++) s2 += J[i][c] * y[i]; const qa = C.dof + 1 + c, jid = m.dof_jntid[C.dof + c];
           D.qpos[qa] = clamp(D.qpos[qa] + clamp(C.LW[c] * s2, -0.2, 0.2), m.jnt_range[2 * jid], m.jnt_range[2 * jid + 1]); }
       }
     }
-    mj.mj_kinematics(m, D);
-    for (const n in want) {
-      const b = W.bodyId[n], lk = want[n], C = chain(n), err = Math.hypot(lk.p[0] - D.xpos[3 * b], lk.p[1] - D.xpos[3 * b + 1], lk.p[2] - D.xpos[3 * b + 2]);
-      if (err > 0.06) { delete L[n]; continue; }   // out of reach: let it go (put down again where it is)
-      for (let c = 0; c < C.N; c++) { const qa = C.dof + 1 + c; d.qpos[qa] = D.qpos[qa]; }
-    }
-    this.stats.locks = (this.stats.locks || 0) + Object.keys(want).length;
   }
   physArms() {
     const K = this.kin, W = this.W, m = W.m, mj = W.mj, nv = m.nv;
@@ -759,7 +786,24 @@ export class BrainDrive {
         if (!any) break;
         for (let k = 0; k < 3; k++) d.qpos[k] += push[k]; W.mj.mj_forward(m, d);
       }
+      if (globalThis.SLDBG) { W.mj.mj_kinematics(m, d); const b = W.bodyId.LeftFoot, a = K.anim; const cf = a.clip.body(Math.round(a.x), 21); const A = K.anchor; this._sl = { t: d.time, preLock: [d.xpos[3 * b], d.xpos[3 * b + 1]], ghost: [this.G.d.xpos[3 * b], this.G.d.xpos[3 * b + 1]], clipF: [cf[0], cf[1]], anc: [A.x, A.y, A.yaw], x: a.x, offT: K.offT }; }
       if (!this.noGetupLocks) { this.getupLocks(); W.mj.mj_forward(m, d); }
+      // (V30, rulebook: walls beat planted feet) a last pass after the feet: anything of him in a wall or the floor moves
+      // him out; the spots his feet/hands are held to and the recording's placement move with him (otherwise the next
+      // frame pulls him back in and his feet creep)
+      for (let it = 0; it < 3 && !this.noGetupLocks; it++) {
+        const push = [0, 0, 0]; let any = false;
+        for (let i = 0; i < d.ncon; i++) {
+          const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
+          if (dist > -0.005) continue; const f1 = W.isFig[m.geom_bodyid[g1]], f2 = W.isFig[m.geom_bodyid[g2]]; if (f1 === f2) continue;
+          const dir = f2 ? n : n.map(v => -v); for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
+        }
+        if (!any) break;
+        for (let k = 0; k < 3; k++) d.qpos[k] += push[k]; W.mj.mj_forward(m, d);
+        if (K.anchor) { const a0 = K.toLocal([0, 0, 0]), c0 = K.toLocal(push); K.anchor.x += c0[0] - a0[0]; K.anchor.y += c0[1] - a0[1]; }
+        if (this.gLocks) for (const nn in this.gLocks) { const P = this.gLocks[nn].p; for (let k = 0; k < 3; k++) P[k] += push[k]; }
+      }
+      if (globalThis.SLDBG && this._sl) { const b = W.bodyId.LeftFoot, S = this._sl, P = this._slP; if (P) { const f = v => (v * 100).toFixed(1); console.log('SL', S.t.toFixed(3), 'x', S.x.toFixed(1), 'clip', f(S.clipF[0] - P.clipF[0]), f(S.clipF[1] - P.clipF[1]), 'anc', f(S.anc[0] - P.anc[0]), f(S.anc[1] - P.anc[1]), ((S.anc[2] - P.anc[2]) * 57.3).toFixed(1), 'ghost', f(S.ghost[0] - P.ghost[0]), f(S.ghost[1] - P.ghost[1]), 'preLock', f(S.preLock[0] - P.preLock[0]), f(S.preLock[1] - P.preLock[1]), 'final', f(d.xpos[3 * b] - P.final[0]), f(d.xpos[3 * b + 1] - P.final[1])); } S.final = [d.xpos[3 * b], d.xpos[3 * b + 1]]; this._slP = S; }
       d.time += dt;
       if (this.pins) this.pins.reset();
       K.getupLag = 0; K.getupHandWait = false; K.getupLeanWait = false;

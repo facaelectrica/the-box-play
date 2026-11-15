@@ -237,9 +237,15 @@ export class Kin {
     // ease: offset = where he is - where the clip starts (and the same for speeds)
     this.basePose(this.base);
     poseDiff(this.base, from, this.off0);
+    // (V30; user 09:07 "a lot of foot sliding when getting up") get-ups: the legs don't ease from his fallen pose into
+    // the recording's (the fading leg angles dragged planted feet across the floor for ~1.5 s); they take the
+    // recording's at once, his planted feet are held by the leg reach (drive getupLocks) and the drive's own blend
+    // from his fallen pose smooths the first moment
+    if (opt.legsNow && !globalThis.LEGEASE) for (let k = 48; k < 72; k++) this.off0[k] = 0;
     const bv = this.baseVel();
     for (let k = 0; k < 72; k++) this.offV[k] = (opt.still ? 0 : fromVel[k]) - bv[k];
     this.offV[3] = this.offV[4] = this.offV[5] = 0;
+    if (opt.legsNow && !globalThis.LEGEASE) for (let k = 48; k < 72; k++) this.offV[k] = 0;
     this.offT = 0; this.offHL = opt.hl ?? this.blendHL;
     this.locks.Left = this.locks.Right = null;
   }
@@ -592,7 +598,7 @@ export class Kin {
       this.localPose(d.qpos, this.cur);
     } else {
       if (this.state === 'getup') this.keepLimbsIn(this.tmp);
-      this.keepInBox(this.tmp);
+      if (this.state !== 'getup') this.keepInBox(this.tmp);   // (V30, get-ups: keepLimbsIn keeps him out of the walls; this hips clamp pulled the recording off his planted feet every frame)
       this.cur.set(this.tmp); this.writeWorld(this.cur);
     }
     // its speed (velocity space), for easing into the next recording
@@ -962,7 +968,7 @@ export class Kin {
       }
       if (best) {
         this.state = 'getup'; this.havePre = false;
-        this.play(best.g.clip, best.i, 'once', { hl: 0.45, still: true, fromCur: true });
+        this.play(best.g.clip, best.i, 'once', { hl: 0.45, still: true, fromCur: true, legsNow: true });
         return this.event(`get up from sitting (${best.g.file} at ${(best.i / FPS).toFixed(1)} s, pose gap ${(best.d * 100).toFixed(0)} cm)`);
       }
     }
@@ -994,7 +1000,7 @@ export class Kin {
     const q0 = c.clip.q(best.i), lat0 = qv([q0[3], q0[4], q0[5], q0[6]], [1, 0, 0]), latN = qv([this.cur[3], this.cur[4], this.cur[5], this.cur[6]], [1, 0, 0]);
     const useLat = Math.abs(lat0[2]) < 0.7 && Math.abs(latN[2]) < 0.7;
     const yaw = useLat ? wrap(Math.atan2(latN[1], latN[0]) - Math.atan2(lat0[1], lat0[0])) : undefined;
-    this.play(c.clip, best.i, 'once', { spine: !useLat, yaw, hl: 0.35, still: true, fromCur: true });
+    this.play(c.clip, best.i, 'once', { spine: !useLat, yaw, hl: 0.35, still: true, fromCur: true, legsNow: true });
     this.event(`get up from ${kind} (${c.file} at ${(best.i / FPS).toFixed(1)} s, pose gap ${Math.sqrt(best.d / me.length * 3).toFixed(2)})`);
   }
   // pose fingerprint for get-ups (independent of which way he faces): parts relative to the hips in the hips' own frame,
