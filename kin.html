@@ -111,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V47</div><div id="brainver"></div>
+<div id="ver">V49</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -230,9 +230,11 @@ window.BOXLOAD = (() => {
   row('Page code').state = 'load';
   // (V40, user 12:54) which brain moves his body while he stands: 08 (ours), NVIDIA's original, or none; Options > Brain
   const BRAINS = { b08: ['body/models/b08/', 25211904], nvidia: ['body/', 12610426], none: null, phys: null };   // phys (V43): sim/physctl.js, nothing to download
-  let brainId = 'b08';
-  try { brainId = new URLSearchParams(location.search).get('brain') || localStorage.getItem('box.kinBrain') || 'b08'; } catch (_) {}
-  if (!(brainId in BRAINS)) brainId = 'b08';
+  // (V49, user 14:32: "the physics controller should be the default one") physics is the default; a pick is remembered
+  // under a new key so earlier picks of 08 don't keep anyone off the new default
+  let brainId = 'phys';
+  try { brainId = new URLSearchParams(location.search).get('brain') || localStorage.getItem('box.kinBrain2') || 'phys'; } catch (_) {}
+  if (!(brainId in BRAINS)) brainId = 'phys';
   window.BOXBRAIN = { id: brainId, dir: BRAINS[brainId] && BRAINS[brainId][0], bytes: BRAINS[brainId] && BRAINS[brainId][1] };
   let fig = 'female';
   try { fig = localStorage.getItem('box.figure') || fig; } catch (_) {}
@@ -291,17 +293,17 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import loadMujoco from '@mujoco/mujoco';
-import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=47';
+import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=49';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=47';
-import { Springs, humanCap } from './sim/springs.js?v=47';
-import { Balance } from './sim/balance.js?v=47';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=47';
-import { PhysBrain } from './sim/physctl.js?v=47';
-import { addPins } from './sim/pins.js?v=47';
-import { rigHand, poseHand } from './sim/fingers.js?v=47';
-import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=47';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=49';
+import { Springs, humanCap } from './sim/springs.js?v=49';
+import { Balance } from './sim/balance.js?v=49';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=49';
+import { PhysBrain } from './sim/physctl.js?v=49';
+import { addPins } from './sim/pins.js?v=49';
+import { rigHand, poseHand } from './sim/fingers.js?v=49';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=49';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -630,8 +632,8 @@ const figP = loadFig(FIG);
 let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
-try { const bb = (window.BOXBRAIN || {}).id; if (bb && bb !== 'b08') document.getElementById('ver').textContent += bb === 'nvidia' ? ' · NVIDIA brain' : bb === 'phys' ? ' · physics' : ' · no brain'; } catch (_) {}
-const KINV = 47;
+try { const bb = (window.BOXBRAIN || {}).id; if (bb) document.getElementById('ver').textContent += bb === 'nvidia' ? ' · NVIDIA brain' : bb === 'phys' ? ' · physics' : bb === 'b08' ? ' · brain 08' : ' · no brain'; } catch (_) {}
+const KINV = 49;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(LOAD.url(u), 'Recordings'));   // (V40) address = name + fingerprint (BOXLOAD)
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -653,7 +655,7 @@ if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupC
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
 // only carry him through get-ups (the network was never taught to get up).
 let drive = null;
-const BB = window.BOXBRAIN || { id: 'b08', dir: 'body/models/b08/', bytes: 25211904 };   // (V40) chosen in Options > Brain
+const BB = window.BOXBRAIN || { id: 'phys', dir: null, bytes: 0 };   // (V40) chosen in Options > Brain
 if (kin && PHYSICAL && BB.dir) try {
   ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/'; ort.env.wasm.numThreads = 1;
   const dir = BB.dir, ORT_WASM = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort-wasm-simd-threaded.wasm';
@@ -1400,12 +1402,12 @@ $('optClose').onclick = () => $('opts').classList.remove('open');
   // (V40, user 12:54: "give me the option to test it too, so I can judge it myself") the recordings decide every move;
   // the brain only works his muscles so his physical body follows them while he stands. Picking reloads the page.
   const sel = $('brainPick');
-  const OPTS = [['b08', '08 · trained by us (default)'], ['phys', 'Physics controller · no brain (new)'], ['nvidia', "NVIDIA's original"], ['none', 'No brain · simple springs only']];
+  const OPTS = [['phys', 'Physics controller · no brain (default)'], ['b08', '08 · trained by us'], ['nvidia', "NVIDIA's original"], ['none', 'No brain · simple springs only']];
   for (const [id, label] of OPTS) { const o = document.createElement('option'); o.value = id; o.textContent = label; sel.appendChild(o); }
   sel.value = BB.id;
   $('brainNow').textContent = { b08: '08', nvidia: 'NVIDIA', none: 'none', phys: 'physics' }[BB.id] + ((BB.dir || BB.id === 'phys') && !drive ? ' (did not load)' : '');
   sel.parentNode.querySelector('.help').textContent = 'The recordings decide every move. The brain only works his muscles so his body follows them while he stands. Picking one reloads the page.';
-  sel.onchange = () => { try { localStorage.setItem('box.kinBrain', sel.value); } catch (_) {} const u = new URL(location.href); u.searchParams.delete('brain'); location.replace(u.toString()); };
+  sel.onchange = () => { try { localStorage.setItem('box.kinBrain2', sel.value); } catch (_) {} const u = new URL(location.href); u.searchParams.delete('brain'); location.replace(u.toString()); };
 }
 // test buttons: the scorecard's situations, one tap away (a shove at the chest from a random side; lying on his back)
 let kick = null;
