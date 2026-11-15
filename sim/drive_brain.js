@@ -10,8 +10,8 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=27';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=27';
+import { Pins } from './pins.js?v=28';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=28';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function hullPts(P) {
   const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
@@ -647,6 +647,15 @@ export class BrainDrive {
     if (K.state === 'getup' && this.getupBy === 'kin') {
       if (this.mode !== 'getup') { this.mode = 'getup'; this.kinFrom = Float64Array.from(d.qpos); this.kinT = 0; d.xfrc_applied.fill(0); d.qfrc_applied.fill(0); if (this.springs) this.springs.restoreStrength(); }
       this.kinT += dt;
+      // (Version 28) your finger pressing on him while he gets up: the recording can't feel it; a firm push (over a
+      // third of his weight, for a quarter second) puts him down again, the physics takes him
+      if (fingerPush) {
+        d.xfrc_applied.fill(0); fingerPush(); let fx = 0, fy = 0, fz = 0; const x = d.xfrc_applied;
+        for (let b = 0; b < m.nbody; b++) { fx += x[6 * b]; fy += x[6 * b + 1]; fz += x[6 * b + 2]; }
+        d.xfrc_applied.fill(0);
+        this.pushT = Math.hypot(fx, fy, fz) > 0.33 * (W.mass || 70) * 9.81 ? (this.pushT || 0) + dt : 0;
+        if (this.pushT > 0.25) { this.pushT = 0; K.startFall('pushed during the get-up'); return; }
+      }
       const g = this.G.d.qpos, F = this.kinFrom, a0 = Math.min(1, this.kinT / 0.4), a = a0 * a0 * (3 - 2 * a0);
       for (let i = 0; i < 3; i++) d.qpos[i] = F[i] + (g[i] - F[i]) * a;
       let q0 = [F[3], F[4], F[5], F[6]], q1 = [g[3], g[4], g[5], g[6]]; if (q0[0] * q1[0] + q0[1] * q1[1] + q0[2] * q1[2] + q0[3] * q1[3] < 0) q1 = q1.map(v => -v);
