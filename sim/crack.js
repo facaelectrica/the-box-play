@@ -499,6 +499,7 @@ export class CrackView {
       stencilWrite: true, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc, stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp });
     this.crackMat.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n\tmvPosition.xyz += normalize( - mvPosition.xyz ) * 0.03;\n\tgl_Position = projectionMatrix * mvPosition;'); };
     this.crackMat.customProgramCacheKey = () => 'crackGroove';
+    this.splMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9, side: THREE.DoubleSide });   // splinters at a hole's rim
     this.marks = [];
   }
   // heavy drawing work waits for the next frames (a few ms per frame), so a hit never stalls a frame
@@ -509,7 +510,7 @@ export class CrackView {
   prewarm(at) {
     const T = this.T, g = new T.Group(); g.position.set(...at); g.scale.setScalar(0.001);
     const tri = new T.BufferGeometry(); tri.setAttribute('position', new T.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3)); tri.setAttribute('normal', new T.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3)); tri.setAttribute('color', new T.Float32BufferAttribute([1, 1, 1, 1, 1, 1, 1, 1, 1], 3));
-    g.add(new T.Mesh(tri, this.crackMask)); g.add(new T.Mesh(tri, this.crackMat));
+    g.add(new T.Mesh(tri, this.crackMask)); g.add(new T.Mesh(tri, this.crackMat)); g.add(new T.Mesh(tri, this.splMat));
     for (const m of [this.inner, this.shell]) { const me = new T.Mesh(new T.IcosahedronGeometry(1, 0), m); me.castShadow = true; me.receiveShadow = true; g.add(me); }
     this.markMats = [0, 1, 2, 3].map(k => this.markMat(0.4 + 0.2 * k, 1000 + k * 77));
     for (const mt of this.markMats) { const mm = new T.Mesh(new T.PlaneGeometry(1, 1), mt); mm.receiveShadow = true; g.add(mm); }   // (also sends their textures to the graphics chip now)
@@ -517,7 +518,7 @@ export class CrackView {
     this.root.add(g); this.warm = { g, n: 0 };
   }
   reset(all = true) {
-    if (all) { for (const m of this.marks) this.root.remove(m); this.marks.length = 0; }
+    if (all) { for (const m of this.marks) this.dropMark(m); this.marks.length = 0; }
     for (const m of this.crackMeshes) { if (m.parent) m.parent.remove(m); m.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     this.crackMeshes.length = 0;
     this.nets = new Map();
@@ -641,7 +642,10 @@ export class CrackView {
         d.applyAxisAngle(n, (R() < 0.5 ? -1 : 1) * (0.12 + 0.4 * R())); leg = went + (0.008 + 0.017 * R()) * S;
         if (depth < 2 && R() < 0.3 && L - went > 0.012 * S) this.run(N, I, R, p, n, d.clone().applyAxisAngle(n, (R() < 0.5 ? -1 : 1) * (0.45 + 0.5 * R())), (L - went) * (0.3 + 0.35 * R()), wAt(went) * 0.7, S, depth + 1, li);
       }
-      const h = this.snap(I, p.clone().addScaledVector(d, step).addScaledVector(n, 0.0015), 0.02); if (!h) break;
+      const want = p.clone().addScaledVector(d, step), h = this.snap(I, want.clone().addScaledVector(n, 0.0015), 0.02); if (!h) break;
+      // the surface turned away or the nearest surface is somewhere else (the next finger, the other side of a thin part):
+      // the crack ends at the edge instead of jumping across
+      if (h.n.dot(n) < 0.5 || h.p.distanceTo(want) > 0.6 * step + 0.0012) break;
       const seg = h.p.distanceTo(p); if (seg < 1e-5) break;
       // ran into another crack: join it and stop (cracks don't cross)
       const own = line.pts.length;
@@ -680,8 +684,9 @@ export class CrackView {
     // knock a flake off at the hit (or make the flake already there bigger), harder ones another along the edge of a crack
     // nearby, where the coat has nothing holding it; the raw wood shows underneath
     const flake = (p, n, r, seed) => {
-      for (const f of N.chips) if (f.p.distanceTo(p) < 0.8 * (f.r + r)) { f.r = Math.min(0.02 * S, Math.sqrt(f.r * f.r + 0.6 * r * r)); f.grow = (f.grow || 0) + 1; return; }
-      if (N.chips.length < 16) N.chips.push({ p: p.clone(), n: n.clone(), r, seed });
+      const rMax = Math.min(0.02 * S, 0.3 * I.size); r = Math.min(r, rMax);
+      for (const f of N.chips) if (f.p.distanceTo(p) < 0.8 * (f.r + r)) { f.r = Math.min(rMax, Math.sqrt(f.r * f.r + 0.6 * r * r)); f.grow = (f.grow || 0) + 1; return; }
+      if (N.chips.length < Math.round(5 + 11 * S)) N.chips.push({ p: p.clone(), n: n.clone(), r, seed });
     };
     if (E > 0.3) flake(c, nC, (0.003 + 0.005 * E) * S, hit.seed);
     if (E > 0.6) {
@@ -746,10 +751,18 @@ export class CrackView {
       const R = rng(ch.seed * 3 + 1), nn = ch.n, t0 = new T.Vector3(1, 0, 0); if (Math.abs(t0.dot(nn)) > 0.9) t0.set(0, 1, 0); t0.addScaledVector(nn, -t0.dot(nn)).normalize();
       const K = 7 + Math.round(R() * 3), a0 = R() * 6.28, c0 = sn(ch.p) || { p: ch.p, n: nn };
       const rim = [], mid = [];
+      // each rim point is walked out over the surface in 4 steps; at an edge (the surface turns away or jumps to another
+      // finger) the flake stops there
       for (let i = 0; i < K; i++) {
         const dir = t0.clone().applyAxisAngle(nn, a0 + (i + (R() - 0.5) * 0.5) / K * Math.PI * 2), r = ch.r * (0.55 + 0.6 * R());
-        rim.push(sn(ch.p.clone().addScaledVector(dir, r)) || { p: ch.p.clone().addScaledVector(dir, r), n: nn });
-        mid.push(sn(ch.p.clone().addScaledVector(dir, 0.5 * r)) || { p: ch.p.clone().addScaledVector(dir, 0.5 * r), n: nn });
+        let q = c0, m = c0;
+        for (let k = 1; k <= 4; k++) {
+          const dd = dir.clone().addScaledVector(q.n, -dir.dot(q.n)).normalize(), want = q.p.clone().addScaledVector(dd, r / 4), h = sn(want.clone().addScaledVector(q.n, 0.001));
+          if (!h || h.n.dot(q.n) < 0.6 || h.p.distanceTo(want) > 0.5 * r / 4 + 0.001) break;
+          q = h; if (k === 2) m = h;
+        }
+        if (m === c0 && q !== c0) m = { p: c0.p.clone().lerp(q.p, 0.5), n: c0.n.clone().add(q.n).normalize() };
+        rim.push(q); mid.push(m);
       }
       const dn = q => q.p.clone().addScaledVector(q.n, -COAT), upv = q => q.p.clone().addScaledVector(q.n, LIFT);
       const fc = dn(c0), fm = mid.map(q => dn(q).addScaledVector(q.n, -0.35 * COAT * R())), fr = rim.map(q => dn(q).addScaledVector(c0.p.clone().sub(q.p).normalize(), 0.6 * COAT));
@@ -778,42 +791,159 @@ export class CrackView {
   // (user 10:43: "the wood has some marks from being hit ... we want to see the wood reacting to the hits too") a dent
   // in the box's wood where he hit: a dark pit, light splintered fibres around it, cracks running mostly along the grain.
   // Drawn as a decal with a colour map and a normal map made from a height map, so it takes the light like a real dent.
-  wallMark(w, s, seed) {
+  // (user 15:41: "the marks on the wood should match the shape that hits it") at the moment of the hit, the part's own
+  // surface (its drawn mesh, not the collision capsule) is pressed into the wood: every point of it within a few mm of
+  // the wall (more for a harder hit) makes the dent there, deeper where it pressed deeper - a hand leaves a hand, a heel
+  // a heel. Taken at once (cheap), the picture is made a frame or two later.
+  footprint(hit) {
+    const w = hit && hit.wall; if (!w || w.name === 'glass') return null;
+    const T = this.T, gs = this.groups(), src = gs[hit.body]; if (!src) return null;
+    const pose = (hit.chunk && this.chunkPart(hit.chunk, hit.body)) || src, I = this.info(src); if (!I.vp.length) return null;
+    this.root.updateMatrixWorld(true); pose.updateWorldMatrix(true, false);
+    const M = new T.Matrix4().copy(this.root.matrixWorld).invert().multiply(pose.matrixWorld), e = M.elements;
+    const n = new T.Vector3(...w.n), up = Math.abs(n.z) > 0.7 ? new T.Vector3(1, 0, 0) : new T.Vector3(0, 0, 1), rt = up.clone().cross(n).normalize(); up.copy(n).cross(rt).normalize();
+    const vp = I.vp, nv = vp.length / 3, D = new Float32Array(nv), X = new Float32Array(nv), Y = new Float32Array(nv); let dmin = 1e9;
+    for (let i = 0; i < nv; i++) {
+      const x = vp[3 * i], y = vp[3 * i + 1], z = vp[3 * i + 2];
+      const wx = e[0] * x + e[4] * y + e[8] * z + e[12], wy = e[1] * x + e[5] * y + e[9] * z + e[13], wz = e[2] * x + e[6] * y + e[10] * z + e[14];
+      D[i] = wx * n.x + wy * n.y + wz * n.z; X[i] = wx * rt.x + wy * rt.y + wz * rt.z; Y[i] = wx * up.x + wy * up.y + wz * up.z; if (D[i] < dmin) dmin = D[i];
+    }
+    const depth = 0.003 + 0.006 * Math.min(1, hit.s || 0.5), pts = []; let cx = 0, cy = 0, sw = 0;
+    for (let i = 0; i < nv; i++) { const h = 1 - (D[i] - dmin) / depth; if (h <= 0) continue; pts.push(X[i], Y[i], h); cx += X[i] * h; cy += Y[i] * h; sw += h; }
+    if (!sw) return null; cx /= sw; cy /= sw;
+    let ext = 0.008; for (let i = 0; i < pts.length; i += 3) ext = Math.max(ext, Math.abs(pts[i] - cx), Math.abs(pts[i + 1] - cy));
+    const size = Math.min(0.45, 2 * ext * 1.6 + 0.03);
+    // where the contact point was vs where the print's middle is, along the wall
+    const hl = new T.Vector3(...hit.l).applyMatrix4(M), hx = hl.dot(rt), hy = hl.dot(up);
+    const off = new T.Vector3(...w.off).addScaledVector(rt, cx - hx).addScaledVector(up, cy - hy);
+    return { size, off: [off.x, off.y, off.z], pts, cx, cy };
+  }
+  wallMark(w, s, seed, fp = null) {
     if (!w || w.name === 'glass') return;
     const T = this.T, V = this.markMats || (this.markMats = [0, 1, 2, 3].map(k => this.markMat(0.4 + 0.2 * k, 1000 + k * 77)));
-    const R = rng(seed), mat = V[Math.floor(R() * V.length)], size = 0.2 + 0.1 * s;
-    const mesh = new T.Mesh(this.markGeo || (this.markGeo = new T.PlaneGeometry(1, 1)), mat);
-    mesh.scale.set(size * (R() < 0.5 ? -1 : 1), size * (R() < 0.5 ? -1 : 1), 1);   // mirrored either way: the grain stays along
-    mesh.renderOrder = 1; mesh.receiveShadow = true;
+    const R = rng(seed), mat = fp ? this.markMat(s, seed, fp) : V[Math.floor(R() * V.length)], size = fp ? fp.size : 0.2 + 0.1 * s;
+    const dec = new T.Mesh(this.markGeo || (this.markGeo = new T.PlaneGeometry(1, 1)), mat);
+    dec.renderOrder = 1; dec.receiveShadow = true;
+    const mesh = new T.Group(); mesh.add(dec);
+    if (fp) { dec.scale.set(size, size, 1); mesh.userData.own = true; w = { ...w, off: fp.off }; mesh.add(this.holeMesh(fp, s, seed)); }
+    else dec.scale.set(size * (R() < 0.5 ? -1 : 1), size * (R() < 0.5 ? -1 : 1), 1);   // mirrored either way: the grain stays along
     // the decal's up = the wood's grain: up the walls; along the floor/ceiling boards (x)
     const n = new T.Vector3(...w.n), up = Math.abs(n.z) > 0.7 ? new T.Vector3(1, 0, 0) : new T.Vector3(0, 0, 1), rt = up.clone().cross(n).normalize(); up.copy(n).cross(rt).normalize();
     mesh.quaternion.setFromRotationMatrix(new T.Matrix4().makeBasis(rt, up, n));
     mesh.userData.mark = { name: w.name, off: w.off };
     this.root.add(mesh); this.marks.push(mesh);
+    while (this.marks.length > 30) this.dropMark(this.marks.shift());   // the oldest marks go: the walls never fill up
+  }
+  dropMark(m) {
+    this.root.remove(m);
+    if (m.userData.own) m.traverse(o => { if (!o.isMesh) return; if (o.geometry !== this.markGeo) o.geometry.dispose(); const mt = o.material; if (mt && mt.map && !(this.markMats || []).includes(mt)) { mt.map.dispose(); mt.normalMap.dispose(); mt.dispose(); } });
+  }
+  // (user 15:45, photo of a hole knocked into plywood) the hole in the wood, in the mark's frame (x along the wall, y =
+  // the grain, z out of the wall): its outline = the print's outline; inside, the plies torn away layer by layer, each
+  // ply's floor stepping in toward the middle, the torn ply edges as walls; a few splinters lifted at the rim along the
+  // grain; cracks running out along the grain. Seen through the wall like the cracks on him (crackMask + crackMat), the
+  // splinters drawn normally.
+  holeMesh(fp, s, seed) {
+    const T = this.T, R = rng(seed * 5 + 11), g = new T.Group(), K = 28, PLY = 0.0022;
+    // the outline: per direction, the furthest pressed point (a star-shaped outline of the print), a little torn
+    const rad = new Float32Array(K).fill(0);
+    for (let i = 0; i < fp.pts.length; i += 3) {
+      const x = fp.pts[i] - fp.cx, y = fp.pts[i + 1] - fp.cy; if (fp.pts[i + 2] < 0.15) continue;
+      const a = Math.atan2(y, x), k = ((Math.round(a / (2 * Math.PI) * K) % K) + K) % K, r = Math.hypot(x, y);
+      for (const kk of [k, (k + 1) % K, (k + K - 1) % K]) if (r > rad[kk]) rad[kk] = r * (kk === k ? 1 : 0.92);
+    }
+    let rm = 0; for (let k = 0; k < K; k++) rm = Math.max(rm, rad[k]); if (rm < 0.004) for (let k = 0; k < K; k++) rad[k] = 0.006;
+    // torn wood: the outline runs out in splintered points along the grain
+    for (let k = 0; k < K; k++) { const ay = Math.abs(Math.sin(k / K * 2 * Math.PI)); rad[k] = Math.max(rad[k], 0.35 * rm, 0.004) * (0.9 + 0.2 * R() + (R() < 0.35 ? 0.5 * R() * ay * ay : 0)) + 0.0015; }
+    const depth = 0.003 + 0.009 * Math.min(1, s), L = Math.max(1, Math.round(depth / PLY));
+    const dirs = []; for (let k = 0; k < K; k++) { const a = k / K * 2 * Math.PI; dirs.push([Math.cos(a), Math.sin(a)]); }
+    // contour k (k = 0 at the surface): shrinks toward the middle with each ply, torn unevenly (more along the grain)
+    const C = []; for (let l = 0; l <= L; l++) { const f = l === 0 ? 1 : Math.pow(1 - l / (L + 1), 0.8); C.push(dirs.map((d, k) => { const j = l === 0 ? 1 : (0.8 + 0.35 * R()) * (1 + 0.25 * Math.abs(d[1])); return [d[0] * rad[k] * f * Math.min(1.1, j), d[1] * rad[k] * f * j]; })); }
+    const pos = [], nor = [], col = [], mpos = [];
+    const V = (x, y, z) => new T.Vector3(x, y, z);
+    const tri = (a, b, c, n, ca, cb, cc) => { if (b.clone().sub(a).cross(c.clone().sub(a)).dot(n) < 0) { const t = b; b = c; c = t; const tc = cb; cb = cc; cc = tc; } for (const [p, q] of [[a, ca], [b, cb], [c, cc]]) { pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); col.push(q.r, q.g, q.b); } };
+    const PLYA = new T.Color(0xffae5c), PLYB = new T.Color(0xe88a3c), EDGE = new T.Color(0x9a5222), DEEP = new T.Color(0x4a220a), up = V(0, 0, 1);
+    for (let l = 1; l <= L; l++) {
+      const zt = -(l - 1) * PLY, zb = -l * PLY, A = C[l - 1], B2 = C[l], shade = 1 - 0.45 * (l / L);
+      const ply = (l % 2 ? PLYA : PLYB).clone().multiplyScalar(shade), edge = EDGE.clone().multiplyScalar(shade), deep = DEEP.clone().multiplyScalar(0.8 + 0.2 * shade);
+      for (let k = 0; k < K; k++) {
+        const j = (k + 1) % K, a0 = V(A[k][0], A[k][1], zt), a1 = V(A[j][0], A[j][1], zt), b0 = V(A[k][0], A[k][1], zb), b1 = V(A[j][0], A[j][1], zb);
+        // the torn edge of this ply: a wall facing into the hole
+        const wn = V(-(a0.y + a1.y) / 2, (a0.x + a1.x) / 2, 0); const tg = a1.clone().sub(a0); const inw = V(-tg.y, tg.x, 0).normalize(); if (inw.dot(V(-(a0.x + a1.x), -(a0.y + a1.y), 0)) < 0) inw.negate();
+        tri(a0, a1, b0, inw, edge, edge, deep); tri(a1, b1, b0, inw, edge, deep, deep);
+        // the floor of this ply where it wasn't torn further (between this outline and the next)
+        const c0 = V(B2[k][0], B2[k][1], zb), c1 = V(B2[j][0], B2[j][1], zb);
+        tri(b0, b1, c0, up, ply, ply, ply); tri(b1, c1, c0, up, ply, ply, ply);
+        if (l === L) tri(V(0, 0, zb), c0, c1, up, deep, ply, ply);
+        if (l === 1) { const LI = 0.0004; mpos.push(0, 0, LI, A[k][0], A[k][1], LI, A[j][0], A[j][1], LI); }
+      }
+    }
+    // the hole's mark wound to face out of the wall
+    for (let i = 0; i < mpos.length; i += 9) { const ax = mpos[i + 3], ay = mpos[i + 4], bx = mpos[i + 6], by = mpos[i + 7]; if (ax * by - ay * bx < 0) { mpos[i + 3] = bx; mpos[i + 4] = by; mpos[i + 6] = ax; mpos[i + 7] = ay; } }
+    // cracks out along the grain (y), from points on the rim, as grooves (the same drawing as his cracks)
+    const N2 = { lines: [], chips: [], grid: new Map(), len: 0 }, nC = 1 + Math.round(R() * (1 + 2 * s));
+    for (let c = 0; c < nC; c++) {
+      const sgn = R() < 0.5 ? 1 : -1, k = (Math.round((sgn > 0 ? 0.25 : 0.75) * K + (R() - 0.5) * 6) + K) % K, Lm = (0.03 + 0.09 * s) * (0.5 + R());
+      let p = V(C[0][k][0], C[0][k][1], 0), d = V((R() - 0.5) * 0.25, sgn, 0).normalize(), went = 0, leg = 0.01 + 0.02 * R(); const w0 = 0.0008 + 0.0012 * s * R(), pts = [{ p: p.clone(), n: up, w: w0 }];
+      while (went < Lm) { if (went > leg) { d.x = (R() - 0.5) * 0.3; d.normalize(); leg = went + 0.01 + 0.02 * R(); } p = p.clone().addScaledVector(d, 0.004); went += 0.004; pts.push({ p, n: up, w: w0 * Math.max(0.25, 1 - went / Lm) }); }
+      N2.lines.push({ pts, side: 1, open: true });
+    }
+    const pit = new T.BufferGeometry(); pit.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); pit.setAttribute('normal', new T.Float32BufferAttribute(nor, 3)); pit.setAttribute('color', new T.Float32BufferAttribute(col, 3));
+    const mg = new T.BufferGeometry(); mg.setAttribute('position', new T.Float32BufferAttribute(mpos, 3));
+    const pm = new T.Mesh(pit, this.crackMat), mk = new T.Mesh(mg, this.crackMask); pm.renderOrder = 6; mk.renderOrder = 5; pm.receiveShadow = true; g.add(mk, pm);
+    const cr = this.drawNet(N2); if (cr) g.add(cr);
+    // splinters: thin torn fibres lifted at the rim, pointing along the grain
+    const sp = [], sn = [], sc = [], nS = 2 + Math.round(R() * (2 + 4 * s)), FIBC = new T.Color(0xf4c088);
+    for (let i = 0; i < nS; i++) {
+      const k = (Math.round((R() < 0.5 ? 0.25 : 0.75) * K + (R() - 0.5) * 8) + K) % K, b = C[0][k], sg = b[1] >= 0 ? 1 : -1;
+      const base = V(b[0], b[1], 0), w2 = 0.0008 + 0.0015 * R(), len = 0.004 + 0.012 * R() * (0.5 + s), lift = 0.001 + 0.004 * R() * s;
+      const a = base.clone().add(V(-w2, 0, 0)), c2 = base.clone().add(V(w2, 0, 0)), tip = base.clone().add(V((R() - 0.5) * 0.004, -sg * len * 0.6, lift));
+      const nn = c2.clone().sub(a).cross(tip.clone().sub(a)).normalize(); if (nn.z < 0) nn.negate();
+      for (const q of [a, c2, tip]) { sp.push(q.x, q.y, q.z); sn.push(nn.x, nn.y, nn.z); sc.push(FIBC.r, FIBC.g, FIBC.b); }
+    }
+    const sg2 = new T.BufferGeometry(); sg2.setAttribute('position', new T.Float32BufferAttribute(sp, 3)); sg2.setAttribute('normal', new T.Float32BufferAttribute(sn, 3)); sg2.setAttribute('color', new T.Float32BufferAttribute(sc, 3));
+    const spl = new T.Mesh(sg2, this.splMat); spl.castShadow = true; spl.receiveShadow = true; g.add(spl);
+    return g;
   }
   // one dent's look (colour + normal map from a height map); 4 are made while the page starts (no work during play)
-  markMat(s, seed) {
+  markMat(s, seed, fp = null) {
     const T = this.T, R = rng(seed), N = 96, H = new Float32Array(N * N), A = new Float32Array(N * N), C = new Float32Array(N * N * 3);
     const mix = (k, c, a, h) => { const i3 = 3 * k; const t = Math.max(A[k], a); C[i3] = C[i3] * (1 - a) + c[0] * a; C[i3 + 1] = C[i3 + 1] * (1 - a) + c[1] * a; C[i3 + 2] = C[i3 + 2] * (1 - a) + c[2] * a; A[k] = t; H[k] += h; };
     const DENT = [0.30, 0.13, 0.04], PIT = [0.10, 0.04, 0.015], FIB = [0.98, 0.84, 0.60], CRK = [0.08, 0.035, 0.012];
     const r0 = 0.15 + 0.06 * s, wob = [0, 1, 2, 3].map(() => [R() * 6.28, 0.15 + 0.25 * R()]);
+    // the print: the pressed points splatted into the picture's grid (u, v = -1..1 across the mark), smoothed; F = how
+    // deep it pressed, B = a wider soft copy for the crushed wood around it
+    let F = null, B = null;
+    if (fp) {
+      F = new Float32Array(N * N); const half = fp.size / 2, rp = Math.max(1, Math.ceil(0.0035 / (fp.size / N)));
+      for (let i = 0; i < fp.pts.length; i += 3) {
+        const px = Math.round(((fp.pts[i] - fp.cx) / half + 1) / 2 * N - 0.5), py = Math.round(((fp.pts[i + 1] - fp.cy) / half + 1) / 2 * N - 0.5), h = fp.pts[i + 2];
+        for (let dy = -rp; dy <= rp; dy++) for (let dx = -rp; dx <= rp; dx++) { const x = px + dx, y = py + dy; if (x < 0 || y < 0 || x >= N || y >= N || dx * dx + dy * dy > rp * rp) continue; const k = y * N + x; if (h > F[k]) F[k] = h; }
+      }
+      const blur = (A, r) => { const O = new Float32Array(N * N); for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { let t = 0, c = 0; for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= N || yy >= N) continue; t += A[yy * N + xx]; c++; } O[y * N + x] = t / c; } return O; };
+      F = blur(F, 1); B = blur(blur(F, 3), 3);
+    }
     // splinters (along the grain = v) and cracks, as tapered strokes from the centre
     const strokes = [];
     for (let i = 0; i < 12; i++) { const ang = (R() < 0.75 ? (R() < 0.5 ? 0 : Math.PI) : R() * 6.28) + (R() - 0.5) * 0.7; strokes.push({ ang, len: 0.25 + 0.25 * R() + 0.1 * s, w: 0.025 + 0.035 * R(), c: FIB, h: 0.35, a: 1 }); }
     for (let i = 0; i < 5 + Math.round(3 * s); i++) { const ang = (R() < 0.8 ? (R() < 0.5 ? 0 : Math.PI) : R() * 6.28) + (R() - 0.5) * 0.5; strokes.push({ ang, len: 0.45 + 0.3 * R() + 0.15 * s, w: 0.012 + 0.01 * R(), c: CRK, h: -0.9, a: 1, jag: R() * 9 }); }
     for (const st of strokes) { st.ux = Math.sin(st.ang); st.uy = Math.cos(st.ang); }
+    if (F) strokes.length = 0;   // (with a print, the hole, its splinters and its cracks are real geometry: holeMesh)
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const k = y * N + x, u = (x + 0.5) / N * 2 - 1, v = (y + 0.5) / N * 2 - 1, r = Math.hypot(u, v), th = Math.atan2(u, v);
       // the dent: the wood pressed in and darkened around the hit
-      const dr = 0.5 + 0.1 * s; if (r < dr) { const f = 1 - r / dr; mix(k, DENT, 0.55 * f * f, -0.5 * f * f); }
+      if (F) { const b = Math.min(1, B[k] * 1.6); if (b > 0) mix(k, DENT, 0.35 * b, -0.3 * b); }
+      else { const dr = 0.5 + 0.1 * s; if (r < dr) { const f = 1 - r / dr; mix(k, DENT, 0.55 * f * f, -0.5 * f * f); } }
       for (const st of strokes) {
-        if (r > st.len + 0.05) continue;
-        const along = u * st.ux + v * st.uy; if (along < 0 || along > st.len) continue;
-        const across = u * st.uy - v * st.ux + (st.jag ? 0.012 * Math.sin(along * 40 + st.jag) : 0);
+        const uu = u - (st.ox || 0), vv = v - (st.oy || 0);
+        if (Math.hypot(uu, vv) > st.len + 0.05) continue;
+        const along = uu * st.ux + vv * st.uy; if (along < 0 || along > st.len) continue;
+        const across = uu * st.uy - vv * st.ux + (st.jag ? 0.012 * Math.sin(along * 40 + st.jag) : 0);
         const wd = st.w * (1 - along / st.len) + 0.002; if (Math.abs(across) > wd) continue;
         const e = 1 - Math.abs(across) / wd; mix(k, st.c, Math.min(1, e * 2) * st.a, st.h * e);
       }
-      // the pit itself
+      // the pit itself: the print (deeper and darker where it pressed harder, crushed fibres at its edge), or a round pit
+      if (F) continue;
       let rr = r0; for (const [ph, am] of wob) rr += 0.03 * am * Math.sin(th * 3 + ph);
       if (r < rr) { const f = 1 - r / rr; mix(k, PIT, Math.min(1, 0.6 + f), -1.2 * Math.sqrt(f)); }
       else if (r < rr * 1.35) { const f = 1 - (r - rr) / (rr * 0.35); mix(k, FIB, 0.8 * f, 0.25 * f); }   // the torn rim
@@ -846,10 +976,19 @@ export class CrackView {
       }
       o.add(this.cap(P));   // the broken face: raw wood where it came off
     } else {
-      const geo = new T.IcosahedronGeometry(P.size * 1.4, 0), pa = geo.attributes.position, R = rng(P.seed);
-      for (let i = 0; i < pa.count; i++) pa.setXYZ(i, pa.getX(i) * (0.6 + 0.8 * R()), pa.getY(i) * (0.5 + 0.7 * R()), pa.getZ(i) * (0.3 + 0.4 * R()));
-      geo.computeVertexNormals();
-      const me = new T.Mesh(geo, P.wood ? this.inner : this.shell); me.castShadow = true; o.add(me);
+      // (user 15:41: "a bunch of triangles all bunched together") a fragment = one solid splinter: a box stretched along
+      // its grain, each corner moved a little (the same corner moves the same way on all its faces, so it stays closed),
+      // flat-shaded; a coat fragment keeps the white coat on one big face, wood on the rest
+      const R = rng(P.seed), sx = P.size * (1.3 + 1.1 * R()), sy = P.size * (0.55 + 0.45 * R()), sz = P.size * (0.25 + 0.3 * R());
+      let geo = new T.BoxGeometry(1, 1, 1); const pa = geo.attributes.position, off = new Map();
+      for (let i = 0; i < pa.count; i++) {
+        const x = pa.getX(i), y = pa.getY(i), z = pa.getZ(i), k = `${x > 0}${y > 0}${z > 0}`;
+        if (!off.has(k)) off.set(k, [(R() - 0.5) * 0.5, (R() - 0.5) * 0.35, (R() - 0.5) * 0.3]);
+        const d = off.get(k); pa.setXYZ(i, (x + d[0]) * sx, (y + d[1]) * sy, (z + d[2]) * sz);
+      }
+      geo = geo.toNonIndexed(); geo.computeVertexNormals();
+      const mats = [0, 1, 2, 3, 4, 5].map(i => (!P.wood && i === 4) ? this.shell : this.inner);
+      const me = new T.Mesh(geo, mats); me.castShadow = true; me.receiveShadow = true; o.add(me);
     }
     o.userData.P = P; this.root.add(o); this.movers.push(o); this.debris.set(P, o);
     return o;
@@ -868,10 +1007,29 @@ export class CrackView {
     }
     this.removeDebris(e.P);
   }
+  // the broken end of a piece: the peg that held it at the joint, snapped - a short stub of raw wood with a jagged,
+  // splintered top (one closed shape; the old version was a ball whose loose triangles flew apart, user 15:41)
   cap(P) {
-    const T = this.T, cap = new T.Mesh(new T.IcosahedronGeometry(0.026, 1), this.inner), pa = cap.geometry.attributes.position, R = rng(P.id * 7919 + 13);
-    for (let i = 0; i < pa.count; i++) pa.setXYZ(i, pa.getX(i) * (0.8 + 0.4 * R()), pa.getY(i) * (0.8 + 0.4 * R()), pa.getZ(i) * (0.35 + 0.3 * R()));
-    cap.geometry.computeVertexNormals(); cap.position.set(...P.comL.map(v => -v)); cap.castShadow = true; return cap;
+    const T = this.T, R = rng(P.id * 7919 + 13), cl = new T.Vector3(...P.comL), out = cl.lengthSq() > 1e-10 ? cl.clone().negate().normalize() : new T.Vector3(0, 1, 0);
+    const root = P.rel && P.rel[0] ? this.groups()[P.rel[0].b] : null, I = root ? this.info(root) : null;
+    const r = Math.max(0.006, Math.min(0.016, (I && I.size ? I.size : 0.06) * 0.16)), L = r * 2.2, K = 9;
+    const pos = [], O = new T.Vector3(0, -0.15 * L, 0), add = (a, b, c) => {   // each triangle wound to face away from the middle
+      const nrm = b.clone().sub(a).cross(c.clone().sub(a)), mid = a.clone().add(b).add(c).multiplyScalar(1 / 3).sub(O);
+      if (nrm.dot(mid) < 0) { const t = b; b = c; c = t; }
+      pos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+    };
+    const bot = [], top = [];
+    for (let i = 0; i < K; i++) {
+      const th = (i + (R() - 0.5) * 0.4) / K * Math.PI * 2, rr = r * (0.85 + 0.3 * R());
+      bot.push(new T.Vector3(Math.cos(th) * r, -0.6 * L, Math.sin(th) * r));
+      top.push(new T.Vector3(Math.cos(th) * rr * 0.9, L * (0.25 + 0.75 * R() * R()), Math.sin(th) * rr * 0.9));
+    }
+    const ctop = new T.Vector3(0, L * 0.15, 0), cbot = new T.Vector3(0, -0.6 * L, 0);
+    for (let i = 0; i < K; i++) { const j = (i + 1) % K; add(bot[i], top[i], top[j]); add(bot[i], top[j], bot[j]); add(ctop, top[j], top[i]); add(cbot, bot[i], bot[j]); }
+    const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); geo.computeVertexNormals();
+    const cap = new T.Mesh(geo, this.inner);
+    cap.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), out); cap.position.copy(cl).negate();
+    cap.castShadow = true; cap.receiveShadow = true; return cap;
   }
   // after the figure is rebuilt (another figure picked): cracks and pieces again from the stored hits
   rebuild(C) {

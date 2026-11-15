@@ -111,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V53</div><div id="brainver"></div>
+<div id="ver">V54</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -293,18 +293,18 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import loadMujoco from '@mujoco/mujoco';
-import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=53';
+import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=54';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=53';
-import { Springs, humanCap } from './sim/springs.js?v=53';
-import { Balance } from './sim/balance.js?v=53';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=53';
-import { AnatGuard } from './sim/anat.js?v=53';
-import { PhysBrain } from './sim/physctl.js?v=53';
-import { addPins } from './sim/pins.js?v=53';
-import { rigHand, poseHand } from './sim/fingers.js?v=53';
-import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=53';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=54';
+import { Springs, humanCap } from './sim/springs.js?v=54';
+import { Balance } from './sim/balance.js?v=54';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=54';
+import { AnatGuard } from './sim/anat.js?v=54';
+import { PhysBrain } from './sim/physctl.js?v=54';
+import { addPins } from './sim/pins.js?v=54';
+import { rigHand, poseHand } from './sim/fingers.js?v=54';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=54';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -634,7 +634,7 @@ let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
 try { const bb = (window.BOXBRAIN || {}).id; if (bb) document.getElementById('ver').textContent += bb === 'nvidia' ? ' · NVIDIA brain' : bb === 'phys' ? ' · physics' : bb === 'b08' ? ' · brain 08' : ' · no brain'; } catch (_) {}
-const KINV = 53;
+const KINV = 54;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(LOAD.url(u), 'Recordings'));   // (V40) address = name + fingerprint (BOXLOAD)
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -1314,19 +1314,21 @@ function crackFrame(dt) {
   if (ev.length && actx && SET.sound && !crackSnd) crackSnd = new CrackSound(actx);
   const snd = actx && SET.sound ? crackSnd : null;
   for (const e of ev) {
+    // (user 15:41) the print of the part on the wall is taken now, while the part is where it hit
+    let fp = null; try { if (e.hit && e.hit.wall) fp = crackView.footprint(e.hit); } catch (err) { console.warn('print', err); }
     // (user 11:04: no freeze when it cracks or breaks) the pieces appear at once; drawing the crack and the dent waits
     // for the next frames (a few ms each)
     if (e.type === 'crack') {
       for (const P of e.chips || []) crackView.addDebris(P);
       crackView.later(() => { const tg = e.hit.chunk ? crackView.chunkPart(e.hit.chunk, e.hit.body) : null; if (!e.hit.chunk || tg) crackView.addCrack(e.hit, tg); });
-      crackView.later(() => crackView.wallMark(e.hit.wall, e.hit.s, e.hit.seed)); if (snd) snd.crack(e.hit.s, e.level);
+      crackView.later(() => crackView.wallMark(e.hit.wall, e.hit.s, e.hit.seed, fp)); if (snd) snd.crack(e.hit.s, e.level);
     } else if (e.type === 'split' || e.type === 'shatter') {   // a broken-off piece breaks further (user 11:07)
       if (e.type === 'split') crackView.split(e); else crackView.removeDebris(e.P);
       for (const P of e.shards) crackView.addDebris(P);
-      crackView.later(() => crackView.wallMark(e.hit.wall, Math.min(1, e.hit.s + 0.3), e.hit.seed)); if (snd) snd.shatter(e.hit.s);
+      crackView.later(() => crackView.wallMark(e.hit.wall, Math.min(1, e.hit.s + 0.3), e.hit.seed, fp)); if (snd) snd.shatter(e.hit.s);
     }
     else if (e.type === 'break') {
-      crackView.addDebris(e.chunk); for (const P of e.shards) crackView.addDebris(P); crackView.later(() => { const tg = crackView.chunkPart(e.chunk, e.hit.body); if (tg) crackView.addCrack(e.hit, tg); }); crackView.later(() => crackView.wallMark(e.hit.wall, Math.min(1, e.hit.s + 0.3), e.hit.seed));
+      crackView.addDebris(e.chunk); for (const P of e.shards) crackView.addDebris(P); crackView.later(() => { const tg = crackView.chunkPart(e.chunk, e.hit.body); if (tg) crackView.addCrack(e.hit, tg); }); crackView.later(() => crackView.wallMark(e.hit.wall, Math.min(1, e.hit.s + 0.3), e.hit.seed, fp));
       if (snd) snd.shatter(e.hit.s);
       note(e.dead ? 'His ' + partName(e.piece) + ' broke. He has stopped. Double-tap for a new one.' : 'His ' + partName(e.piece) + ' broke off.', 2600);
     } else if (e.type === 'clink' && snd) snd.clink(e.v, e.m);

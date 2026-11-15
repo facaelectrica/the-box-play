@@ -10,9 +10,9 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=53';
-import { Balance } from './balance.js?v=53';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=53';
+import { Pins } from './pins.js?v=54';
+import { Balance } from './balance.js?v=54';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=54';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function hullPts(P) {
   const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
