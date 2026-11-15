@@ -19,7 +19,7 @@
 //  5. handed to the joints' servos as targets (torque = kp (target - q) - kd qd, so the servo gives exactly that torque
 //     now and stays a soft spring between ticks)
 import { Brain, ND } from './brain.js';
-import { humanCap } from './springs.js?v=55';
+import { humanCap } from './springs.js?v=56';
 
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const qv = (q, v) => { const [w, x, y, z] = q, tx = 2 * (y * v[2] - z * v[1]), ty = 2 * (z * v[0] - x * v[2]), tz = 2 * (x * v[1] - y * v[0]); return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)]; };
@@ -82,6 +82,10 @@ export class PhysBrain extends Brain {
     this.maxJ = opt.maxJ ?? 60;      // rad/s^2 per joint (a hand stopped by a wall while the ghost's hand goes on: not a reason to heave the trunk)
     this.hands = new Set(['RightHand', 'LeftHand', 'RightForeArm', 'LeftForeArm'].map(n => W.bodyId[n]));     // servo stiffness between ticks, as a fraction of the body file's gains
     this.hcap = W.act.map(a => humanCap(a.name));
+    this.swingKeep = opt.swingKeep ?? (globalThis.PH_SWK !== undefined ? !!+globalThis.PH_SWK : true);   // see applyPlan
+    const ge = (k, v) => globalThis[k] !== undefined ? +globalThis[k] : v;
+    this.holdLift = opt.holdLift ?? !!ge('PH_HOLD', 1); this.holdIn = opt.holdIn ?? ge('PH_HOLDIN', 0.0); this.holdMax = opt.holdMax ?? ge('PH_HOLDMAX', 0.5);
+    this.landH = opt.landH ?? ge('PH_LANDH', 0.15); this.ankleMax = opt.ankleMax ?? ge('PH_ANKLE', 0.13);   // a planted-by-the-director sole under this (m) is brought down onto the floor
     this.extLoad = opt.extLoad ?? (globalThis.PH_EXT !== undefined ? !!+globalThis.PH_EXT : true);
     // held by every joint between them and the floor (extAll; extAll false: the shoulder girdle and arm joints only),
     // each push counted up to extMax N (a knock into the wall is not a load to hold)
@@ -96,6 +100,8 @@ export class PhysBrain extends Brain {
     this.guWr = opt.guWr ?? 5; this.guWo = opt.guWo ?? 5; this.guMaxLin = opt.guMaxLin ?? 3; this.guMaxAng = opt.guMaxAng ?? 12;
     this.guUpMax = opt.guUpMax ?? 2.5;   // m/s^2 up at most (a quarter of g)
     this.guFootUp = opt.guFootUp ?? 0.06; this.guComIn = opt.guComIn ?? 0.03; this.guWc = opt.guWc ?? 3; this.guFollow = opt.guFollow ?? 3; this.guJw = opt.guJw ?? globalThis.PG_JW ?? 20; this.guFeetCon = opt.guFeetCon ?? !!globalThis.PG_FEETCON; this.guRelease = opt.guRelease ?? globalThis.PG_REL ?? 0.03;
+    const ge2 = (k, v) => globalThis[k] !== undefined ? +globalThis[k] : v;
+    this.guAway = opt.guAway ?? ge2('PG_AWAY', 0.3); this.guComJ = opt.guComJ ?? !!ge2('PG_COMJ', 1); this.guStops = opt.guStops ?? !!ge2('PG_STOPS', 1);
     this.fig = W.isFig; this.bname = [...Array(m.nbody).keys()].map(b => mj.mj_id2name(m, mj.mjtObj.mjOBJ_BODY.value, b) || '');
     this.stats = { resid: 0, n: 0, tau: 0, over: 0, contacts: 0 };
     this.dsbl = mj.mjtDisableBit.mjDSBL_CONSTRAINT.value;
@@ -131,11 +137,24 @@ export class PhysBrain extends Brain {
     }
     return lo;
   }
+  // the bottom face of a sole, in the box's floor coordinates (x, y)
+  soleHull(S) {
+    const W = this.W, m = W.m, d = W.d, K = this.kin, pts = [];
+    for (const g of S.geoms) {
+      const c = [d.geom_xpos[3 * g], d.geom_xpos[3 * g + 1], d.geom_xpos[3 * g + 2]], R = d.geom_xmat.subarray(9 * g, 9 * g + 9), sz = m.geom_size.subarray(3 * g, 3 * g + 3);
+      for (let c8 = 0; c8 < 8; c8++) { const l = [(c8 & 1 ? 1 : -1) * sz[0], (c8 & 2 ? 1 : -1) * sz[1], (c8 & 4 ? 1 : -1) * sz[2]]; pts.push(K.toLocal([0, 1, 2].map(r => c[r] + R[3 * r] * l[0] + R[3 * r + 1] * l[1] + R[3 * r + 2] * l[2]))); }
+    }
+    const lo = Math.min(...pts.map(q => q[2]));
+    return pts.filter(q => q[2] <= lo + 0.012).map(q => [q[0], q[1]]);
+  }
   // foot (6 rows: its point and its turning) fixed: J_root a_root + J_leg a_leg = 0. a_leg = wish + J+ (rhs - J wish)
   // the stepping foot's wish, in the world: toward the ghost's foot (position and turn), critically damped
   swingAcc(S, dt) {
     const W = this.W, d = W.d, gd = this.Gw.d, b = W.bodyId[S.side + 'Foot'], w = this.wf;
     const p = [d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]], g = [gd.xpos[3 * b], gd.xpos[3 * b + 1], gd.xpos[3 * b + 2]];
+    // landing (the director has put this foot down, his sole is still above the floor): down onto the floor where it is
+    // going, not to the recording's ankle height (with his hips lower or higher than the recording's, the foot hovered)
+    if (S.land && this.n) { const n = this.n, gp = (g[0] - p[0]) * n[0] + (g[1] - p[1]) * n[1] + (g[2] - p[2]) * n[2], dz = -S.h - 0.006 - gp; for (let k = 0; k < 3; k++) g[k] += dz * n[k]; }
     const prev = S.gPrev; S.gPrev = g;
     const gv = prev && dt > 0 ? g.map((v, k) => (v - prev[k]) / dt) : [0, 0, 0];
     const v = S.vNow || [0, 0, 0], om = S.wNow || [0, 0, 0];
@@ -191,7 +210,7 @@ export class PhysBrain extends Brain {
   // (non-negative least squares on the hips' 6), then the joints' torques; too much for a person: ask less (a person
   // under a hard knock doesn't follow his plan exactly, he gives); then capped at a person's strength and handed to the
   // servos as targets
-  applyPlan(need0, needA, cols, jw = 0) {
+  applyPlan(need0, needA, cols, jw = 0, keep = null) {
     const W = this.W, m = W.m, d = W.d, nv = this.nv;
     // jw > 0: the contacts' pushes are also chosen to spare his joints (each joint's torque counted as a fraction of a
     // person's strength): a hand on the floor takes weight where it relieves the elbow, not where it overloads it
@@ -200,6 +219,8 @@ export class PhysBrain extends Brain {
     else if (cols.length) solve = nnlsPrep(cols, 6, 1e-6, this.rowW);
     const plan = sc => {
       const b = need0.map((v, i) => v + sc * needA[i]);
+      // a stepping leg keeps its whole swing (it costs the leg little; asking less left the foot hanging in the air)
+      if (keep && sc < 1) for (const v of keep) b[v] = need0[v] + needA[v];
       const w = solve ? solve(b) : null;
       const t = b;
       if (w) for (let k = 0; k < cols.length; k++) if (w[k] > 0) { const c = cols[k]; for (let v = 0; v < nv; v++) t[v] -= w[k] * c[v]; }
@@ -297,9 +318,10 @@ export class PhysBrain extends Brain {
       const me = mid(d), gh = mid(gd), t = [0, 1, 2].map(k => me[k] + gd.qpos[k] - gh[k] - d.qpos[k]), tu = t[0] * up[0] + t[1] * up[1] + t[2] * up[2];
       hor = t.map((v, k) => v - tu * up[k]);
     }
+    const ta = Math.abs(up[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], t1 = norm(cross(up, ta)), t2 = cross(up, t1);
     // rising while his weight is outside what holds him: the hips go over it first, and up only a little
     let dzE = dz, acom = [0, 0, 0];
-    const rising = dz > 0.02 && sup.other > 0;   // the recording lifts his hips while something besides feet/knees/hands still holds him
+    const rising = dz > 0.02 && (sup.other > 0 || this.guComJ);   // the recording lifts his hips (guComJ: from anything; else only while something besides feet/knees/hands holds him)
     if (rising && comOver < this.guComIn && spts.length) {
       const k = Math.max(0, Math.min(1, (comOver + 0.1) / (0.1 + this.guComIn)));
       dzE = Math.min(dz, 0.03 + dz * k * k);
@@ -312,7 +334,7 @@ export class PhysBrain extends Brain {
     }
     gu.wait = rising && dzE < dz - 0.01;
     const wr = this.guWr;
-    for (let k = 0; k < 3; k++) qacc[k] = wr * wr * (dzE * up[k] + hor[k]) + 2 * wr * (this.gqd[k] - d.qvel[k]) + acom[k];
+    for (let k = 0; k < 3; k++) qacc[k] = wr * wr * (dzE * up[k] + hor[k]) + 2 * wr * (this.gqd[k] - d.qvel[k]) + (this.guComJ ? 0 : acom[k]);
     {
       const q = [d.qpos[3], d.qpos[4], d.qpos[5], d.qpos[6]], g = [gd.qpos[3], gd.qpos[4], gd.qpos[5], gd.qpos[6]];
       const e = [q[0] * g[0] + q[1] * g[1] + q[2] * g[2] + q[3] * g[3], q[0] * g[1] - q[1] * g[0] - q[2] * g[3] + q[3] * g[2], q[0] * g[2] + q[1] * g[3] - q[2] * g[0] - q[3] * g[1], q[0] * g[3] - q[1] * g[2] + q[2] * g[1] - q[3] * g[0]];
@@ -322,6 +344,22 @@ export class PhysBrain extends Brain {
     }
     clampVec(qacc, 0, this.guMaxLin); clampVec(qacc, 3, this.guMaxAng);
     { const au = qacc[0] * up[0] + qacc[1] * up[1] + qacc[2] * up[2]; if (au > this.guUpMax) for (let k = 0; k < 3; k++) qacc[k] -= (au - this.guUpMax) * up[k]; }
+    // his weight over his feet by the whole body (trunk leaning forward over the thighs, hips, knees), not by pushing the
+    // hips along the floor: the centre of mass's acceleration along the floor (its Jacobian) brought to what is asked,
+    // the least change of the hips', trunk's and legs' accelerations
+    if (this.guComJ && (acom[0] || acom[1] || acom[2])) {
+      mj.mj_jacSubtreeCom(m, d, this.jcom || (this.jcom = new mj.DoubleBuffer(3 * nv)), hb); const J = this.jcom.GetView();
+      const D = this.comDofs || (this.comDofs = [0, 1, 2, 3, 4, 5, ...W.act.filter(a => /^(Spine|Chest|Left(Leg|Shin|Foot)_|Right(Leg|Shin|Foot)_)/.test(a.name)).map(a => a.dof)]);
+      const R = [t1, t2].map(t => D.map(v => t[0] * J[v] + t[1] * J[nv + v] + t[2] * J[2 * nv + v]));
+      const e = [t1, t2].map((t, r) => (acom[0] * t[0] + acom[1] * t[1] + acom[2] * t[2]) - R[r].reduce((a, x, i) => a + x * qacc[D[i]], 0));
+      const A = [[0, 0], [0, 0]]; for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) A[i][j] = R[i].reduce((a, x, k) => a + x * R[j][k], 0) + (i === j ? 1e-3 : 0);
+      const det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+      if (Math.abs(det) > 1e-12) { const y = [(A[1][1] * e[0] - A[0][1] * e[1]) / det, (A[0][0] * e[1] - A[1][0] * e[0]) / det]; D.forEach((v, i) => { qacc[v] += y[0] * R[0][i] + y[1] * R[1][i]; }); }
+    }
+    // a joint at its stop isn't asked to go further into it (the stop holds it there; planning that motion made the plan
+    // believe in a movement that couldn't happen)
+    if (this.guStops) for (const a of W.act) { const j = a.joint; if (!m.jnt_limited[j]) continue; const q = d.qpos[a.qadr], lo = m.jnt_range[2 * j], hi = m.jnt_range[2 * j + 1];
+      if ((q - lo < 0.02 && qacc[a.dof] < 0) || (hi - q < 0.02 && qacc[a.dof] > 0)) qacc[a.dof] = 0; }
     for (const S of planted) this.closeChain(S, qacc);
     // 3. inverse dynamics, contacts off
     const d2 = this.d2; d2.qpos.set(d.qpos.subarray(0, m.nq)); d2.qvel.set(d.qvel.subarray(0, nv)); d2.qacc.set(qacc);
@@ -331,15 +369,19 @@ export class PhysBrain extends Brain {
     const need0 = Float64Array.from(d2.qfrc_inverse.subarray(0, nv)), needA = needFull.map((v, i) => v - need0[i]);
     // 4. what the box can give: planted soles at their bottom corners along the floor's normal, every other contact
     // along its own normal, within friction
-    const cols = [], pushCol = (p, b, nn, u1, u2) => {
+    let away = 0;
+    const cols = [], pushCol = (p, b, nn, u1, u2, chk = false) => {
       mj.mj_jac(m, d, this.jp, this.jr, p, b); const J = this.jp.GetView();
+      // (stall in a squat: the plan pushed on a knee it was lifting) a contact the plan moves away from its surface
+      // can't push: not support
+      if (chk && this.guAway > 0) { let an = 0; for (let v = 0; v < nv; v++) an += (J[v] * nn[0] + J[nv + v] * nn[1] + J[2 * nv + v] * nn[2]) * qacc[v]; if (an > this.guAway) { away++; return; } }
       for (const [tt, s2] of [[u1, 1], [u1, -1], [u2, 1], [u2, -1]]) {
         const e = [nn[0] + this.mu * s2 * tt[0], nn[1] + this.mu * s2 * tt[1], nn[2] + this.mu * s2 * tt[2]], col = new Float64Array(nv);
         for (let v = 0; v < nv; v++) col[v] = J[v] * e[0] + J[nv + v] * e[1] + J[2 * nv + v] * e[2];
         cols.push(col);
       }
     };
-    const ta = Math.abs(up[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], t1 = norm(cross(up, ta)), t2 = cross(up, t1), plantedB = new Set();
+    const plantedB = new Set();
     for (const S of (this.guFeetCon ? [] : planted)) {
       for (const b of S.bodies) plantedB.add(b);
       const pts = [];
@@ -354,7 +396,8 @@ export class PhysBrain extends Brain {
       const lo = Math.min(...pts.map(q => q.h));
       for (const q of pts) if (q.h <= lo + 0.012) pushCol(q.p, q.b, up, t1, t2);
     }
-    for (const q of con) if (!plantedB.has(q.b)) pushCol(q.pos, q.b, q.n, q.u1, q.u2);
+    for (const q of con) if (!plantedB.has(q.b)) pushCol(q.pos, q.b, q.n, q.u1, q.u2, true);
+    sup.away = away;
     this.stats.contacts = cols.length / 4; this.stats.soles = planted.length; this.stats.hands = sup.hands;
     this.applyPlan(need0, needA, cols, this.guJw);
     // 5. the recording waits for him (kin.updateGetup reads getupLag), and its spot follows his hips along the floor
@@ -400,12 +443,32 @@ export class PhysBrain extends Brain {
     const mid = (dd, ids) => { const p = [0, 0, 0]; for (const b of ids) for (let k = 0; k < 3; k++) p[k] += dd.xpos[3 * b + k] / ids.length; return p; };
     // which feet are planted: his sole is on the floor AND the director has that foot down (a stepping foot may lift)
     const dir = K.state === 'stand' || K.state === 'react';
-    for (const S of this.soles) { const lk = K.locks && K.locks[S.side]; S.h = this.soleHeight(S); S.down = S.h <= this.onFloor && (!dir || !!(lk && lk.on)); }
+    for (const S of this.soles) { const lk = K.locks && K.locks[S.side]; S.h = this.soleHeight(S); S.ank = K.toLocal([d.xpos[3 * W.bodyId[S.side + 'Foot']], d.xpos[3 * W.bodyId[S.side + 'Foot'] + 1], d.xpos[3 * W.bodyId[S.side + 'Foot'] + 2]])[2];
+      // (quickBack: a stepping foot came down toe first and was held there, ankle 18 cm up, for 4 s) a foot standing on its
+      // toe tip is not planted: it is still landing
+      S.flat = S.ank <= this.ankleMax; S.down = S.h <= this.onFloor && S.flat && (!dir || !!(lk && lk.on)); }
     // neither foot planted by the director but a sole is on the floor (it let one foot go before the other landed): he
     // still stands on it
-    if (!this.soles.some(S => S.down)) for (const S of this.soles) S.down = S.h <= this.onFloor;
+    if (!this.soles.some(S => S.down)) for (const S of this.soles) S.down = S.h <= this.onFloor;   // (he stands on whatever touches, toe tip or not)
+    this.n = n;
+    for (const S of this.soles) { const lk = K.locks && K.locks[S.side]; S.land = dir && !!(lk && lk.on) && !S.down && S.h < this.landH; S.held = false; }
+    // (DIR, Nov 15: "a recovery step almost always becomes a fall": the recording lifts the rear foot while his weight is
+    // still 20+ cm behind the front one) a foot the director lifts stays on the floor until his centre of mass is over
+    // the other planted foot (or holdMax s): his hips go over that foot first. brain.stepHold tells the director
+    if (dir && this.holdLift) {
+      const hb0 = W.bodyId.Hips, c0 = K.toLocal([d.subtree_com[3 * hb0], d.subtree_com[3 * hb0 + 1], d.subtree_com[3 * hb0 + 2]]);
+      const gv = K.dirLocal([m.opt.gravity[0], m.opt.gravity[1], m.opt.gravity[2]]), tg = gv[2] < -1e-3 ? c0[2] / -gv[2] : 0, c = [c0[0] + gv[0] * tg, c0[1] + gv[1] * tg];
+      for (const S of this.soles) {
+        const O = this.soles.find(X => X !== S);
+        if (S.down || !O.down || S.h > this.onFloor || !S.wasDown) { if (!(S.h <= this.onFloor)) S.holdT = 0; continue; }
+        const mg = insideDist(convexHull(this.soleHull(O)), c);
+        if (mg < this.holdIn && (S.holdT || 0) < this.holdMax) { S.down = true; S.held = true; S.holdT = (S.holdT || 0) + dt; this.stepHold = { side: S.side, t: S.holdT, comOver: mg }; }
+      }
+      if (!this.soles.some(S => S.held)) this.stepHold = null;
+    }
     // the hips are placed relative to the planted feet (on one foot: that foot), his and the ghost's alike
-    const st = this.soles.filter(S => S.down).map(S => W.bodyId[S.side + 'Foot']);
+    for (const S of this.soles) S.wasDown = S.down;
+    const st = this.soles.filter(S => S.down && !S.held).map(S => W.bodyId[S.side + 'Foot']);
     const fb = st.length ? st : [this.footB.L, this.footB.R], me = mid(d, fb), gh = mid(gd, fb);
     const wr = this.wr;
     for (let k = 0; k < 3; k++) {
@@ -522,7 +585,13 @@ export class PhysBrain extends Brain {
       this.realBal = { t: d.time, com: c, v: vs, cp, support: hull, margin: hull.length >= 3 ? insideDist(hull, cp) : -1, comMargin: hull.length >= 3 ? insideDist(hull, c) : -1 };
     }
     this.stats.contacts = cols.length / 4;
-    const tau = this.applyPlan(need0, needA, cols);
+    const swingDofs = this.swingKeep && dir && !this.freeLegs ? this.soles.filter(S => !S.down).flatMap(S => S.legDofs) : null;
+    const tau = this.applyPlan(need0, needA, cols, 0, swingDofs && swingDofs.length ? swingDofs : null);
+    if (globalThis.PHSTEP && dir && this.soles.some(S => !(K.locks && K.locks[S.side] && K.locks[S.side].on))) {
+      const fz = (dd, b) => K.toLocal([dd.xpos[3 * b], dd.xpos[3 * b + 1], dd.xpos[3 * b + 2]]);
+      console.log('STEP', d.time.toFixed(3), K.state, this.soles.map(S => { const lk = K.locks && K.locks[S.side], b = W.bodyId[S.side + 'Foot'], me = fz(d, b), gh = fz(gd, b);
+        return S.side[0] + (lk && lk.on ? 'L' : '-') + (S.down ? 'D' : 'u') + ' h' + (S.h * 100).toFixed(0) + ' ghz' + (gh[2] * 100).toFixed(0) + ' mez' + (me[2] * 100).toFixed(0) + ' dxy' + (Math.hypot(gh[0] - me[0], gh[1] - me[1]) * 100).toFixed(0); }).join(' | '), 'sc', this.planSc, 'r', (this.planR || 0).toFixed(1), 'bal', this.realBal.margin.toFixed(2));
+    }
     if (globalThis.PHJ && this.stats.n % globalThis.PHDBG === 0) console.log('PHJ', d.time.toFixed(2), W.act.filter(a => /Spine|Chest|Neck|Leg_x|Shin_x|Foot_x/.test(a.name)).map(a => a.name.replace(/_/, '') + ':' + (d.qpos[a.qadr] * 57.3).toFixed(0) + '/' + (goal[a.qadr] * 57.3).toFixed(0) + '/' + tau[a.dof].toFixed(0) + '/' + this.targets[W.act.indexOf(a)].toFixed(2)).join(' '));
     if (globalThis.PHDBG && this.stats.n % globalThis.PHDBG === 0) console.log('PH', d.time.toFixed(2), 'bal', this.realBal.margin.toFixed(2), this.realBal.comMargin.toFixed(2), 'soles', nsole, 'pts', cols.length / 4, 'need0', Array.from(this.need0).map(v => v.toFixed(0)).join(','), 'resid', Array.from(need.slice(0, 6)).map(v => v.toFixed(0)).join(','), 'root acc', Array.from(qacc.slice(0, 6)).map(v => v.toFixed(1)).join(','), 'hips', [0, 1, 2].map(k => (d.qpos[k] - me[k]).toFixed(2)).join(','), 'ghost', [0, 1, 2].map(k => (gd.qpos[k] - gh[k]).toFixed(2)).join(','), 'over', this.stats.over, 'g', Array.from(m.opt.gravity).map(v => v.toFixed(2)).join(','));
     this.msNet += (performance.now() - t0 - this.msNet) * 0.1;
