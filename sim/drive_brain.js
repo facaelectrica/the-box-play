@@ -265,7 +265,8 @@ export class BrainDrive {
     if (!(this.armW > 0) || !K.hands) { this.armSmOn = false; return; }
     const sides = Object.keys(K.hands); if (!sides.length) return;
     const D = this.ikD || (this.ikD = new mj.MjData(m));
-    if (!this.jp2) { this.jp2 = new mj.DoubleBuffer(3 * nv); this.jr2 = new mj.DoubleBuffer(3 * nv); }
+    if (!this.jp2) { this.jp2 = new mj.DoubleBuffer(3 * nv); this.jr2 = new mj.DoubleBuffer(3 * nv); this.jp3 = new mj.DoubleBuffer(3 * nv); this.jr3 = new mj.DoubleBuffer(3 * nv); }
+    const u0 = K.toWorld([0, 0, 0]), u1 = K.toWorld([0, 0, 1]), up = [u1[0] - u0[0], u1[1] - u0[1], u1[2] - u0[2]];
     D.qpos.set(W.d.qpos);
     // where each wrist goes: pinned -> where the pin holds it; else the recording's spot, but just touching the wood
     // (the recording's spot is 1.5 cm INTO the wall, for the recording's own lean: his real hands pressed and shoved him)
@@ -289,10 +290,18 @@ export class BrainDrive {
         mj.mj_jacBody(m, D, this.jp2, this.jr2, b);
         const JP = this.jp2.GetView(), JR = this.jr2.GetView(), N = ARM_W.length, J = [];
         for (let r = 0; r < 6; r++) { const row = []; for (let c = 0; c < N; c++) row.push(r < 3 ? JP[r * nv + A.dof + c] : JR[(r - 3) * nv + A.dof + c] * rw); J.push(row); }
-        const M = []; for (let i = 0; i < 6; i++) { M.push([]); for (let j = 0; j < 6; j++) { let s = 0; for (let c = 0; c < N; c++) s += J[i][c] * ARM_W[c] * J[j][c]; M[i].push(s + (i === j ? 0.003 : 0)); } }
+        // (user 21:11: "we rarely raise the elbows. The elbows always try to aim down. It's more comfortable for the
+        // shoulders") a 7th, softer wish: the elbow ~18 cm below the shoulder (along up), the forearm rising to the wall
+        const eb = W.bodyId[side + 'ForeArm'], sb = W.bodyId[side + 'Arm'];
+        const ez = (D.xpos[3 * eb] - D.xpos[3 * sb]) * up[0] + (D.xpos[3 * eb + 1] - D.xpos[3 * sb + 1]) * up[1] + (D.xpos[3 * eb + 2] - D.xpos[3 * sb + 2]) * up[2];
+        mj.mj_jacBody(m, D, this.jp3, this.jr3, eb);
+        const JE = this.jp3.GetView(), ew = 0.5, rowE = [];
+        for (let c = 0; c < N; c++) rowE.push((up[0] * JE[A.dof + c] + up[1] * JE[nv + A.dof + c] + up[2] * JE[2 * nv + A.dof + c]) * ew);
+        J.push(rowE); e.push(Math.max(-0.1, Math.min(0.1, (-0.18 - ez))) * ew);
+        const R = J.length, M = []; for (let i = 0; i < R; i++) { M.push([]); for (let j = 0; j < R; j++) { let s = 0; for (let c = 0; c < N; c++) s += J[i][c] * ARM_W[c] * J[j][c]; M[i].push(s + (i === j ? 0.003 : 0)); } }
         const y = solve6(M, e);
         for (let c = 0; c < N; c++) {
-          let s = 0; for (let i = 0; i < 6; i++) s += J[i][c] * y[i];
+          let s = 0; for (let i = 0; i < R; i++) s += J[i][c] * y[i];
           const qa = A.dof + c + 1, jid = m.dof_jntid[A.dof + c];
           let q = D.qpos[qa] + Math.max(-0.15, Math.min(0.15, ARM_W[c] * s));
           if (m.jnt_limited[jid]) q = Math.max(m.jnt_range[2 * jid], Math.min(m.jnt_range[2 * jid + 1], q));
@@ -305,6 +314,7 @@ export class BrainDrive {
       for (const side of sides) { const b = W.bodyId[ARMS[side].hand], H = K.hands[side];
         S.pos += Math.hypot(H.p[0] - d.xpos[3 * b], H.p[1] - d.xpos[3 * b + 1], H.p[2] - d.xpos[3 * b + 2]) * 100;
         const pn = qr([d.xquat[4 * b], d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3]], [0, 0, -1]), o = H.wall ? H.wall.out : [0, 0, 0];
+        { const eb = W.bodyId[side + 'ForeArm'], sb = W.bodyId[side + 'Arm']; S.elb = (S.elb || 0) + ((d.xpos[3 * eb] - d.xpos[3 * sb]) * up[0] + (d.xpos[3 * eb + 1] - d.xpos[3 * sb + 1]) * up[1] + (d.xpos[3 * eb + 2] - d.xpos[3 * sb + 2]) * up[2]) * 100; }
         S.ang += Math.acos(Math.max(-1, Math.min(1, -(pn[0] * o[0] + pn[1] * o[1] + pn[2] * o[2])))) * 57.3; S.n++; } }
     if (globalThis.ARMDBG) { mj.mj_kinematics(m, D); const d = W.d; for (const side of sides) { const b = W.bodyId[ARMS[side].hand], H = K.hands[side], sh = W.bodyId[side + 'Arm'];
       const ik = Math.hypot(H.p[0] - D.xpos[3 * b], H.p[1] - D.xpos[3 * b + 1], H.p[2] - D.xpos[3 * b + 2]), reach = Math.hypot(H.p[0] - d.xpos[3 * sh], H.p[1] - d.xpos[3 * sh + 1], H.p[2] - d.xpos[3 * sh + 2]);
