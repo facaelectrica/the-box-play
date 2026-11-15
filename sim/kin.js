@@ -132,6 +132,12 @@ export const ARM_W = [0, 0, 0, 1, 1, 1, 0.05, 0.05, 1, 0.6, 0.6, 0.6];   // coll
 // shoulder, `gap` m off the wood; wrist `palm` m behind the palm centre; walls within `maxReach` m of the shoulder
 const BR = { tilt: 0.1, rate: 0.26, reach: 0.6, hold: 1.5, release: 0.9, fwd: 0.05, down: 0.06, gap: -0.015, palm: 0.07, maxReach: 0.62, rotW: 0.3, lean: 0.5, base: 1 };
 export const BRACE = BR;
+// (user 22:51: "when he stays near a wall, a relaxed shoulder-against-the-wall lean instead of a hand on it")
+// near: the shoulder->wall gap that makes him lean instead of reach (m); touch: the gap aimed for (the upper arm's
+// capsule is 4.5 cm: pressed 1.5 cm, the wall takes some weight); pull: gravity toward that wall (m/s2, ~3 deg) at least;
+// sh: shoulder height over the feet; max: tilt toward the wall (rad, ~10 deg); tau: easing in (s)
+const LEAN = { near: 0.34, touch: 0.03, pull: 0.5, sh: 1.35, max: 0.18, tau: 0.6 };
+export const WALL_LEAN = LEAN;
 // rotation matrix columns (x, y, z axes in the world) -> quaternion w x y z
 function matQ(x, y, z) {
   const m00 = x[0], m11 = y[1], m22 = z[2], tr = m00 + m11 + m22;
@@ -413,7 +419,8 @@ export class Kin {
     // (user 22:51: "when he has time to recover, he should try to go to the middle of the box, not the corners") calm,
     // the floor not too steep (< ~10 deg), and more than 15 cm off the middle for a second: a step toward the middle
     // (a recovery-step recording that way), at most one every 2.5 s
-    if (!this.noCenter && (this.G.name === 'floor' || this.G.name === 'ceil') && !this.W.open) {
+    // (leaning his shoulder on a wall he stays there: resting on it is the point)
+    if (!this.noCenter && !this.leanSide && (this.G.name === 'floor' || this.G.name === 'ceil') && !this.W.open) {
       const dc = Math.hypot(this.cur[0], this.cur[1]), calm = Math.hypot(this.cv[0], this.cv[1]) < 0.06 && Math.hypot(gl[0], gl[1]) < 0.18 * Math.max(gn, 1);
       this.centerT = dc > 0.15 && calm ? (this.centerT || 0) + dt : 0;
       if (this.centerT > 1.0 && this.t - (this.centerStepT || -9) > 2.5) {
@@ -566,7 +573,8 @@ export class Kin {
     // lean: turn the whole body over the middle of his feet so his centre of mass goes to c
     if (kin) {
       const pl = this.tmp, pv = this.toLocal([(footNow.Left.p[0] + footNow.Right.p[0]) / 2, (footNow.Left.p[1] + footNow.Right.p[1]) / 2, (footNow.Left.p[2] + footNow.Right.p[2]) / 2]);
-      const th = [this.c[0] / this.hc, this.c[1] / this.hc], a = Math.hypot(th[0], th[1]);
+      const wl = this.wallLean || [0, 0];   // the shoulder-on-the-wall lean (braceArms), radians toward the wall
+      const th = [this.c[0] / this.hc + wl[0], this.c[1] / this.hc + wl[1]], a = Math.hypot(th[0], th[1]);
       if (a > 1e-6) {
         const r = qz(0), ax = [-th[1] / a, th[0] / a, 0], R = rv2q([ax[0] * a, ax[1] * a, 0]);
         const rel = [pl[0] - pv[0], pl[1] - pv[1], pl[2] - pv[2]], nr = qv(R, rel);
@@ -623,7 +631,7 @@ export class Kin {
     const d = W.d, m = W.m, mj = this.mj, up = qv(qc(this.G.q), [0, 0, 1]);
     for (let it = 0; it < 3; it++) {
       this.writeWorld(pl); mj.mj_forward(m, d);
-      let push = [0, 0, 0], any = false, lift = 0;
+      let push = [0, 0, 0], any = false, lift = 0; const sides = [];
       for (let i = 0; i < d.ncon; i++) {
         const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
         if (dist > -0.003) continue;
@@ -633,8 +641,19 @@ export class Kin {
         if (du > 0.7) { lift = Math.max(lift, -dist); continue; }   // the floor: the whole recording comes up out of it
         if (du < -0.7) continue;   // the ceiling (kneeling handles a low room)
         for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
+        if (dist < -0.02) sides.push(dir);
       }
       if (lift > 0.01) pl[2] += lift - 0.005;
+      // (Version 27; flip test: lying across the narrow box, head in the left wall and toes in the right at once)
+      // squeezed between opposite walls: no slide fixes it, the recording turns (about his hips, ~5 deg a frame) the
+      // way that leaves him less in the walls
+      if (sides.length > 1 && sides.some(a => sides.some(b => a[0] * b[0] + a[1] * b[1] + a[2] * b[2] < -0.5))) {
+        const depth = () => { this.writeWorld(pl); mj.mj_forward(m, d); let t = 0; for (let i = 0; i < d.ncon; i++) { const c = d.contact.get(i), dd = c.dist, f1 = W.isFig[m.geom_bodyid[c.geom1]], f2 = W.isFig[m.geom_bodyid[c.geom2]]; c.delete(); if (f1 !== f2 && dd < 0) t -= dd; } return t; };
+        const turn = a => { const c0 = Math.cos(a), s0 = Math.sin(a), q = qn(qm(qz(a), [pl[3], pl[4], pl[5], pl[6]])); pl[3] = q[0]; pl[4] = q[1]; pl[5] = q[2]; pl[6] = q[3]; void c0; void s0; };
+        const d0 = depth(); turn(0.09); const dp = depth(); turn(-0.18); const dn = depth(); turn(0.09);
+        const a = dp < d0 && dp <= dn ? 0.09 : dn < d0 ? -0.09 : 0;
+        if (a) { turn(a); this.turnAnchor(a); }
+      }
       if (!any && !(lift > 0.01)) break;
       if (!any) continue;
       const a = this.toLocal([0, 0, 0]), cc = this.toLocal([push[0], push[1], push[2]]), dx = (cc[0] - a[0]) * 1.1, dy = (cc[1] - a[1]) * 1.1;
@@ -666,8 +685,9 @@ export class Kin {
     if (want) this.wanted = true; else if (!(this.braceW > 0)) this.wanted = false;
     const on = want || (room && this.wanted && this.calmT < BR.hold);
     this.braceW = clamp((this.braceW || 0) + (on ? dt / BR.reach : -dt / BR.release), 0, 1);
-    if (this.braceW <= 0) { this.hands = null; return; }
+    if (this.braceW <= 0) { this.hands = null; this.leanWall(dt, null); return; }
     const w = this.braceW * this.braceW * (3 - 2 * this.braceW);
+    let leanT = null;
     // where each hand goes, from where his shoulder is NOW (round 1 of the walls work: the targets were fixed in the
     // world when he reached, his body then moved with the idle and the network, the arms were stretched or crushed and
     // the hands slammed the wood: 0-1170 N): out to his side and a little forward, a hand-span under the shoulder,
@@ -684,6 +704,16 @@ export class Kin {
         const t = (sg * lim - sh[ax]) / dir[ax]; if (t > 0 && (!best || t < best.t)) best = { t, ax, sg, lim };
       }
       if (!best || best.t > BR.maxReach) { delete this.hands[side]; continue; }
+      // (user 22:51) that wall is right beside his shoulder and the floor tips him toward it: no hand (the arm would
+      // fold awkwardly against his side), he leans his shoulder on it, relaxed, that arm hanging; decided only while
+      // that hand isn't already holding the wall
+      if (!this.noWallLean && !(this.hands[side] && this.hands[side].pinned)) {
+        const gapW = best.t * Math.abs(dir[best.ax]), pull = gl[best.ax] * best.sg;   // gravity along "into that wall"
+        if (gapW < LEAN.near && pull > LEAN.pull && (!leanT || gapW < leanT.gap)) {
+          const nW2 = [0, 0]; nW2[best.ax] = best.sg; leanT = { side, gap: gapW, dir: nW2 };
+          delete this.hands[side]; continue;
+        }
+      }
       // (snapshot 22:47) that arm can't reach the spot comfortably (shoulder at its stops / spot behind it): it stays
       // the recording's own arm instead of being wrenched toward the wall (drive_brain sets armSkip)
       if (this.armSkip && this.armSkip[side] > 0 && !(this.hands[side] && this.hands[side].pinned)) { delete this.hands[side]; continue; }
@@ -713,7 +743,27 @@ export class Kin {
         for (let i = 0; i < 3; i++) H.p[i] += e[i] * k; H.q = q;
       }
     }
+    this.leanWall(dt, leanT);
     this.armIK(w);
+  }
+  // the shoulder lean: the whole body tilts about his feet toward that wall until the shoulder just touches it (the
+  // shoulder's gap over its height above the feet), eased over ~0.6 s both ways; nothing to lean on -> back upright
+  leanWall(dt, T) {
+    // his whole tilt toward that wall (from the floor's upright: his slope lean c plus this lean) eases to what closes
+    // the gap (the gap is measured on the pose already leaning: the tilt that closes it adds to the tilt he has), and on
+    // letting go eases back to upright over ~1 s, whatever his slope lean does meanwhile (the slope going level took
+    // his slope lean away at once and threw him off the wall: a fall, test pushWallB)
+    if (!this.wallLean) this.wallLean = [0, 0];
+    if (T) this.leanDir = T.dir;
+    const D = this.leanDir; if (!D) { this.wallLean[0] = this.wallLean[1] = 0; this.leanSide = null; return; }
+    const cl = (this.c[0] * D[0] + this.c[1] * D[1]) / this.hc, wd = this.wallLean[0] * D[0] + this.wallLean[1] * D[1];
+    if (this.leanTot === undefined || this.leanTot === null) this.leanTot = cl + wd;
+    if (T) { const want = clamp(cl + wd + (T.gap - LEAN.touch) / LEAN.sh, 0, LEAN.max); this.leanTot += (want - this.leanTot) * (1 - Math.exp(-dt / LEAN.tau)); }
+    else this.leanTot += (cl - this.leanTot) * (1 - Math.exp(-dt / 1.0));   // back to his own (slope) lean, slowly
+    const wl = this.leanTot - cl; this.wallLean[0] = D[0] * wl; this.wallLean[1] = D[1] * wl;
+    if (!T && Math.abs(wl) < 0.004) { this.leanDir = null; this.leanTot = null; this.wallLean[0] = this.wallLean[1] = 0; }
+    if (T && this.leanSide !== T.side) this.event('shoulder on the ' + (T.side === 'Left' ? 'left' : 'right') + ' wall');
+    this.leanSide = T ? T.side : (this.leanDir ? this.leanSide : null);
   }
   armIK(w) {
     const W = this.W, mj = this.mj, m = W.m, d = W.d, nv = this.nv;
