@@ -486,7 +486,19 @@ export class CrackView {
     this.dark = new THREE.MeshBasicMaterial({ color: 0x2a211a, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
     this.halo = new THREE.MeshBasicMaterial({ color: 0xfffaf2, transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
     this.inner = new THREE.MeshStandardMaterial({ color: 0xc98a4a, roughness: 0.95, side: THREE.DoubleSide });   // the raw wood inside a break
-    this.grooveMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
+    // (user 14:15: "simulate depth in the geometry ... versus something that gets blacker and just looks painted on")
+    // a crack is a real groove: walls and a bottom built below the surface and lit by the scene's lights. The part's
+    // shell is intact, so the groove is seen through its opening: the opening is first marked in the stencil buffer
+    // (crackMask, drawn at the surface, hidden wherever something is in front of it), then the groove is drawn only
+    // inside that mark, pulled toward the camera along each view ray so the shell doesn't hide it (moving a point along
+    // its own view ray keeps it on the same pixel: the walls stay exactly where they are in 3D, depth order among them
+    // is kept, and the light/shadows are taken at their real position)
+    this.crackMask = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+      stencilWrite: true, stencilRef: 1, stencilFunc: THREE.AlwaysStencilFunc, stencilZPass: THREE.ReplaceStencilOp });
+    this.crackMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0,
+      stencilWrite: true, stencilRef: 1, stencilFunc: THREE.EqualStencilFunc, stencilFail: THREE.KeepStencilOp, stencilZFail: THREE.KeepStencilOp, stencilZPass: THREE.KeepStencilOp });
+    this.crackMat.onBeforeCompile = sh => { sh.vertexShader = sh.vertexShader.replace('#include <project_vertex>', '#include <project_vertex>\n\tmvPosition.xyz += normalize( - mvPosition.xyz ) * 0.03;\n\tgl_Position = projectionMatrix * mvPosition;'); };
+    this.crackMat.customProgramCacheKey = () => 'crackGroove';
     this.marks = [];
   }
   // heavy drawing work waits for the next frames (a few ms per frame), so a hit never stalls a frame
@@ -497,7 +509,7 @@ export class CrackView {
   prewarm(at) {
     const T = this.T, g = new T.Group(); g.position.set(...at); g.scale.setScalar(0.001);
     const tri = new T.BufferGeometry(); tri.setAttribute('position', new T.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3)); tri.setAttribute('normal', new T.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3)); tri.setAttribute('color', new T.Float32BufferAttribute([1, 1, 1, 1, 1, 1, 1, 1, 1], 3));
-    g.add(new T.Mesh(tri, this.grooveMat));
+    g.add(new T.Mesh(tri, this.crackMask)); g.add(new T.Mesh(tri, this.crackMat));
     for (const m of [this.inner, this.shell]) { const me = new T.Mesh(new T.IcosahedronGeometry(1, 0), m); me.castShadow = true; me.receiveShadow = true; g.add(me); }
     this.markMats = [0, 1, 2, 3].map(k => this.markMat(0.4 + 0.2 * k, 1000 + k * 77));
     for (const mt of this.markMats) { const mm = new T.Mesh(new T.PlaneGeometry(1, 1), mt); mm.receiveShadow = true; g.add(mm); }   // (also sends their textures to the graphics chip now)
@@ -506,8 +518,9 @@ export class CrackView {
   }
   reset(all = true) {
     if (all) { for (const m of this.marks) this.root.remove(m); this.marks.length = 0; }
-    for (const m of this.crackMeshes) { if (m.parent) m.parent.remove(m); m.geometry.dispose(); }
+    for (const m of this.crackMeshes) { if (m.parent) m.parent.remove(m); m.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
     this.crackMeshes.length = 0;
+    this.nets = new Map();
     for (const [, o] of this.debris) { this.root.remove(o); const i = this.movers.indexOf(o); if (i >= 0) this.movers.splice(i, 1); }
     this.debris.clear();
     for (const g of this.groups()) if (g) g.visible = true;
@@ -558,11 +571,16 @@ export class CrackView {
     return { p: p.clone().addScaledVector(n, -p.clone().sub(v).dot(n)), n };
   }
   project(g, I, p, prevN) { return this.snap(I, p, 0.02); }
-  // draw one crack where hit landed (seeded, so a swapped figure gets the same crack)
+  // (user 13:58: "what's already a crack gets more cracks. Not overlapping") each part keeps ONE crack network that
+  // grows like a real fracture: a hit opens the cracks near it wider, pushes their tips further, and starts new cracks
+  // only where the surface is still whole; a growing crack stops where it runs into another one (it can't cross it);
+  // a part can only hold so much cracking - after that hits only open the cracks and chip flakes off. Seeded per hit, so
+  // swapping the figure re-grows the same network.
+  net(key) { const N = this.nets || (this.nets = new Map()); let n = N.get(key); if (!n) N.set(key, n = { lines: [], chips: [], grid: new Map(), len: 0, mesh: null }); return n; }
   addCrack(hit, target = null) {   // target: the drawn copy of that part on a broken-off piece
     const T = this.T, gs = this.groups(); let g = gs[hit.body]; if (!g) return;
     this.root.updateMatrixWorld(true);
-    let I = this.info(g), l = new T.Vector3(...hit.l), n0 = new T.Vector3(...hit.n).normalize();
+    let I = this.info(g), l = new T.Vector3(...hit.l), n0 = new T.Vector3(...hit.n).normalize(), key = hit.body;
     if (!I.meshes.length) {
       if (target) return;
       // a part drawn as part of its neighbour (e.g. the middle of the spine): the crack goes on the nearest drawn part
@@ -575,87 +593,187 @@ export class CrackView {
       }
       if (!bg) return;
       const inv = new T.Matrix4().copy(bg.matrixWorld).invert();
-      g = bg; I = this.info(g); l = pw.applyMatrix4(inv); n0 = nw.transformDirection(inv);
+      g = bg; I = this.info(g); l = pw.applyMatrix4(inv); n0 = nw.transformDirection(inv); key = g.userData.body;
     }
-    const R = rng(hit.seed), lv = hit.level, s = hit.s;
     const start = this.snap(I, l, 0.06); if (!start) return;
-    // sizes: visible on a phone (1 cm is ~3 px), grows with the part's damage and the hit
-    const S = Math.min(1, Math.max(0.55, I.size / 0.12));
-    const Lmain = (0.05 + 0.035 * (lv - 1) + 0.03 * s) * S, W0 = (0.0036 + 0.0010 * (lv - 1)) * S, step = 0.0065 * S;
-    const lines = [];
-    const walk = (p0, n0, dir, L, w0, depth) => {
-      // a crack runs fairly straight: a heading that only drifts a little, each step zig-zagging around it
-      const pts = [{ p: p0.clone(), n: n0.clone(), w: w0 }]; let p = p0.clone(), n = n0.clone(), d = dir.clone(), went = 0;
-      while (went < L) {
-        d.addScaledVector(n, -d.dot(n)).normalize();
-        d.applyAxisAngle(n, (R() - 0.5) * 0.12);
-        const st = d.clone().applyAxisAngle(n, (R() - 0.5) * 1.1);
-        const h = this.project(g, I, p.clone().addScaledVector(st, step).addScaledVector(n, 0.002), n); if (!h) break;
-        const seg = h.p.distanceTo(p); if (seg < 1e-5) break;
-        p = h.p; n = h.n; went += seg;
-        pts.push({ p: p.clone(), n: n.clone(), w: w0 * (1 - 0.8 * went / L) });
-        if (depth < 3 && R() < 0.16 + 0.05 * lv && L - went > 0.012) walk(p, n, d.clone().applyAxisAngle(n, (R() < 0.5 ? -1 : 1) * (0.45 + 0.6 * R())), (L - went) * (0.4 + 0.35 * R()), w0 * (1 - 0.8 * went / L) * 0.7, depth + 1);
-      }
-      if (pts.length > 1) lines.push(pts);
+    const N = this.net(key);
+    this.grow(N, I, start, hit);
+    // the part's one crack mesh, redrawn; on a broken-off piece it goes on that piece's copy of the part. Built a couple
+    // of ms per frame (a part full of cracks took up to ~10 ms in one go); the old mesh stays until the new one is done
+    const gen = N.gen = (N.gen || 0) + 1, it = this.drawNetIter(N);
+    const step = () => {
+      if (N.gen !== gen || this.nets.get(key) !== N) return;   // a newer hit (or a reset) took over
+      const t0 = performance.now(); let r;
+      do r = it.next(); while (!r.done && performance.now() - t0 < 2);
+      if (!r.done) { this.later(step); return; }
+      for (const o of [g, target].filter(Boolean)) for (const c of o.children.slice()) if (c.userData.crackOf === key) o.remove(c);
+      if (N.mesh) { N.mesh.traverse(o => { if (o.geometry) o.geometry.dispose(); }); const k = this.crackMeshes.indexOf(N.mesh); if (k >= 0) this.crackMeshes.splice(k, 1); }
+      N.mesh = r.value;
+      if (N.mesh) { N.mesh.userData.crackOf = key; (target || g).add(N.mesh); this.crackMeshes.push(N.mesh); }
     };
-    const t0 = new T.Vector3(1, 0, 0); if (Math.abs(t0.dot(start.n)) > 0.9) t0.set(0, 1, 0);
-    t0.addScaledVector(start.n, -t0.dot(start.n)).normalize();
-    const B = 3 + lv + (R() < 0.5 ? 1 : 0), a0 = R() * Math.PI * 2;
-    for (let i = 0; i < B; i++) {
-      const dir = t0.clone().applyAxisAngle(start.n, a0 + (i + (R() - 0.5) * 0.6) * 2 * Math.PI / B);
-      walk(start.p, start.n, dir, Lmain * (0.55 + 0.6 * R()), W0, 0);
-    }
-    // the crater where it hit: an irregular ring on the surface
-    const chip = [], rc = (0.006 + 0.0025 * lv + 0.003 * s) * S;
-    for (let i = 0; i < 11; i++) {
-      const dir = t0.clone().applyAxisAngle(start.n, i / 11 * Math.PI * 2), q = this.project(g, I, start.p.clone().addScaledVector(dir, rc * (0.55 + 0.7 * R())).addScaledVector(start.n, 0.002), start.n);
-      chip.push(q ? q : { p: start.p.clone().addScaledVector(dir, rc), n: start.n.clone() });
-    }
-    const mesh = this.groove(lines, start, chip);
-    if (mesh) { (target || g).add(mesh); this.crackMeshes.push(mesh); }
+    step();
   }
-  // (user 10:43: "is there a way to get some depth to the cracks ... maybe with some normals") each crack is a small
-  // V-shaped groove: two walls tilted toward each other, lit by the box's lights like the rest of him (one wall catches
-  // the light, the other is in shade), amber wood at the edges going dark at the bottom, and a thin raised lip of the
-  // shell along both sides. The crater is a cone of the same.
-  groove(lines, start, ring) {
-    const T = this.T, pos = [], nor = [], col = [];
-    const RIM = new T.Color(0x9a5524), DEEP = new T.Color(0x170a03), LIP = new T.Color(0xfff6ec), SH = this.shell ? this.shell.color : new T.Color(0xebe5da);
-    const put = (p, n, c) => { pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); col.push(c.r, c.g, c.b); };
-    const quad = (a, b, c, d, na, nb, nc, nd, ca, cb, cc, cd) => { put(a, na, ca); put(b, nb, cb); put(c, nc, cc); put(b, nb, cb); put(d, nd, cd); put(c, nc, cc); };
-    const LIFT = 0.0009;
-    for (const L of lines) for (let i = 0; i < L.length - 1; i++) {
-      const A = L[i], B = L[i + 1], t = B.p.clone().sub(A.p).normalize();
-      const side = P => P.n.clone().cross(t).normalize();
-      const sA = side(A), sB = side(B), hA = A.w / 2, hB = B.w / 2, lipA = Math.max(0.0007, hA * 0.55), lipB = Math.max(0.0007, hB * 0.55);
-      const at = (P, sd, off, up) => P.p.clone().addScaledVector(sd, off).addScaledVector(P.n, up);
-      for (const sg of [1, -1]) {   // the two walls of the groove (sg = +side / -side)
-        const eA = at(A, sA, sg * hA, LIFT), eB = at(B, sB, sg * hB, LIFT), cA = at(A, sA, 0, LIFT * 0.6), cB = at(B, sB, 0, LIFT * 0.6);
-        const nwA = A.n.clone().multiplyScalar(0.45).addScaledVector(sA, -sg * 0.9).normalize(), nwB = B.n.clone().multiplyScalar(0.45).addScaledVector(sB, -sg * 0.9).normalize();
-        quad(eA, cA, eB, cB, nwA, nwA, nwB, nwB, RIM, DEEP, RIM, DEEP);
-        // the lip: from the groove's edge out to the shell, tilted outward (a fine highlight / shadow line)
-        const oA = at(A, sA, sg * (hA + lipA), LIFT * 0.5), oB = at(B, sB, sg * (hB + lipB), LIFT * 0.5);
-        const nlA = A.n.clone().multiplyScalar(0.8).addScaledVector(sA, sg * 0.6).normalize(), nlB = B.n.clone().multiplyScalar(0.8).addScaledVector(sB, sg * 0.6).normalize();
-        quad(oA, eA, oB, eB, A.n, nlA, B.n, nlB, SH, LIP, SH, LIP);
+  // the network's segments in a 1 cm grid, for "does this new crack run into an old one"
+  segAdd(N, li, si) { const L = N.lines[li], a = L.pts[si].p, b = L.pts[si + 1].p, CS = 0.01; for (const q of [a, b, a.clone().add(b).multiplyScalar(0.5)]) { const k = `${Math.floor(q.x / CS)},${Math.floor(q.y / CS)},${Math.floor(q.z / CS)}`; let A = N.grid.get(k); if (!A) N.grid.set(k, A = []); if (!A.some(e => e[0] === li && e[1] === si)) A.push([li, si]); } N.len += a.distanceTo(b); }
+  segNear(N, p, R, skip) {
+    const CS = 0.01, cx = Math.floor(p.x / CS), cy = Math.floor(p.y / CS), cz = Math.floor(p.z / CS); let best = { d: R, q: null };
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {
+      const A = N.grid.get(`${cx + dx},${cy + dy},${cz + dz}`); if (!A) continue;
+      for (const [li, si] of A) {
+        if (skip && skip(li, si)) continue;
+        const a = N.lines[li].pts[si].p, b = N.lines[li].pts[si + 1].p, ab = b.clone().sub(a), L2 = ab.lengthSq(), u = L2 > 1e-12 ? Math.max(0, Math.min(1, p.clone().sub(a).dot(ab) / L2)) : 0, q = a.clone().addScaledVector(ab, u), d = q.distanceTo(p);
+        if (d < best.d) best = { d, q, li, si, u };
       }
     }
-    // the crater: a cone down to its centre, amber walls, dark bottom, a lip around it
-    const c0 = start.p.clone().addScaledVector(start.n, LIFT * 0.5);
-    for (let i = 0; i < ring.length; i++) {
-      const a = ring[i], b = ring[(i + 1) % ring.length];
-      const pa = a.p.clone().addScaledVector(a.n, LIFT), pb = b.p.clone().addScaledVector(b.n, LIFT);
-      const ra = pa.clone().sub(c0).normalize(), rb = pb.clone().sub(c0).normalize();
-      const na = start.n.clone().multiplyScalar(0.5).addScaledVector(ra, -0.85).normalize(), nb = start.n.clone().multiplyScalar(0.5).addScaledVector(rb, -0.85).normalize();
-      put(c0, start.n, DEEP); put(pa, na, RIM); put(pb, nb, RIM);
-      const w = 0.35, oa = pa.clone().addScaledVector(ra, pa.distanceTo(c0) * w), ob = pb.clone().addScaledVector(rb, pb.distanceTo(c0) * w);
-      const la = a.n.clone().multiplyScalar(0.8).addScaledVector(ra, 0.6).normalize(), lb = b.n.clone().multiplyScalar(0.8).addScaledVector(rb, 0.6).normalize();
-      quad(oa, pa, ob, pb, a.n, la, b.n, lb, SH, LIP, SH, LIP);
+    return best;
+  }
+  // one crack running over the surface from p0 along dir for up to L, tapering from w0; stops where it meets another
+  // crack (joined to it) or runs off the shell; may fork
+  run(N, I, R, p0, n0, dir, L, w0, S, depth, li0 = -1) {
+    // (user 14:16: "too veiny ... sharper, like a more solid material breaking ... not so many little curves") a crack
+    // runs straight in legs of 0.8-2.5 cm and turns sharply between them (7-30 deg); forks only at a turn
+    const line = { pts: [{ p: p0.clone(), n: n0.clone(), w: w0 }], side: R() < 0.5 ? 1 : -1, open: true }, li = N.lines.length; N.lines.push(line);
+    let p = p0.clone(), n = n0.clone(), d = dir.clone(), went = 0, leg = (0.008 + 0.017 * R()) * S; const step = 0.003 * S;
+    const wAt = x => w0 * Math.max(0.25, 1 - 0.75 * x / L);
+    while (went < L) {
+      d.addScaledVector(n, -d.dot(n)).normalize();
+      if (went >= leg) {
+        d.applyAxisAngle(n, (R() < 0.5 ? -1 : 1) * (0.12 + 0.4 * R())); leg = went + (0.008 + 0.017 * R()) * S;
+        if (depth < 2 && R() < 0.3 && L - went > 0.012 * S) this.run(N, I, R, p, n, d.clone().applyAxisAngle(n, (R() < 0.5 ? -1 : 1) * (0.45 + 0.5 * R())), (L - went) * (0.3 + 0.35 * R()), wAt(went) * 0.7, S, depth + 1, li);
+      }
+      const h = this.snap(I, p.clone().addScaledVector(d, step).addScaledVector(n, 0.0015), 0.02); if (!h) break;
+      const seg = h.p.distanceTo(p); if (seg < 1e-5) break;
+      // ran into another crack: join it and stop (cracks don't cross)
+      const own = line.pts.length;
+      const hit = this.segNear(N, h.p, 0.0022 * S, (a, b) => (a === li && b >= own - 3) || (a === li0 && went < 0.006 * S));
+      p = hit.q ? hit.q : h.p; n = h.n; went += seg;
+      line.pts.push({ p: p.clone(), n: n.clone(), w: wAt(went) });
+      this.segAdd(N, li, line.pts.length - 2);
+      if (hit.q) { line.open = false; break; }
+    }
+    if (line.pts.length < 2) { N.lines.pop(); return null; }
+    return line;
+  }
+  grow(N, I, start, hit) {
+    const T = this.T, R = rng(hit.seed), E = Math.max(0.15, Math.min(1.5, hit.dmg !== undefined ? hit.dmg : 0.3 + hit.s));
+    const S = Math.min(1, Math.max(0.55, I.size / 0.12)), c = start.p, nC = start.n; N.I = I;
+    const CAP = 0.55 * S;   // the most crack a part can hold (m); after that hits only open cracks and chip
+    // 1. the cracks near the hit open wider (more for a harder hit, less further away)
+    const Rw = (0.05 + 0.03 * E) * S;
+    for (const L of N.lines) for (const q of L.pts) { const dd = q.p.distanceTo(c); if (dd < Rw) { const f = 1 - dd / Rw; q.w = Math.min(0.0028 * S, q.w * (1 + 0.35 * E * f) + 0.00025 * E * f * S); } }
+    // 2. their open tips nearby run further
+    const near = this.segNear(N, c, 0.03 * S);
+    if (N.len < CAP) for (const L of N.lines.slice()) {
+      if (!L.open) continue; const tip = L.pts[L.pts.length - 1], dd = tip.p.distanceTo(c); if (dd > 0.12 * S) continue;
+      const prev = L.pts[L.pts.length - 2], dir = tip.p.clone().sub(prev.p).normalize();
+      L.open = false;   // it continues as a new piece of line from its tip
+      this.run(N, I, R, tip.p, tip.n, dir, (0.02 + 0.03 * E) * S * (1 - dd / (0.12 * S)), tip.w, S, 1, N.lines.indexOf(L));
+    }
+    // 3. new cracks from the hit: a star on whole surface; near an old crack only a couple of short ones that run into it
+    if (N.len < CAP) {
+      const fresh = !near.q, B = fresh ? 3 + Math.round(R() * 2) : 1 + Math.round(R()), Lm = (fresh ? 0.03 + 0.05 * E : 0.015 + 0.025 * E) * S, w0 = (0.0010 + 0.0012 * E) * S;
+      const t0 = new T.Vector3(1, 0, 0); if (Math.abs(t0.dot(nC)) > 0.9) t0.set(0, 1, 0); t0.addScaledVector(nC, -t0.dot(nC)).normalize();
+      const a0 = R() * Math.PI * 2;
+      for (let i = 0; i < B; i++) this.run(N, I, R, c, nC, t0.clone().applyAxisAngle(nC, a0 + (i + (R() - 0.5) * 0.7) * 2 * Math.PI / B), Lm * (0.5 + 0.7 * R()), w0, S, 0);
+    }
+    // 4. (user 14:41: "more of the material underneath ... cracking the outer layer") the outer coat flakes off: most hits
+    // knock a flake off at the hit (or make the flake already there bigger), harder ones another along the edge of a crack
+    // nearby, where the coat has nothing holding it; the raw wood shows underneath
+    const flake = (p, n, r, seed) => {
+      for (const f of N.chips) if (f.p.distanceTo(p) < 0.8 * (f.r + r)) { f.r = Math.min(0.02 * S, Math.sqrt(f.r * f.r + 0.6 * r * r)); f.grow = (f.grow || 0) + 1; return; }
+      if (N.chips.length < 16) N.chips.push({ p: p.clone(), n: n.clone(), r, seed });
+    };
+    if (E > 0.3) flake(c, nC, (0.003 + 0.005 * E) * S, hit.seed);
+    if (E > 0.6) {
+      const q = this.segNear(N, c.clone().addScaledVector(nC, 0), 0.05 * S);
+      if (q.q) {
+        const L = N.lines[q.li], A = L.pts[q.si], B = L.pts[q.si + 1], t = B.p.clone().sub(A.p).normalize(), side = A.n.clone().cross(t).normalize().multiplyScalar(R() < 0.5 ? 1 : -1);
+        const r = (0.003 + 0.004 * E) * S, h = this.snap(I, q.q.clone().addScaledVector(side, 0.7 * r + 0.5 * A.w), 0.02);
+        if (h) flake(h.p, h.n, r, hit.seed * 7 + 3);
+      }
+    }
+  }
+  // the network drawn as real grooves (see crackMat): across each crack a chipped bevel on each side (the paint broken
+  // off its edge), two walls going down to a bottom; flat-shaded faces with their true normals, so the light picks out
+  // the lit wall and leaves the other in its own shade; only a little darkening toward the bottom where light can't get
+  // in. A wider crack is also deeper and shows more wall, not more black. Flakes = shallow pits with sloped sides and a
+  // floor of raw wood.
+  drawNet(N) { const it = this.drawNetIter(N); let r; do r = it.next(); while (!r.done); return r.value; }
+  *drawNetIter(N) {
+    const T = this.T, pos = [], nor = [], col = [], mpos = []; let cnt = 0;
+    const put = (p, n, c) => { pos.push(p.x, p.y, p.z); nor.push(n.x, n.y, n.z); col.push(c.r, c.g, c.b); };
+    const face = (a, b, c, na, nb, nc, ca, cb, cc) => {   // a triangle facing the way its normals point
+      const up = na.clone().add(nb).add(nc); if (b.clone().sub(a).cross(c.clone().sub(a)).dot(up) >= 0) { put(a, na, ca); put(b, nb, cb); put(c, nc, cc); } else { put(a, na, ca); put(c, nc, cc); put(b, nb, cb); }
+    };
+    const mask = (a, b, c) => mpos.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+    const BEV = new T.Color(0xe2c49c), WALL = new T.Color(0xc4905c), BOT = new T.Color(0x6e4a2c), FLOOR = new T.Color(0xd9aa72);
+    const LIFT = 0.0005, hash = (i, k) => { const x = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return x - Math.floor(x); };
+    let pid = 0;
+    // the cross-section of a crack at one point: [surface L, bevel L, bottom, bevel R, surface R] + the band normals
+    const COAT = 0.0011;   // the outer coat's thickness: a flake's floor is the wood under it
+    const inFlake = p => { for (const f of N.chips) if (f.p.distanceTo(p) < 0.6 * f.r) return true; return false; };
+    const section = (q, s, t, j) => {
+      const w = q.w, h = 0.5 * w, D = 0.9 * w + 0.0004 + COAT, bL = (0.2 + 0.45 * hash(j, 1)) * w + 0.00015, bR = (0.2 + 0.45 * hash(j, 2)) * w + 0.00015;
+      if (inFlake(q.p)) q = { p: q.p.clone().addScaledVector(q.n, -COAT), n: q.n, w };   // inside a flake the crack runs in the wood
+      const P = [q.p.clone().addScaledVector(s, -(h + bL)), q.p.clone().addScaledVector(s, -h).addScaledVector(q.n, -0.6 * bL),
+        q.p.clone().addScaledVector(s, (hash(j, 3) - 0.5) * 0.5 * h).addScaledVector(q.n, -D),
+        q.p.clone().addScaledVector(s, h).addScaledVector(q.n, -0.6 * bR), q.p.clone().addScaledVector(s, h + bR)];
+      const Nb = []; for (let k = 0; k < 4; k++) { const v = P[k + 1].clone().sub(P[k]), m = t.clone().cross(v).normalize(); if (m.dot(q.n) < 0) m.negate(); Nb.push(m); }
+      return { P, Nb };
+    };
+    const C = [BEV, WALL, BOT, WALL, BEV];
+    for (const L of N.lines) {
+      const secs = L.pts.map((q, i) => {
+        const a = L.pts[Math.max(0, i - 1)].p, b = L.pts[Math.min(L.pts.length - 1, i + 1)].p, t = b.clone().sub(a).normalize();
+        const s = q.n.clone().cross(t).normalize(); return section(q, s, t, pid++);
+      });
+      for (let i = 0; i < secs.length - 1; i++) {
+        const A = secs[i], B = secs[i + 1];
+        for (let k = 0; k < 4; k++) {   // bands: bevel, wall, wall, bevel - each flat-shaded with its own normal
+          face(A.P[k], A.P[k + 1], B.P[k], A.Nb[k], A.Nb[k], B.Nb[k], C[k], C[k + 1], C[k]);
+          face(A.P[k + 1], B.P[k + 1], B.P[k], A.Nb[k], B.Nb[k], B.Nb[k], C[k + 1], C[k + 1], C[k]);
+        }
+        const nA = L.pts[i].n, nB = L.pts[i + 1].n, up = (p, n) => p.clone().addScaledVector(n, LIFT);
+        if (++cnt % 25 === 0) yield;
+        mask(up(A.P[0], nA), up(B.P[0], nB), up(A.P[4], nA)); mask(up(A.P[4], nA), up(B.P[0], nB), up(B.P[4], nB));   // (wound to face out of the surface)
+      }
+    }
+    // flakes: the coat's broken edge (a thin step, coat colour fading into wood) around a floor of raw wood one coat
+    // below the surface; rim, floor and the hole's mark all follow the part's curved surface (snapped rings)
+    const COATC = new T.Color(0xd6cdbf), STEP = new T.Color(0x9a6a40), FLOORM = FLOOR.clone().multiplyScalar(0.88), FLOORE = FLOOR.clone().multiplyScalar(0.55), I = N.I;
+    const sn = p => (I && this.snap(I, p, 0.02)) || null;
+    for (const ch of N.chips) {
+      const R = rng(ch.seed * 3 + 1), nn = ch.n, t0 = new T.Vector3(1, 0, 0); if (Math.abs(t0.dot(nn)) > 0.9) t0.set(0, 1, 0); t0.addScaledVector(nn, -t0.dot(nn)).normalize();
+      const K = 7 + Math.round(R() * 3), a0 = R() * 6.28, c0 = sn(ch.p) || { p: ch.p, n: nn };
+      const rim = [], mid = [];
+      for (let i = 0; i < K; i++) {
+        const dir = t0.clone().applyAxisAngle(nn, a0 + (i + (R() - 0.5) * 0.5) / K * Math.PI * 2), r = ch.r * (0.55 + 0.6 * R());
+        rim.push(sn(ch.p.clone().addScaledVector(dir, r)) || { p: ch.p.clone().addScaledVector(dir, r), n: nn });
+        mid.push(sn(ch.p.clone().addScaledVector(dir, 0.5 * r)) || { p: ch.p.clone().addScaledVector(dir, 0.5 * r), n: nn });
+      }
+      const dn = q => q.p.clone().addScaledVector(q.n, -COAT), upv = q => q.p.clone().addScaledVector(q.n, LIFT);
+      const fc = dn(c0), fm = mid.map(q => dn(q).addScaledVector(q.n, -0.35 * COAT * R())), fr = rim.map(q => dn(q).addScaledVector(c0.p.clone().sub(q.p).normalize(), 0.6 * COAT));
+      for (let i = 0; i < K; i++) {
+        const j = (i + 1) % K, a = rim[i].p, b = rim[j].p, fa = fr[i], fb = fr[j];
+        let m = b.clone().sub(a).cross(fa.clone().sub(a)).normalize(); if (m.dot(nn) < 0) m.negate();   // the step, facing up and inward
+        // the floor is darker right under the coat's edge (its lip shades it) and torn a little unevenly
+        face(a, b, fa, m, m, m, COATC, COATC, STEP); face(b, fb, fa, m, m, m, COATC, STEP, STEP);
+        face(fc, fm[i], fm[j], c0.n, mid[i].n, mid[j].n, FLOOR, FLOORM, FLOORM);
+        face(fm[i], fa, fb, mid[i].n, rim[i].n, rim[j].n, FLOORM, FLOORE, FLOORE); face(fm[i], fb, fm[j], mid[i].n, rim[j].n, mid[j].n, FLOORM, FLOORE, FLOORM);
+        const um = mid.map(upv);   // the mark, wound to face out of the surface (rings go counter-clockwise about nn)
+        mask(upv(c0), um[i], um[j]); mask(um[i], upv(rim[i]), upv(rim[j])); mask(um[i], upv(rim[j]), um[j]);
+        if (++cnt % 25 === 0) yield;
+      }
     }
     if (!pos.length) return null;
     const geo = new T.BufferGeometry();
     geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); geo.setAttribute('normal', new T.Float32BufferAttribute(nor, 3)); geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
-    const mesh = new T.Mesh(geo, this.grooveMat); mesh.renderOrder = 2; mesh.userData.crack = true; mesh.castShadow = false; mesh.receiveShadow = true;
-    return mesh;
+    const mg = new T.BufferGeometry(); mg.setAttribute('position', new T.Float32BufferAttribute(mpos, 3));
+    const grp = new T.Group(), mk = new T.Mesh(mg, this.crackMask), gv = new T.Mesh(geo, this.crackMat);
+    mk.renderOrder = 5; gv.renderOrder = 6;
+    for (const o of [grp, mk, gv]) { o.userData.crack = true; o.castShadow = false; }
+    gv.receiveShadow = true; grp.add(mk, gv);
+    return grp;
   }
   // (user 10:43: "the wood has some marks from being hit ... we want to see the wood reacting to the hits too") a dent
   // in the box's wood where he hit: a dark pit, light splintered fibres around it, cracks running mostly along the grain.
