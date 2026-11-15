@@ -269,6 +269,24 @@ export class BrainDrive {
     const D = this.ikD || (this.ikD = new mj.MjData(m));
     if (!this.jp2) { this.jp2 = new mj.DoubleBuffer(3 * nv); this.jr2 = new mj.DoubleBuffer(3 * nv); this.jp3 = new mj.DoubleBuffer(3 * nv); this.jr3 = new mj.DoubleBuffer(3 * nv); }
     D.qpos.set(W.d.qpos);
+    // (user 21:40: "the shoulders are doing rotations that are not possible") start from the most similar arm pose a
+    // real person made (armdb: ~30k poses from the BONES library: wrist and palm direction seen from the chest), then
+    // refine; the solver alone found palms flat through upper-arm twists of 120-145 deg
+    if (this.armDB) {
+      mj.mj_kinematics(m, D);
+      const cb = W.bodyId.Chest, R = Array.from(D.xmat.slice(9 * cb, 9 * cb + 9)), pc = [D.xpos[3 * cb], D.xpos[3 * cb + 1], D.xpos[3 * cb + 2]];
+      const toC = v => [R[0] * v[0] + R[3] * v[1] + R[6] * v[2], R[1] * v[0] + R[4] * v[1] + R[7] * v[2], R[2] * v[0] + R[5] * v[1] + R[8] * v[2]];
+      for (const side of sides) {
+        const si = side === 'Right' ? 0 : 1, w = toC([tgt[side][0] - pc[0], tgt[side][1] - pc[1], tgt[side][2] - pc[2]]), n = toC(NIN[side]), A = this.armDB;
+        let best = -1, bd = 1e9;
+        for (let r = 0; r < A.length; r += 19) {
+          if (A[r] !== si) continue;
+          const e = (A[r + 1] - w[0]) ** 2 + (A[r + 2] - w[1]) ** 2 + (A[r + 3] - w[2]) ** 2 + 0.03 * ((A[r + 4] - n[0]) ** 2 + (A[r + 5] - n[1]) ** 2 + (A[r + 6] - n[2]) ** 2);
+          if (e < bd) { bd = e; best = r; }
+        }
+        if (best >= 0) { const dof = ARMS[side].dof; for (let c = 3; c < 12; c++) D.qpos[dof + 1 + c] = A[best + 7 + c]; }
+      }
+    }
     const rw = 0.35, qm = (a, b) => [a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3], a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2], a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1], a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]];
     const qr = (q, v) => { const r = qm(qm(q, [0, v[0], v[1], v[2]]), [q[0], -q[1], -q[2], -q[3]]); return [r[1], r[2], r[3]]; };
     const rv = q => { if (q[0] < 0) q = q.map(v => -v); const s = Math.hypot(q[1], q[2], q[3]); if (s < 1e-9) return [0, 0, 0]; const a = 2 * Math.atan2(s, q[0]); return [q[1] / s * a, q[2] / s * a, q[3] / s * a]; };
@@ -334,7 +352,7 @@ export class BrainDrive {
   }
   physArms() {
     const K = this.kin, W = this.W, m = W.m, mj = W.mj, nv = m.nv;
-    if (!(this.armW > 0) || !K.hands) { this.armSmOn = false; return; }
+    if (!(this.armW > 0) || !K.hands) { this.armSmOn = false; K.armOverride = null; return; }
     const sides = Object.keys(K.hands); if (!sides.length) return;
     const D = this.ikD || (this.ikD = new mj.MjData(m));
     if (!this.jp2) { this.jp2 = new mj.DoubleBuffer(3 * nv); this.jr2 = new mj.DoubleBuffer(3 * nv); this.jp3 = new mj.DoubleBuffer(3 * nv); this.jr3 = new mj.DoubleBuffer(3 * nv); }
@@ -356,6 +374,7 @@ export class BrainDrive {
         S.pos += Math.hypot(H.p[0] - d.xpos[3 * b], H.p[1] - d.xpos[3 * b + 1], H.p[2] - d.xpos[3 * b + 2]) * 100;
         const pn = qr([d.xquat[4 * b], d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3]], [0, 0, -1]), o = H.wall ? H.wall.out : [0, 0, 0];
         { const eb = W.bodyId[side + 'ForeArm'], sb = W.bodyId[side + 'Arm']; S.elb = (S.elb || 0) + ((d.xpos[3 * eb] - d.xpos[3 * sb]) * up[0] + (d.xpos[3 * eb + 1] - d.xpos[3 * sb + 1]) * up[1] + (d.xpos[3 * eb + 2] - d.xpos[3 * sb + 2]) * up[2]) * 100; }
+        S.tw = Math.max(S.tw || 0, Math.abs(d.qpos[ARMS[side].dof + 4]) * 57.3); S.twSum = (S.twSum || 0) + Math.abs(d.qpos[ARMS[side].dof + 4]) * 57.3;
         S.ang += Math.acos(Math.max(-1, Math.min(1, -(pn[0] * o[0] + pn[1] * o[1] + pn[2] * o[2])))) * 57.3; S.n++; } }
     if (globalThis.ARMDBG) { mj.mj_kinematics(m, D); const d = W.d; for (const side of sides) { const b = W.bodyId[ARMS[side].hand], H = K.hands[side], sh = W.bodyId[side + 'Arm'];
       const ik = Math.hypot(H.p[0] - D.xpos[3 * b], H.p[1] - D.xpos[3 * b + 1], H.p[2] - D.xpos[3 * b + 2]), reach = Math.hypot(H.p[0] - d.xpos[3 * sh], H.p[1] - d.xpos[3 * sh + 1], H.p[2] - d.xpos[3 * sh + 2]);
@@ -368,6 +387,7 @@ export class BrainDrive {
     if (!this.armSm) this.armSm = new Float64Array(m.nq);
     const k = this.armSmOn ? 1 - Math.exp(-(1 / 30) / 0.2) : 1; this.armSmOn = true;
     for (const j of this.armJ) { const a = W.act[j], qa = a.qadr; this.armSm[qa] += (D.qpos[qa] - this.armSm[qa]) * k; this.brain.targets[j] += (this.armSm[qa] - this.brain.targets[j]) * this.armW; }
+    if (this.armRef) K.armOverride = this.armJ.map(j => [W.act[j].qadr, this.armSm[W.act[j].qadr]]);
   }
   armHold() {
     const W = this.W, d = W.d;

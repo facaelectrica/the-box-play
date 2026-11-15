@@ -557,6 +557,9 @@ export class Kin {
       this.writeWorld(pl);
       this.legIK();
       this.braceArms(dt);
+      // his real arms' targets (drive_brain physArms) go into the recording too, so the network's reference has the
+      // arms he really has (they were the recording's arms: his own arm reach then fought the network's balance)
+      if (this.armOverride && (this.braceW || 0) > 0) { const w = this.braceW * this.braceW * (3 - 2 * this.braceW); for (const [qa, v] of this.armOverride) d.qpos[qa] += (v - d.qpos[qa]) * w; }
       this.localPose(d.qpos, this.cur);
     } else {
       this.keepInBox(this.tmp);

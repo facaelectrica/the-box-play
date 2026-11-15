@@ -42,6 +42,9 @@
   #dbg::after{content:"";position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border:1.5px dashed rgba(255,235,205,.95);border-radius:50%;box-sizing:border-box}
   #pose{display:none;position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(232px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #pose::before{content:"";position:absolute;left:13px;top:6px;width:6px;height:6px;border-radius:50%;background:rgba(255,235,205,.95)}
+  #snap{display:none;position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(276px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #snap::before{content:"";position:absolute;left:7px;top:10px;width:16px;height:11px;border:2px solid rgba(255,235,205,.95);border-radius:3px}
+  #snap::after{content:"";position:absolute;left:12px;top:13px;width:6px;height:6px;border:2px solid rgba(255,235,205,.95);border-radius:50%}
   #pose::after{content:"";position:absolute;left:10px;top:13px;width:9px;height:8px;border-left:2px solid rgba(255,235,205,.95);border-bottom:2px solid rgba(255,235,205,.95);transform:skewX(-12deg)}
   #tilt{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(188px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #tilt::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:16px;margin:-8px 0 0 -5px;border:2px solid rgba(255,235,205,.9);border-radius:3px;box-sizing:border-box}
@@ -80,7 +83,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">Version 17</div><div id="brainver"></div>
+<div id="ver">Version 18</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -179,6 +182,7 @@ window.BOXLOAD = (() => {
 <button id="fig" aria-label="Change the figure"></button>
 <button id="dbg" aria-label="Wireframe and skeleton views"></button>
 <button id="pose" aria-label="Test poses (look mode)"></button>
+<button id="snap" aria-label="Save a snapshot for Claude (paused)"></button>
 <button id="tilt" class="on" aria-label="Phone tilt moves the box (off: gravity stays straight down)"></button>
 <div id="note"></div>
 <div id="hud">
@@ -213,11 +217,11 @@ import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=17';
-import { Springs } from './sim/springs.js?v=17';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=17';
-import { addPins } from './sim/pins.js?v=17';
-import { rigHand, poseHand } from './sim/fingers.js?v=17';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=18';
+import { Springs } from './sim/springs.js?v=18';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=18';
+import { addPins } from './sim/pins.js?v=18';
+import { rigHand, poseHand } from './sim/fingers.js?v=18';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -538,7 +542,7 @@ const figP = loadFig(FIG);
 let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
-const KINV = 17;
+const KINV = 18;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(u + '?v=' + KINV, 'Recordings'));   // ?v: phones keep old copies
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -554,7 +558,7 @@ let control = null;
 let kin = null, springs = null;
 try { kin = new Kin(G, mj, await libP); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
-try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=17', 'Body')))); } catch (e) { console.warn('joint limits', e); }
+try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=18', 'Body')))); } catch (e) { console.warn('joint limits', e); }
 if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupCap: 0 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
 // round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
@@ -1253,14 +1257,17 @@ function bgNow() { return look.on ? GREY : place === 'floor' ? ROOM : DARK; }
 function applyPlaceVis() {
   const box = place === 'box';
   if (place === 'floor' && (!floorGroup || floorGroup.userData.S !== S || floorGroup.userData.iy !== iy)) { buildFloor(); floorGroup.userData = { S, iy }; }
-  if (boxGroup) boxGroup.visible = box && !look.on;
-  if (floorGroup) floorGroup.visible = !box && !look.on;
+  const hide = look.on && !look.box;   // paused: the box hidden (plain grey) unless the box button turned it back on
+  if (boxGroup) boxGroup.visible = box && !hide;
+  if (floorGroup) floorGroup.visible = !box && !hide;
   scene.background = bgNow();
-  scene.fog = box || look.on ? null : new THREE.Fog(ROOM, 8, 34);
+  scene.fog = box || hide ? null : new THREE.Fog(ROOM, 8, 34);
   envDirty = 0;
 }
 $('place').onclick = e => {
   e.stopPropagation();
+  // (user 22:20) paused: this button shows or hides the box around him (the world itself doesn't change)
+  if (look.on) { look.box = !look.box; applyPlaceVis(); note(look.box ? 'Box shown' : 'Box hidden', 1200); return; }
   place = place === 'box' ? 'floor' : 'box';
   $('place').classList.toggle('floor', place === 'floor');
   W.setOpen(place === 'floor'); if (G !== W) G.setOpen(place === 'floor');
@@ -1296,7 +1303,7 @@ function restoreBody(s) {
 $('look').onclick = e => {
   e.stopPropagation();
   look.on = !look.on; $('look').classList.toggle('on', look.on);
-  $('pose').style.display = look.on ? 'block' : 'none';
+  $('pose').style.display = look.on ? 'block' : 'none'; $('snap').style.display = look.on ? 'block' : 'none';
   if (!look.on && poseIdx !== 0 && look.snap) restoreBody(look.snap);   // carry on from the paused moment, not a test pose
   poseIdx = 0; $('pose').classList.remove('on');
   if (look.on) {
@@ -1310,6 +1317,49 @@ $('look').onclick = e => {
   applyPlaceVis();   // looking him over: a plain 50% grey behind him, no box or floor
 };
 for (const ev of ['pointerdown', 'pointerup']) $('look').addEventListener(ev, e => e.stopPropagation());
+// ================= snapshot (user 22:20: "pause, grab snapshot and paste it ... whatever the format makes more sense") =========
+// Everything needed to see exactly what he saw: his body (every joint), the recording he follows, gravity, the box,
+// what he was doing and why, the last 3 s of his body, and the camera. Shared as a small .json file (phone share sheet:
+// send it straight to the chat), or downloaded; window.__loadSnap(json) puts a page back into that moment.
+const hist = [];   // last 3 s of his body, 30 times a second (filled by the frame loop)
+function recordHist() {
+  if (look.on || !W) return;
+  const t = W.d.time; if (hist.length && t - hist[hist.length - 1][0] < 1 / 30 - 1e-6) return;
+  hist.push([+t.toFixed(3), ...Array.from(W.d.qpos, v => +v.toFixed(4))]); if (hist.length > 90) hist.shift();
+}
+function makeSnap() {
+  const r = a => Array.from(a, v => +(+v).toFixed(5)), d = look.snap || snapBody();
+  const K = kin, cl = K && K.anim && K.anim.clip;
+  return { what: 'the-box snapshot', version: $('ver').textContent, at: new Date().toISOString(), simTime: +W.d.time.toFixed(3),
+    box: W.box, open: !!W.open, gravity: r(W.m.opt.gravity), ground: K && K.G ? K.G.name : null,
+    state: K && K.state, fallWhy: K && K.fallWhy, braceW: K && +(K.braceW || 0).toFixed(3),
+    clip: K && K.anim ? { file: (K.lib && Object.values(K.lib.getups || {}).flat().concat(K.lib.reacts || [], K.lib.idles || []).find(e => e.clip === cl) || {}).file || null, frame: +K.anim.x.toFixed(2) } : null,
+    events: K ? K.log.slice(-15) : [], pins: drive && drive.pins ? Object.keys(drive.pins.on) : [],
+    qpos: r(d.qpos), qvel: r(d.qvel), ghostQpos: G && G !== W ? r(G.d.qpos) : null,
+    camera: { yaw: +look.yaw.toFixed(3), pitch: +look.pitch.toFixed(3), dist: +look.dist.toFixed(3), target: [look.tgt.x, look.tgt.y, look.tgt.z].map(v => +v.toFixed(3)), box: !!look.box },
+    hist };
+}
+$('snap').onclick = async e => {
+  e.stopPropagation();
+  const js = JSON.stringify(makeSnap()), name = 'box-snapshot-' + new Date().toISOString().slice(11, 19).replace(/:/g, '') + '.json';
+  const file = new File([js], name, { type: 'application/json' });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Box snapshot' }); note('Snapshot shared', 1500); return; } } catch (err) { if (err && err.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  try { await navigator.clipboard.writeText(js); } catch (_) {}
+  note('Snapshot saved to Downloads (also copied): attach it in the chat', 2600);
+};
+for (const ev of ['pointerdown', 'pointerup']) $('snap').addEventListener(ev, e => e.stopPropagation());
+// (for Claude's checks) open a snapshot: his body as it was, paused, camera as it was
+window.__loadSnap = sn => {
+  if (typeof sn === 'string') sn = JSON.parse(sn);
+  if (!look.on) $('look').onclick(new Event('click'));
+  const d = W.d; d.qpos.set(sn.qpos); if (sn.qvel) d.qvel.set(sn.qvel); W.m.opt.gravity.set(sn.gravity);
+  if (sn.ghostQpos && G !== W) { G.d.qpos.set(sn.ghostQpos); mj.mj_forward(G.m, G.d); }
+  mj.mj_forward(W.m, d); syncFigure(); look.snap = snapBody();
+  if (sn.camera) { look.yaw = sn.camera.yaw; look.pitch = sn.camera.pitch; look.dist = sn.camera.dist; look.tgt.set(...sn.camera.target); look.box = !!sn.camera.box; }
+  applyPlaceVis();
+};
+
 // test poses in look mode (user, 12:43: "a new button below for poses ... so we can test how it looks in the
 // extremes"): each tap puts him in the next pose of sim/poses.js (sitting, star, bending to pick up, squat, lunge,
 // reaching up twisting, back to standing); physics stays paused
@@ -1400,6 +1450,7 @@ async function frame(now) {
     showState();
   }
   sfxUpdate(dt);
+  recordHist();
   syncFigure();
 
   if (look.on) lookCamera(); else updateCamera(dt);

@@ -520,6 +520,160 @@
    {
     "file": "kin/sit_front_A167_4.bin",
     "src": "BONES sitting_legs_bend_arms_front_stop"
+   },
+   {
+    "file": "kin/sit_back_A100_2.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_back_A101_3.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_back_A184_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_back_A410_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_back_A411_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_back_A412_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_back_A413_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_back_A414_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_front_A098_2.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_front_A098_3.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_front_A188_3.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_front_A410_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_front_A411_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_front_A412_2.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sit_front_A414_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_front_A063_2.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_front_A064_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_front_A101_3.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_front_A184_3.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_front_A185_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_front_A185_2.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A063_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A099_2.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A184_5.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A184_6.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A185_4.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A188_4.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A188_5.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A188_6.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A189_2.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A189_3.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A190_3.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/sitx_side_A191_1.bin",
+    "src": "BONES"
+   }
+  ],
+  "more": [
+   {
+    "file": "kin/faintup_lying_A493_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/faintup_lying_A494_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/faintup_lying_side_A492_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/faintup_lying_side_A493_1.bin",
+    "src": "BONES"
+   },
+   {
+    "file": "kin/faintup_lying_stomach_A494_1.bin",
+    "src": "BONES"
    }
   ]
  }
