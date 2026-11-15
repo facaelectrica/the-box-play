@@ -636,6 +636,9 @@ export class Kin {
         const t = (sg * lim - sh[ax]) / dir[ax]; if (t > 0 && (!best || t < best.t)) best = { t, ax, sg, lim };
       }
       if (!best || best.t > BR.maxReach) { delete this.hands[side]; continue; }
+      // (snapshot 22:47) that arm can't reach the spot comfortably (shoulder at its stops / spot behind it): it stays
+      // the recording's own arm instead of being wrenched toward the wall (drive_brain sets armSkip)
+      if (this.armSkip && this.armSkip[side] > 0 && !(this.hands[side] && this.hands[side].pinned)) { delete this.hands[side]; continue; }
       // palm centre on the wall: forward of the shoulder, below it; the palm 1.5 cm off the wood (he touches and leans)
       const nW = [0, 0, 0]; nW[best.ax] = best.sg;                    // into the wall (ground frame)
       const pc = [sh[0] + f[0] * BR.fwd, sh[1] + f[1] * BR.fwd, sh[2] - BR.down];

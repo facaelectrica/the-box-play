@@ -318,7 +318,11 @@ export class BrainDrive {
           let s = 0; for (let i = 0; i < R; i++) s += J[i][c] * y[i];
           const qa = A.dof + c + 1, jid = m.dof_jntid[A.dof + c];
           let q = D.qpos[qa] + Math.max(-0.15, Math.min(0.15, ARM_W[c] * s));
-          if (m.jnt_limited[jid]) q = Math.max(m.jnt_range[2 * jid], Math.min(m.jnt_range[2 * jid + 1], q));
+          if (m.jnt_limited[jid]) {
+            const lo = m.jnt_range[2 * jid], hi = m.jnt_range[2 * jid + 1], mg = 0.17;   // keep 10 deg off the stops: a
+            q = Math.max(lo, Math.min(hi, q));                                          // shoulder pressed on its stops
+            if (c >= 3 && c < 6) { if (q < lo + mg) q += (lo + mg - q) * 0.5; else if (q > hi - mg) q -= (q - hi + mg) * 0.5; }   // looks wrenched
+          }
           D.qpos[qa] = q;
         }
       }
@@ -354,7 +358,13 @@ export class BrainDrive {
     const K = this.kin, W = this.W, m = W.m, mj = W.mj, nv = m.nv;
     if (!(this.armW > 0) || !K.hands) { this.armSmOn = false; K.armOverride = null; return; }
     // a wall spot behind his shoulder (his body has turned): that arm doesn't reach for it (snapshot 22:37)
-    const sides = Object.keys(K.hands).filter(sd => !(this.pins && this.pins.awkward && !this.pins.on[sd + 'Hand'] && this.pins.awkward(sd, K.hands[sd].p)));
+    K.armSkip = K.armSkip || { Left: 0, Right: 0 };
+    for (const sd of ['Left', 'Right']) K.armSkip[sd] = Math.max(0, K.armSkip[sd] - 1 / 30);
+    const sides = Object.keys(K.hands).filter(sd => {
+      const awk = this.pins && this.pins.awkward && !this.pins.on[sd + 'Hand'] && this.pins.awkward(sd, K.hands[sd].p);
+      if (awk) K.armSkip[sd] = 1.5;   // that arm leaves the wall alone for 1.5 s (the recording's arm meanwhile)
+      return !awk;
+    });
     if (!sides.length) { this.armSmOn = false; return; }
     const D = this.ikD || (this.ikD = new mj.MjData(m));
     if (!this.jp2) { this.jp2 = new mj.DoubleBuffer(3 * nv); this.jr2 = new mj.DoubleBuffer(3 * nv); this.jp3 = new mj.DoubleBuffer(3 * nv); this.jr3 = new mj.DoubleBuffer(3 * nv); }
