@@ -358,6 +358,8 @@ export class Kin {
     this.event('reset');
   }
   event(s) { this.log.push({ t: +this.t.toFixed(2), s }); if (this.log.length > 60) this.log.shift(); this.last = s; }
+  // something that shouldn't happen (a watchdog fired): in the event log, and to the page (kin.html onWarn: snapshot errors)
+  warn(s) { this.event(s); if (this.onWarn) try { this.onWarn(s); } catch (_) {} }
 
   update(dt) {
     dt = Math.max(0, Math.min(dt, 0.05));   // (a negative frame time from the page's clock reset fed the brace)
@@ -843,7 +845,7 @@ export class Kin {
   // ---------- falling: MuJoCo takes over ----------
   startFall(why) {
     const W = this.W, mj = this.mj, m = W.m, d = W.d;
-    this.havePre = false; this.fallWhy = why; this.resting = null;
+    this.havePre = false; this.fallWhy = why; this.resting = null; this.downOkT = 0;
     if (this.ext) {   // a real body (sim/springs.js) falls; the ghost only watches it
       this.state = 'fall'; this.fallT = 0; this.restT = 0; this.restoreGains();
       return this.event('fall: ' + why);
@@ -890,7 +892,7 @@ export class Kin {
     this.pickFace();
     // lying still?
     const hipsV = Math.hypot(d.qvel[0], d.qvel[1], d.qvel[2]);
-    let jv = 0; for (let k = 6; k < m.nv; k++) jv = Math.max(jv, Math.abs(d.qvel[k]));
+    let jv = 0, jk = 6; for (let k = 6; k < m.nv; k++) if (Math.abs(d.qvel[k]) > jv) { jv = Math.abs(d.qvel[k]); jk = k; }
     // (Version 29; snapshot 09:05: on a ~22 deg slope held in the hand he lay 6 s without getting up: the phone's small
     // shakes kept him from counting as still, and 24 deg was the limit) still enough with a little jiggle; get-ups on
     // slopes up to ~27 deg (a person gets up on a steep ramp too)
@@ -904,6 +906,11 @@ export class Kin {
     // (user 09:11: "why isn't she getting up when the phone is rotated to the side and the space is smaller?") the phone on
     // its side leaves 1.07 m (was: no get-up under 1.15 m): he gets up as far as the room allows, then rests sitting
     if (this.fallT > 1.0 && this.restT > 0.6 && tilt < this.fallTilt * 0.85 && this.G.room >= 0.8) this.startGetup();
+    // (helper F, Nov 15) a watchdog: 20 s down on a floor he could get up from (counted only while he could: not while
+    // the floor is too steep or too small - lying still on a steep floor and then tumbling when the phone turned set off
+    // the first version, which counted from the fall), never still enough to count as at rest: he gets up anyway
+    this.downOkT = tilt < this.fallTilt * 0.85 && this.G.room >= 0.8 ? (this.downOkT || 0) + dt : 0;
+    if (this.state === 'fall' && this.downOkT > 20) { this.downOkT = 0; this.warn('watchdog: down 20 s, never still (hips ' + hipsV.toFixed(2) + ' m/s, joints ' + jv.toFixed(1) + ' rad/s, most ' + this.mj.mj_id2name(m, this.mj.mjtObj.mjOBJ_JOINT.value, m.dof_jntid[jk]) + ')'); this.startGetup(); }
   }
 
   // ---------- getting up ----------
@@ -958,6 +965,7 @@ export class Kin {
   recentlyFailed(clip) { const t = this.failedGetups && this.failedGetups.get(clip); return t !== undefined && this.t - t < 20; }
   startGetup() {
     const W = this.W, d = W.d;
+    this.getupT = 0;
     this.restoreGains();
     const hipsZ = this.cur[2];
     // his trunk upright (chest's up near the floor's up) and hips off the floor: he is crouched or sitting against a
@@ -1041,7 +1049,8 @@ export class Kin {
     // (Version 25: the recording stood up while he still lay on his side, 9-13 s into a steep fall: at a quarter speed
     // it kept going, and his joints chased a standing pose on the floor) it waits for him: full speed within 6 cm,
     // stopped at 20 cm behind (LAGK env for tests)
-    this.anim.speed = clamp(1 - (lag - 0.06) / (globalThis.LAGK || 0.14), globalThis.LAGMIN ?? 0, 1);
+    const lagSpeed = clamp(1 - (lag - 0.06) / (globalThis.LAGK || 0.14), globalThis.LAGMIN ?? 0, 1);
+    this.anim.speed = lagSpeed;
     // his hand isn't on the floor where the recording's is: the recording slows right down until it is (he pushes
     // himself up with it, not with nothing)
     if (this.getupLeanWait) this.anim.speed = Math.min(this.anim.speed, 0.1);   // his weight still behind his feet (drive_brain getupLean)
@@ -1055,9 +1064,17 @@ export class Kin {
     // up, leaning back on his hands, or his back against the wall, hands on his knees) no room to stand: he sits down to
     // rest in a recorded sitting idle that fits the room, and gets up from there when the room is back
     if (this.kneeling) { this.getupHold = 0; if (this.startRest()) return; this.anim.speed = 0; if (this.last !== 'kneeling: no room to stand') this.event('kneeling: no room to stand'); return; }
+    // (helper F, Nov 15: "the figure froze") a watchdog: a get-up that hasn't finished in 25 s of trying (not counting
+    // waiting for room) is crept along at almost no speed - his hips just under the 'stuck' distance behind the recording
+    // stop it (speed 0 at 20 cm) without ever counting as stuck - or waits on something that won't come: give it up
+    this.getupT = (this.getupT || 0) + dt;
+    if (this.getupT > 25) { this.getupT = 0; this.getupStuck = 0; this.getupHold = 0; (this.failedGetups = this.failedGetups || new Map()).set(this.anim.clip, this.t); this.warn('watchdog: get-up not done after 25 s (at ' + this.anim.x.toFixed(0) + '/' + this.anim.clip.n + ', speed ' + (+this.anim.speed).toFixed(2) + ', lag ' + lag.toFixed(2) + ')'); return this.startFall('the get-up took too long'); }
     // stuck: his hips more than 40 cm behind the recording for 3 s -> give this get-up up now (and start a new one
     // from the pose he is really in), instead of creeping on at a quarter speed and waiting 4 s at its end
-    this.getupStuck = lag > (globalThis.STUCKL || 0.2) ? (this.getupStuck || 0) + dt : 0;
+    // (helper F, Nov 15) counted the same way the speed is set: the speed reaches 0 at 20 cm behind (lag 0.06 + LAGK)
+    // while 'stuck' needed MORE than 20 cm, so hips held 16-20 cm behind crept the recording on at 0-25% speed,
+    // never counted as stuck. Now under a quarter speed from the lag is stuck too
+    this.getupStuck = lag > (globalThis.STUCKL || 0.2) || lagSpeed < 0.25 ? (this.getupStuck || 0) + dt : 0;
     // (snapshot 22:52: "unable to turn and get up ... just stays shaking") stuck 3 s: give up this get-up, and don't
     // pick the same recording again for 20 s (it was picked because it looked closest - and it will again)
     if (this.getupStuck > 3) { this.getupStuck = 0; this.getupHold = 0; (this.failedGetups = this.failedGetups || new Map()).set(this.anim.clip, this.t); return this.startFall('the get-up failed'); }

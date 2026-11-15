@@ -111,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V36</div><div id="brainver"></div>
+<div id="ver">V37</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -247,16 +247,16 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import loadMujoco from '@mujoco/mujoco';
-import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
+import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=37';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=36';
-import { Springs, humanCap } from './sim/springs.js?v=36';
-import { Balance } from './sim/balance.js?v=36';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=36';
-import { addPins } from './sim/pins.js?v=36';
-import { rigHand, poseHand } from './sim/fingers.js?v=36';
-import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=36';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=37';
+import { Springs, humanCap } from './sim/springs.js?v=37';
+import { Balance } from './sim/balance.js?v=37';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=37';
+import { addPins } from './sim/pins.js?v=37';
+import { rigHand, poseHand } from './sim/fingers.js?v=37';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=37';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -582,7 +582,7 @@ const figP = loadFig(FIG);
 let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
-const KINV = 36;
+const KINV = 37;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(u + '?v=' + KINV, 'Recordings'));   // ?v: phones keep old copies
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -596,9 +596,9 @@ const G = PHYSICAL ? new BoxWorld(mj, bodyXml) : W;
 LOAD.state('Body', 'ready');
 let control = null;
 let kin = null, springs = null;
-try { kin = new Kin(G, mj, await libP); LOAD.state('Recordings', 'ready'); }
+try { kin = new Kin(G, mj, await libP); kin.onWarn = m => logErr(m); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
-try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=36', 'Body')))); } catch (e) { console.warn('joint limits', e); }
+try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=37', 'Body')))); } catch (e) { console.warn('joint limits', e); }
 if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupCap: 0 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
 // round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
@@ -1536,7 +1536,7 @@ function makeSnap() {
     qpos: r(d.qpos), qvel: r(d.qvel), ghostQpos: G && G !== W ? r(G.d.qpos) : null,
     camera: { yaw: +look.yaw.toFixed(3), pitch: +look.pitch.toFixed(3), dist: +look.dist.toFixed(3), target: [look.tgt.x, look.tgt.y, look.tgt.z].map(v => +v.toFixed(3)), box: !!look.box },
     balance: bal && bal.last ? Object.fromEntries(Object.entries(bal.last).filter(([k, v]) => typeof v !== 'function').map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(4) : v])) : null,
-    hist };
+    hist, errors: ERRS.slice(), wasmMB: +(W.d.qpos.buffer.byteLength / 1048576).toFixed(1) };
 }
 $('snap').onclick = async e => {
   e.stopPropagation();
@@ -1604,7 +1604,51 @@ function lookCamera() {
 let acc = 0, last = performance.now(), frameN = 0;
 const lu = new THREE.Vector3();
 const calmG = makeCalmGravity();
+// ---- freeze guards (helper F, Nov 15; user: "the figure froze while the menu still worked") ----
+// The loop asked for its next frame only at the very end of frame(): one exception anywhere in it (MuJoCo's wasm
+// out of memory - see sim/physics.js freeContactCopies - a NaN in his body, a bug in a rare state) and no frame came
+// again: the figure stood still, the buttons (plain page) still worked. Now: the next frame is always asked for, the
+// problem is kept (last 20, in snapshots as `errors`), a body gone NaN/Infinity is stood up again, an exception that
+// keeps coming back resets him, and a frame waiting over 4 s on something that never comes back is left behind.
+const ERRS = [];
+function logErr(what, e) {
+  let t = null; try { t = +W.d.time.toFixed(2); } catch (_) {}
+  const s = { t, at: new Date().toISOString().slice(11, 19), what, state: kin ? kin.state : null,
+    msg: e ? String((e && e.message) || e).slice(0, 200) : undefined, stack: e && e.stack ? String(e.stack).split('\n').slice(0, 4).join(' | ').slice(0, 400) : undefined };
+  const p = ERRS[ERRS.length - 1];
+  if (p && p.what === s.what && p.msg === s.msg) { p.n = (p.n || 1) + 1; p.lastT = t; return; }
+  ERRS.push(s); if (ERRS.length > 20) ERRS.shift();
+  console.warn('[box] ' + what, e || '');
+}
+const allFinite = a => { for (let i = 0; i < a.length; i++) if (!Number.isFinite(a[i])) return false; return true; };
+function bodyOK() { return allFinite(W.d.qpos) && allFinite(W.d.qvel) && (G === W || allFinite(G.d.qpos)); }
+let loopGen = 0, frameT0 = 0, frameBusy = false, failRun = 0;
 async function frame(now) {
+  const gen = loopGen; frameBusy = true; frameT0 = performance.now();
+  try {
+    await frameStep(now);
+    failRun = 0;
+    if (!look.on && !bodyOK()) { logErr('NaN/Infinity in his body: stood up again'); standUp(); }
+  } catch (e) {
+    failRun++; logErr('frame threw', e);
+    try {
+      if (!bodyOK()) { logErr('NaN/Infinity in his body: stood up again'); standUp(); }
+      else if (failRun === 30) { logErr('frame keeps throwing: stood up again'); standUp(); }
+      else if (failRun === 120) note('Something broke - the reset button or reloading the page brings him back', 4000);
+    } catch (e2) { if (failRun < 3 || failRun === 30) logErr('recovery threw', e2); }
+    try { renderer.render(scene, camera); } catch (_) {}
+  } finally {
+    if (gen === loopGen) { frameBusy = false; requestAnimationFrame(frame); }
+  }
+}
+// a frame waiting on a promise that never comes back (4 s, page visible): start a fresh loop; the old frame, if it ever
+// wakes, finishes without asking for another
+setInterval(() => {
+  if (document.hidden || !frameBusy || performance.now() - frameT0 < 4000) return;
+  logErr('frame waited ' + ((performance.now() - frameT0) / 1000).toFixed(0) + ' s on something that never came back: loop restarted');
+  loopGen++; frameBusy = false; last = performance.now(); requestAnimationFrame(frame);
+}, 1000);
+async function frameStep(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
 
   // which way is down? (in g, screen axes; shakes included)
@@ -1669,7 +1713,6 @@ async function frame(now) {
   if (envDirty < 2 || (lightUp.angleTo(envUp) > 4 * DEG && frameN - envFrame > 12)) { updateEnv(); envDirty++; envUp.copy(lightUp); envFrame = frameN; }
   renderer.render(scene, camera);
   adaptSharpness(dt);
-  requestAnimationFrame(frame);
 }
 
 // ================= "Recording only (no physics)" (user, Nov 13 09:26: "This is extremely far from anything remotely

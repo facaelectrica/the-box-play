@@ -77,11 +77,58 @@ export function makeServos(mj, m) {
   return info;
 }
 
+// (helper F, Nov 15: "the figure froze, the menu still worked") every read of d.contact makes a NEW copy of all the
+// contacts in MuJoCo's wasm memory (an MjContactVec, ~700 bytes a contact) that only .delete() frees; the code reads it
+// as d.contact.get(i) in loops (pins, springs, balance, kin, drive_brain, crack, the page's sounds): ncon copies per
+// loop, never freed. Soak test (tools/kin/test/soak.mjs): the wasm heap grew 66 -> 289 MB in 40 s of play, ~5 MB/s;
+// at 2 GB (a phone gives up sooner) MuJoCo aborts, the frame loop throws and stops: the figure froze, the menu (plain
+// DOM) still worked. Each copy is now deleted once the code that read it has run (the next microtask; the loops use it
+// synchronously, and a contact taken out with .get(i) is its own copy).
+function freeContactCopies(d, mj) {
+  let p = Object.getPrototypeOf(d), ds = null;
+  while (p && !(ds = Object.getOwnPropertyDescriptor(p, 'contact'))) p = Object.getPrototypeOf(p);
+  if (!ds || !ds.get) return;
+  // the contacts only change in MuJoCo's step/forward calls: until the next one, every read gets the same copy (a loop
+  // over 60 contacts lying down made 60 copies of 60 = 2.5 MB each time, and the wasm heap kept the peak)
+  if (!mj.__contactEpoch) {
+    const E = mj.__contactEpoch = { n: 1, ok: true };
+    for (const f of ['mj_step', 'mj_step1', 'mj_step2', 'mj_forward', 'mj_forwardSkip', 'mj_fwdPosition', 'mj_collision', 'mj_resetData', 'mj_resetDataKeyframe']) {
+      const orig = mj[f]; if (typeof orig !== 'function') continue;
+      const w = function (...a) { E.n++; return orig.apply(this, a); };
+      try { mj[f] = w; } catch (_) {}
+      if (mj[f] !== w) E.ok = false;   // can't watch the steps: no reuse, a fresh copy every read (still freed)
+    }
+  }
+  const E = mj.__contactEpoch, held = []; let queued = false, last = null, lastN = -1;
+  const flush = () => { queued = false; last = null; for (const v of held) { try { if (!v.isDeleted || !v.isDeleted()) v.delete(); } catch (_) {} } held.length = 0; };
+  Object.defineProperty(d, 'contact', { configurable: true, get() {
+    if (last && lastN === E.n && E.ok) return last;
+    const v = ds.get.call(this); held.push(v); last = v; lastN = E.n;
+    if (!queued) { queued = true; queueMicrotask(flush); }
+    return v;
+  } });
+}
+
+// (tests) delete the MuJoCo objects (MjData, MjModel, the jacobian buffers...) held in the given objects' own fields:
+// the controllers keep scratch MjData for their IK (drive_brain ikD/ikL/ikG, ~25 MB each) that nothing else frees
+export function freeWasm(...objs) {
+  const seen = new Set();
+  for (const o of objs) {
+    if (!o || typeof o !== 'object') continue;
+    for (const v of Object.values(o)) {
+      if (!v || typeof v !== 'object' || seen.has(v) || typeof v.delete !== 'function' || typeof v.isDeleted !== 'function') continue;
+      if (!/^(MjData|MjModel|DoubleBuffer|FloatBuffer|IntBuffer|Uint8Buffer)$/.test(v.constructor && v.constructor.name)) continue;
+      seen.add(v); try { if (!v.isDeleted()) v.delete(); } catch (_) {}
+    }
+  }
+}
+
 export class BoxWorld {
   constructor(mj, bodyXml) {
     this.mj = mj;
     this.m = mj.MjModel.from_xml_string(sceneXML(bodyXml));
     this.d = new mj.MjData(this.m);
+    freeContactCopies(this.d, mj);
     const m = this.m;
     this.act = makeServos(mj, m);
     const ob = mj.mjtObj;
@@ -101,6 +148,9 @@ export class BoxWorld {
     this.box = { w: 1, h: 2.4, D: 1.3 };
     this.tControl = 0;
   }
+  // (tests) free MuJoCo's memory for this world: its MjData and MjModel live in wasm memory, which JS garbage collection
+  // never frees: a test making two worlds per scenario ran out of wasm memory after ~a dozen scenarios
+  dispose() { for (const k of ['d', 'm']) { try { if (this[k] && !this[k].isDeleted()) this[k].delete(); } catch (_) {} } }
   // the inner box, metres: w wide, h high, D deep. Glass at y = 0, back at y = D, floor at z = -h/2.
   setBox(w, h, D) {
     const T = PHYS.T;

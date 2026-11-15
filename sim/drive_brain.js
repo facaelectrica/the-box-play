@@ -10,8 +10,8 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=36';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=36';
+import { Pins } from './pins.js?v=37';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=37';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function hullPts(P) {
   const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
@@ -592,12 +592,17 @@ export class BrainDrive {
     const Q = (dd, b) => [dd.xquat[4 * b], dd.xquat[4 * b + 1], dd.xquat[4 * b + 2], dd.xquat[4 * b + 3]];
     const qmu = (a, b) => [a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3], a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2], a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1], a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]];
     const rvec = q => { if (q[0] < 0) q = q.map(v => -v); const sn = Math.hypot(q[1], q[2], q[3]); if (sn < 1e-9) return [0, 0, 0]; const a = 2 * Math.atan2(sn, q[0]); return [q[1] / sn * a, q[2] / sn * a, q[3] / sn * a]; };
-    const L = this.gLocks || (this.gLocks = {}); this.lockUp = up;
+    const L = this.gLocks || (this.gLocks = {}); this.lockUp = up; if (globalThis.GLCLS) this.glTag = { L: 'none', R: 'none' };
     mj.mj_kinematics(m, d);
     // down: a foot's ankle within 4 cm of where it sits on the floor (or its toes on it); a hand's wrist within 6 cm
     const isDown = (dd, n) => { const b = W.bodyId[n];
       if (/Foot/.test(n)) { const t = W.bodyId[n.replace('Foot', 'ToeBase')]; return ht(P3(dd, b)) < 0.09 || ht(P3(dd, t)) < 0.045; }
       return ht(P3(dd, b)) < 0.075; };
+    // (V37; user 11:44 "when he's getting up, the feet are floating") a foot counts as down with its ankle up to 9 cm
+    // off the floor (flat, it is ~4.6 cm), and its spot was taken right there: held 2-5 cm in the air. A held foot's spot
+    // is on the floor: lowered until the sole (ankle 4.6 cm, toes 0) touches, the foot coming down to it over 0.2 s
+    const onFloor = (dd, n) => { const b = W.bodyId[n], t = W.bodyId[n.replace('Foot', 'ToeBase')], pA = P3(dd, b);
+      if (globalThis.NOFLOORSPOT) return pA; const dr = Math.max(0, Math.min(ht(pA) - 0.046, ht(P3(dd, t)) + 0.003)); return pA.map((v, k) => v - dr * up[k]); };
     const want = {};
     for (const n of ['LeftFoot', 'RightFoot', 'LeftHand', 'RightHand']) {
       const recDown = isDown(G, n), b = W.bodyId[n];
@@ -605,10 +610,17 @@ export class BrainDrive {
       // reaches it (locked where his own foot happened to be - often still 5-8 cm up, coming down from the blend - it crept)
       // (V32) feet on the floor when the get-up starts stay where they lie, from the first frame (the recording is
       // placed by them, kin.play feetAnchor)
-      if (!L[n] && !this.gLocksInit && /Foot/.test(n) && isDown(d, n) && recDown) L[n] = { p: P3(d, b), q: Q(d, b), t: 0, own: true };
+      if (!L[n] && !this.gLocksInit && /Foot/.test(n) && isDown(d, n) && recDown) L[n] = { p: onFloor(d, n), q: Q(d, b), t: 0, own: true, from: P3(d, b) };
+      // (V36) his foot on the floor stays where it is whenever the recording's foot is down or near the floor too, not only
+      // at the start (the planted legs of getupLegs are placed from his hips: they slid along with them, ~1 cm a frame);
+      // the recording lifting that foot clearly (9 cm over its spot) takes it along in the air, and it lands again later
+      // (V37: off - in tests it slid more, see handover)
+      if (/Foot/.test(n) && globalThis.GL_OWNLOCK) { const hr = ht(P3(G, b));
+        if (!L[n] && isDown(d, n) && (recDown || hr < 0.14)) L[n] = { p: onFloor(d, n), q: Q(d, b), t: 0, own: true, from: P3(d, b) };
+        else if (L[n] && !L[n].step && !L[n].from && !recDown && hr > ht(L[n].p) + 0.09) { delete L[n]; continue; } }
       // (V35) a foot landing: its spot is where the recording's foot lands, but his own foot may be 5-15 cm from it; it
       // gets there over 0.2 s (it snapped there in one frame, and his hips dropped with it)
-      if (!L[n] && recDown && (/Foot/.test(n) || isDown(d, n))) L[n] = /Foot/.test(n) ? { p: P3(G, b), q: Q(G, b), t: 0, from: globalThis.NOLAND ? null : P3(d, b) } : { p: P3(d, b), q: Q(d, b), t: 0 };
+      if (!L[n] && recDown && (/Foot/.test(n) || isDown(d, n))) L[n] = /Foot/.test(n) ? { p: onFloor(G, n), q: Q(G, b), t: 0, from: globalThis.NOLAND ? null : P3(d, b) } : { p: P3(d, b), q: Q(d, b), t: 0 };
       if (L[n]) { L[n].t += 1 / 30; want[n] = L[n];
         if (L[n].from) { const e0 = Math.min(1, L[n].t / 0.2), e = e0 * e0 * (3 - 2 * e0), F = L[n].from;
           if (e0 >= 1) L[n].from = null; else want[n] = { ...L[n], p: F.map((v, k) => v + (L[n].p[k] - v) * e), landing: true }; } }
@@ -625,7 +637,7 @@ export class BrainDrive {
       if (best) L[best].step = { from: L[best].p.slice(), s: 0 };
     }
     for (const n of ['LeftFoot', 'RightFoot']) { const lk = L[n]; if (!lk || !lk.step) continue;
-      const st = lk.step, b = W.bodyId[n], to = P3(G, b); st.s = Math.min(1, st.s + (1 / 30) / 0.45);
+      const st = lk.step, b = W.bodyId[n], to = st.to || onFloor(G, n); st.s = Math.min(1, st.s + (1 / 30) / (st.dur || 0.45));
       const e = st.s * st.s * (3 - 2 * st.s), lift = 0.07 * Math.sin(Math.PI * st.s);
       for (let k = 0; k < 3; k++) lk.p[k] = st.from[k] + (to[k] - st.from[k]) * e + lift * up[k];
       lk.q = Q(G, b); if (st.s >= 1) { lk.step = null; lk.p = to; }
@@ -662,16 +674,32 @@ export class BrainDrive {
     if (!globalThis.NOSHIFTRATE) { const R = [0, 1, 2].map(k => d.qpos[k] - base0[k]), P = this.gShift || R, dR = R.map((v, k) => v - P[k]), dn = Math.hypot(...dR), mx = 0.012;
       const S = dn > mx ? P.map((v, k) => v + dR[k] * mx / dn) : R; this.gShift = S;
       for (let k = 0; k < 3; k++) { d.qpos[k] = base0[k] + S[k]; D.qpos[k] = d.qpos[k]; } }
+    this.glChain = chain; this.glRw = rw;
     this.limbIK(D, want, chain, rw, globalThis.GL_IT ?? 14);
     mj.mj_kinematics(m, D);
     for (const n in want) {
       const b = W.bodyId[n], lk = want[n], C = chain(n), err = Math.hypot(lk.p[0] - D.xpos[3 * b], lk.p[1] - D.xpos[3 * b + 1], lk.p[2] - D.xpos[3 * b + 2]);
       // out of reach: the spot creeps toward where the limb can be (a slow slide, not a jump); far out, it lets go
       if (globalThis.GLDBG && /Foot/.test(n)) console.error('GL', W.d.time.toFixed(2), n, (err*100).toFixed(1), 'up', (dot([lk.p[0] - D.xpos[3 * b], lk.p[1] - D.xpos[3 * b + 1], lk.p[2] - D.xpos[3 * b + 2]], up)*100).toFixed(1), lk.own ? 'own' : 'rec', 'hipsH', ht([d.qpos[0], d.qpos[1], d.qpos[2]]).toFixed(2), 'ghostFoot', P3(G, b).map(v => v.toFixed(2)).join(','), 'lock', lk.p.map(v => v.toFixed(2)).join(','));
-      if (err > 0.05 && !lk.step && !lk.landing) { const bp = [D.xpos[3 * b], D.xpos[3 * b + 1], D.xpos[3 * b + 2]]; for (let k = 0; k < 3; k++) lk.p[k] += (bp[k] - lk.p[k]) * 0.25; }
+      if (globalThis.GLCLS && /Foot/.test(n)) this.glTag[n[0]] = lk.step ? 'step' : lk.landing ? 'land' : err > 0.05 ? 'creep' : lk.own ? 'own' : 'rec';
+      if (err > 0.05 && !lk.step && !lk.landing) { const bp = [D.xpos[3 * b], D.xpos[3 * b + 1], D.xpos[3 * b + 2]];
+        // (V36) a foot that can't be reached is lifted and put down where the leg can be (it crept there along the floor)
+        // (V37: off, not better yet)
+        if (/Foot/.test(n) && globalThis.GL_CREEPSTEP) { const L0 = this.gLocks[n]; if (L0 && !L0.step) { const dh = ht(bp) - ht(L0.p); L0.step = { from: L0.p.slice(), s: 0, dur: 0.3, to: bp.map((v, k) => v - dh * up[k]) }; } }
+        else for (let k = 0; k < 3; k++) lk.p[k] += (bp[k] - lk.p[k]) * 0.25; }
       for (let c = 0; c < C.N; c++) { const qa = C.dof + 1 + c; d.qpos[qa] = D.qpos[qa]; }
     }
     this.stats.locks = (this.stats.locks || 0) + Object.keys(want).length;
+  }
+  // (V36) his legs reach their planted spots again after the walls pass moved his body (only the legs, feet held)
+  reachFeet() {
+    const W = this.W, m = W.m, mj = W.mj, d = W.d, L = this.gLocks, want = {};
+    for (const n of ['LeftFoot', 'RightFoot']) if (L[n] && !L[n].step && !L[n].from) want[n] = L[n];
+    if (!Object.keys(want).length) return;
+    const D = this.ikG; D.qpos.set(d.qpos);
+    this.limbIK(D, want, this.glChain, this.glRw, 8);
+    for (const n in want) { const C = this.glChain(n); for (let c = 0; c < C.N; c++) { const qa = C.dof + 1 + c; d.qpos[qa] = D.qpos[qa]; } }
+    mj.mj_forward(m, d);
   }
   // damped least squares on a scratch body D: each part in `want` to its locked spot and turn (chains from chain(n))
   limbIK(D, want, chain, rw, iters) {
@@ -830,6 +858,7 @@ export class BrainDrive {
       // (V30, rulebook: walls beat planted feet) a last pass after the feet: anything of him in a wall or the floor moves
       // him out; the spots his feet/hands are held to and the recording's placement move with him (otherwise the next
       // frame pulls him back in and his feet creep)
+      let wallMoved = false;
       for (let it = 0; it < 3 && !this.noGetupLocks; it++) {
         const push = [0, 0, 0]; let any = false;
         for (let i = 0; i < d.ncon; i++) {
@@ -838,10 +867,14 @@ export class BrainDrive {
           const dir = f2 ? n : n.map(v => -v); for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
         }
         if (!any) break;
-        for (let k = 0; k < 3; k++) d.qpos[k] += push[k]; W.mj.mj_forward(m, d);
+        for (let k = 0; k < 3; k++) d.qpos[k] += push[k]; W.mj.mj_forward(m, d); if (globalThis.GLCLS) this.glWall = (this.glWall || 0) + Math.hypot(...push);
         if (K.anchor) { const a0 = K.toLocal([0, 0, 0]), c0 = K.toLocal(push); K.anchor.x += c0[0] - a0[0]; K.anchor.y += c0[1] - a0[1]; }
-        if (this.gLocks) for (const nn in this.gLocks) { const P = this.gLocks[nn].p; for (let k = 0; k < 3; k++) P[k] += push[k]; }
+        if (this.gLocks) for (const nn in this.gLocks) { if (globalThis.GL_WALLKEEP && /Foot/.test(nn)) continue; const P = this.gLocks[nn].p; for (let k = 0; k < 3; k++) P[k] += push[k]; }
+        wallMoved = true;
       }
+      // (V36) his body moved out of a wall, his planted feet did not: his legs reach them again (the walls pass dragged
+      // planted feet with the body - most of what was left of the sliding in the glass falls and the narrow box)
+      if (wallMoved && globalThis.GL_WALLKEEP && this.gLocks && this.glChain) this.reachFeet();   // (V37: off)
       if (globalThis.SLDBG && this._sl) { const b = W.bodyId.LeftFoot, S = this._sl, P = this._slP; if (P) { const f = v => (v * 100).toFixed(1); console.log('SL', S.t.toFixed(3), 'x', S.x.toFixed(1), 'clip', f(S.clipF[0] - P.clipF[0]), f(S.clipF[1] - P.clipF[1]), 'anc', f(S.anc[0] - P.anc[0]), f(S.anc[1] - P.anc[1]), ((S.anc[2] - P.anc[2]) * 57.3).toFixed(1), 'ghost', f(S.ghost[0] - P.ghost[0]), f(S.ghost[1] - P.ghost[1]), 'preLock', f(S.preLock[0] - P.preLock[0]), f(S.preLock[1] - P.preLock[1]), 'final', f(d.xpos[3 * b] - P.final[0]), f(d.xpos[3 * b + 1] - P.final[1])); } S.final = [d.xpos[3 * b], d.xpos[3 * b + 1]]; this._slP = S; }
       d.time += dt;
       if (this.pins) this.pins.reset();
