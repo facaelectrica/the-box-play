@@ -404,6 +404,21 @@ export class Kin {
       const want = qv(this.G.q, [0, -1, 0]), wy = Math.atan2(want[1], want[0]), dy = wrap(wy - this.facing().yaw);
       if (Math.abs(dy) > 0.21) this.turnAnchor(Math.sign(dy) * Math.min(Math.abs(dy), 0.1 * dt));
     }
+    // (user 22:51: "when he has time to recover, he should try to go to the middle of the box, not the corners") calm,
+    // the floor not too steep (< ~10 deg), and more than 15 cm off the middle for a second: a step toward the middle
+    // (a recovery-step recording that way), at most one every 2.5 s
+    if (!this.noCenter && (this.G.name === 'floor' || this.G.name === 'ceil') && !this.W.open) {
+      const dc = Math.hypot(this.cur[0], this.cur[1]), calm = Math.hypot(this.cv[0], this.cv[1]) < 0.06 && Math.hypot(gl[0], gl[1]) < 0.18 * Math.max(gn, 1);
+      this.centerT = dc > 0.15 && calm ? (this.centerT || 0) + dt : 0;
+      if (this.centerT > 1.0 && this.t - (this.centerStepT || -9) > 2.5) {
+        const { f, l } = this.facing(), v = [-this.cur[0], -this.cur[1]];
+        const ang = Math.atan2(v[0] * l[0] + v[1] * l[1], v[0] * f[0] + v[1] * f[1]) * 180 / Math.PI;
+        this.centerStepT = this.t; this.centerT = 0; this.event('to the middle (' + Math.round(dc * 100) + ' cm off)');
+        this.startReact(ang, Math.min(0.15, Math.max(0.08, dc * 0.5)), 0.4);
+        if (this.state === 'react') this.steps.pop();   // a chosen step, not a lost-balance one ("too many recovery steps")
+        return;
+      }
+    }
     // calm: the next idle recording now and then
     if ((this.idleT -= dt) <= 0 && Math.hypot(this.cv[0], this.cv[1]) < 0.05) {
       // another idle, entered where it already looks like him (feet where his are); none close enough: keep this one
@@ -784,6 +799,7 @@ export class Kin {
   }
 
   // ---------- getting up ----------
+  recentlyFailed(clip) { const t = this.failedGetups && this.failedGetups.get(clip); return t !== undefined && this.t - t < 20; }
   startGetup() {
     const W = this.W, d = W.d;
     this.restoreGains();
@@ -804,6 +820,7 @@ export class Kin {
     if (cu[2] > 0.6) {
       const f = this.curFeatures(); let best = null;
       for (const kind of Object.keys(this.lib.getups)) for (const g of this.lib.getups[kind]) {
+        if (this.recentlyFailed(g.clip)) continue;
         const FF = g.clip.features();
         for (let i = 0; i < Math.floor(FF.length * 0.75); i += 2) { const dd = featDist(f, FF[i]); if (!best || dd < best.d) best = { g, i, d: dd, kind }; }
       }
@@ -830,9 +847,11 @@ export class Kin {
     const me = this.bodyFeat(i => { const id = W.bodyId[BODY23[i]]; return this.toLocal([d.xpos[3 * id], d.xpos[3 * id + 1], d.xpos[3 * id + 2]]); }, [this.cur[3], this.cur[4], this.cur[5], this.cur[6]], this.cur[2]);
     let best = null;
     for (const k of Object.keys(G)) for (const e of G[k]) {
+      if (this.recentlyFailed(e.clip)) continue;
       const F = this.getupFeats(e.clip);
       for (let i = 0; i < Math.floor(F.length * 0.7); i += 2) { let dd = 0; for (let j = 0; j < me.length; j++) dd += (me[j] - F[i][j]) ** 2; if (!best || dd < best.d) best = { e, i, d: dd, kind: k }; }
     }
+    if (!best) { this.failedGetups = null; return this.startGetup(); }   // every one failed lately: try them all again
     const c = best.e; kind = best.kind;
     this.state = 'getup'; this.getupHold = 0;
     this.havePre = false;
@@ -865,16 +884,18 @@ export class Kin {
     this.anim.speed = clamp(1 - (lag - 0.08) / 0.33, 0.25, 1);
     // his hand isn't on the floor where the recording's is: the recording slows right down until it is (he pushes
     // himself up with it, not with nothing)
-    if (this.getupHandWait) { this.getupHandT = (this.getupHandT || 0) + dt; if (this.getupHandT < 1.5) this.anim.speed = Math.min(this.anim.speed, 0.15); } else this.getupHandT = 0;
+    if (this.getupHandWait) { this.getupHandT = (this.getupHandT || 0) + dt; if (this.getupHandT < 2.5) this.anim.speed = Math.min(this.anim.speed, 0.15); } else this.getupHandT = 0;
     // not enough room above him to stand: the recording waits at the moment its head would come within 25 cm of the
     // opposite wall (on his knees, or sitting up) until the room is there (the phone turned back)
     const nx = Math.min(this.anim.clip.n - 1, Math.floor(this.anim.x) + 2), headZ = this.anim.clip.body(nx, 6)[2];
     this.kneeling = this.G.room < 1.9 && headZ > this.G.room - 0.25;
     if (this.kneeling) { this.anim.speed = 0; this.getupHold = 0; if (this.last !== 'kneeling: no room to stand') this.event('kneeling: no room to stand'); return; }
-    // stuck: his hips more than 40 cm behind the recording for 4 s -> give this get-up up now (and start a new one
+    // stuck: his hips more than 40 cm behind the recording for 3 s -> give this get-up up now (and start a new one
     // from the pose he is really in), instead of creeping on at a quarter speed and waiting 4 s at its end
     this.getupStuck = lag > 0.4 ? (this.getupStuck || 0) + dt : 0;
-    if (this.getupStuck > 4) { this.getupStuck = 0; this.getupHold = 0; return this.startFall('the get-up failed'); }
+    // (snapshot 22:52: "unable to turn and get up ... just stays shaking") stuck 3 s: give up this get-up, and don't
+    // pick the same recording again for 20 s (it was picked because it looked closest - and it will again)
+    if (this.getupStuck > 3) { this.getupStuck = 0; this.getupHold = 0; (this.failedGetups = this.failedGetups || new Map()).set(this.anim.clip, this.t); return this.startFall('the get-up failed'); }
     const ended = this.anim.x >= this.anim.clip.n - 1.01;
     this.getupHold = ended ? (this.getupHold || 0) + dt : 0;
     if (ended && lag > 0.15 && this.getupHold < 4) return;

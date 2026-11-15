@@ -148,7 +148,7 @@ export class Pins {
     for (const s of SIDES) {
       const n = s + 'Hand', b = this.id[n], P = this.on[n];
       if (P && !P.ground) continue;
-      const k = s === 'Left' ? 2 : 3, rec = gettingUp && (K.anim.clip.contact(K.anim.x, k) > 0.5 || K.anim.clip.contact(K.anim.x + 9, k) > 0.5);
+      const k = s === 'Left' ? 2 : 3, rec = gettingUp && (K.anim.clip.contact(K.anim.x, k) > 0.5 || K.anim.clip.contact(K.anim.x + 12, k) > 0.5 || K.anim.clip.contact(K.anim.x + 24, k) > 0.5);
       if (P) {
         P.unwant = rec ? 0 : (P.unwant || 0) + dt;
         if (!gettingUp || P.unwant > 0.1) { this.release(n, 'hand lifts'); continue; }

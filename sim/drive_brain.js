@@ -342,7 +342,7 @@ export class BrainDrive {
     for (const side of ['Left', 'Right']) {
       const k = side === 'Left' ? 2 : 3, Pn = pin[side + 'Hand'];
       if (Pn && Pn.ground) { tgt[side] = Pn.p.map((v, i) => v - up[i] * 0.004); }
-      else if (cl.contact(K.anim.x, k) > 0.5 || cl.contact(K.anim.x + 9, k) > 0.5) {
+      else if (cl.contact(K.anim.x, k) > 0.5 || cl.contact(K.anim.x + 12, k) > 0.5 || cl.contact(K.anim.x + 24, k) > 0.5) {   // (user 22:54: arms to the floor BEFORE the torso needs them: 0.8 s ahead)
         const hb = W.bodyId[side + 'Hand'], sb = W.bodyId[side + 'Arm'];
         const rel = P3(G, hb).map((v, i) => v - P3(G, sb)[i]), rn = rel[0] * up[0] + rel[1] * up[1] + rel[2] * up[2];
         const T = P3(d, sb).map((v, i) => v + rel[i] - rn * up[i]), h = (T[0] - o[0]) * up[0] + (T[1] - o[1]) * up[1] + (T[2] - o[2]) * up[2];
