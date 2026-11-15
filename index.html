@@ -111,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V39</div><div id="brainver"></div>
+<div id="ver">V40</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -195,7 +195,13 @@ window.BOXLOAD = (() => {
   row('Page code').state = 'load';
   start(MJ + 'mujoco.wasm', 'Physics engine', 11201302);
   start('body/clips/kin/kin.json', 'Recordings');
-  start('body/models/b08/soma_tracker.json', 'Brain'); start('body/models/b08/soma_tracker.onnx', 'Brain', 25211904);
+  // (V40, user 12:54) which brain moves his body while he stands: 08 (ours), NVIDIA's original, or none; Options > Brain
+  const BRAINS = { b08: ['body/models/b08/', 25211904], nvidia: ['body/', 12610426], none: null };
+  let brainId = 'b08';
+  try { brainId = new URLSearchParams(location.search).get('brain') || localStorage.getItem('box.kinBrain') || 'b08'; } catch (_) {}
+  if (!(brainId in BRAINS)) brainId = 'b08';
+  window.BOXBRAIN = { id: brainId, dir: BRAINS[brainId] && BRAINS[brainId][0], bytes: BRAINS[brainId] && BRAINS[brainId][1] };
+  if (BRAINS[brainId]) { start(BRAINS[brainId][0] + 'soma_tracker.json', 'Brain'); start(BRAINS[brainId][0] + 'soma_tracker.onnx', 'Brain', BRAINS[brainId][1]); }
   let fig = 'female';
   try { fig = localStorage.getItem('box.figure') || fig; } catch (_) {}
   const FIGF = { female: 'body/bodychan.glb', male: 'body/bodykun.glb' };   // = FIGS in the module
@@ -247,16 +253,16 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import loadMujoco from '@mujoco/mujoco';
-import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=39';
+import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=40';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=39';
-import { Springs, humanCap } from './sim/springs.js?v=39';
-import { Balance } from './sim/balance.js?v=39';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=39';
-import { addPins } from './sim/pins.js?v=39';
-import { rigHand, poseHand } from './sim/fingers.js?v=39';
-import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=39';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=40';
+import { Springs, humanCap } from './sim/springs.js?v=40';
+import { Balance } from './sim/balance.js?v=40';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=40';
+import { addPins } from './sim/pins.js?v=40';
+import { rigHand, poseHand } from './sim/fingers.js?v=40';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=40';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -585,7 +591,8 @@ const figP = loadFig(FIG);
 let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
-const KINV = 39;
+try { const bb = (window.BOXBRAIN || {}).id; if (bb && bb !== 'b08') document.getElementById('ver').textContent += bb === 'nvidia' ? ' · NVIDIA brain' : ' · no brain'; } catch (_) {}
+const KINV = 40;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(u + '?v=' + KINV, 'Recordings'));   // ?v: phones keep old copies
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -601,17 +608,18 @@ let control = null;
 let kin = null, springs = null;
 try { kin = new Kin(G, mj, await libP); kin.onWarn = m => logErr(m); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
-try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=39', 'Body')))); } catch (e) { console.warn('joint limits', e); }
+try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=40', 'Body')))); } catch (e) { console.warn('joint limits', e); }
 if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupCap: 0 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
 // round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
 // only carry him through get-ups (the network was never taught to get up).
 let drive = null;
-if (kin && PHYSICAL) try {
+const BB = window.BOXBRAIN || { id: 'b08', dir: 'body/models/b08/', bytes: 25211904 };   // (V40) chosen in Options > Brain
+if (kin && PHYSICAL && BB.dir) try {
   ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/'; ort.env.wasm.numThreads = 1;
-  const dir = 'body/models/b08/';
+  const dir = BB.dir;
   const meta = JSON.parse(new TextDecoder().decode(await LOAD.take(dir + 'soma_tracker.json', 'Brain')));
-  const bytes = new Uint8Array(await LOAD.take(dir + 'soma_tracker.onnx', 'Brain', 25211904));
+  const bytes = new Uint8Array(await LOAD.take(dir + 'soma_tracker.onnx', 'Brain', BB.bytes));
   LOAD.state('Brain', 'start');
   const session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
   const brainNet = new Brain(W, ort, session, meta); brainNet.setStandPose(BRAIN_STAND);
@@ -1342,9 +1350,15 @@ function changed(k) {
 $('optBtn').onclick = () => $('opts').classList.add('open');
 $('optClose').onclick = () => $('opts').classList.remove('open');
 {
-  const sel = $('brainPick'); const o = document.createElement('option'); o.textContent = 'Recordings (no brain)'; sel.appendChild(o); sel.disabled = true;
-  $('brainNow').textContent = 'Recordings';
-  sel.parentNode.querySelector('.help').textContent = 'This page plays real recordings: idles, push recoveries, get-ups. The game with the trained brains is the main page.';
+  // (V40, user 12:54: "give me the option to test it too, so I can judge it myself") the recordings decide every move;
+  // the brain only works his muscles so his physical body follows them while he stands. Picking reloads the page.
+  const sel = $('brainPick');
+  const OPTS = [['b08', '08 · trained by us (default)'], ['nvidia', "NVIDIA's original"], ['none', 'No brain · simple springs only']];
+  for (const [id, label] of OPTS) { const o = document.createElement('option'); o.value = id; o.textContent = label; sel.appendChild(o); }
+  sel.value = BB.id;
+  $('brainNow').textContent = { b08: '08', nvidia: 'NVIDIA', none: 'none' }[BB.id] + (BB.dir && !drive ? ' (did not load)' : '');
+  sel.parentNode.querySelector('.help').textContent = 'The recordings decide every move. The brain only works his muscles so his body follows them while he stands. Picking one reloads the page.';
+  sel.onchange = () => { try { localStorage.setItem('box.kinBrain', sel.value); } catch (_) {} const u = new URL(location.href); u.searchParams.delete('brain'); location.replace(u.toString()); };
 }
 // test buttons: the scorecard's situations, one tap away (a shove at the chest from a random side; lying on his back)
 let kick = null;
