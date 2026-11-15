@@ -552,7 +552,7 @@ let control = null;
 let kin = null, springs = null;
 try { kin = new Kin(G, mj, await libP); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
-try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json', 'Body')))); } catch (e) { console.warn('joint limits', e); }
+try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=15', 'Body')))); } catch (e) { console.warn('joint limits', e); }
 if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupCap: 0 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
 // round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
