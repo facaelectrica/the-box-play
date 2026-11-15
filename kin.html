@@ -111,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V40</div><div id="brainver"></div>
+<div id="ver">V41</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -119,46 +119,69 @@
 // further down picks them up with BOXLOAD.take(url): the same URL gets the same download, anything not started here
 // is fetched then. take() forgets the file, so no second copy stays in memory.
 window.BOXLOAD = (() => {
-  const MB = 1048576, rows = new Map(), started = new Map();
+  // (V40; user Nov 15 12:59: "the file sizes are wrong ... we should know the total size. If the brain is downloaded
+  // once, if it's the same version, does it have to be downloaded twice?") every file the page needs at start, with its
+  // size and a fingerprint of its contents (tools/kin/files.py writes this list at each release):
+  // - all of them start at once and the total is right from the first moment (the recordings used to be found one wave
+  //   at a time: 3 -> 5 -> 19.7 MB);
+  // - each is asked for as name?h=<fingerprint> and kept in the phone's own storage for this site (Cache Storage):
+  //   opened again, a file that did not change comes from the phone, not the internet; a changed file has a new
+  //   fingerprint and is downloaded once. Old copies are removed after the page is ready.
+  const FILES = /*FILES*/{"body/clips/kin/kin.json":{"s":13024,"h":"adfbb921d9","l":"Recordings"},"body/clips/seed_idle_soft_A077.bin":{"s":506848,"h":"95ed3576fb","l":"Recordings"},"body/clips/seed_idle_weight_A268.bin":{"s":729440,"h":"10c205c962","l":"Recordings"},"body/clips/seed_idle_back_A056.bin":{"s":807648,"h":"d1e4281db7","l":"Recordings"},"body/clips/seed_idle_rightleg_A419.bin":{"s":654240,"h":"1467079835","l":"Recordings"},"body/clips/seed_idle_weightL_A018.bin":{"s":1353600,"h":"a0fc8825b0","l":"Recordings"},"body/clips/kin/kreact_00.bin":{"s":117312,"h":"fc7ebd50e1","l":"Recordings"},"body/clips/kin/kreact_01.bin":{"s":117312,"h":"b14dd3d263","l":"Recordings"},"body/clips/kin/kreact_02.bin":{"s":117312,"h":"51c5e0e822","l":"Recordings"},"body/clips/kin/kreact_03.bin":{"s":117312,"h":"4826838e45","l":"Recordings"},"body/clips/kin/kreact_04.bin":{"s":117312,"h":"3a8c0899ef","l":"Recordings"},"body/clips/kin/kreact_05.bin":{"s":117312,"h":"7699f7ab10","l":"Recordings"},"body/clips/kin/kreact_06.bin":{"s":111296,"h":"3117882c1d","l":"Recordings"},"body/clips/kin/kreact_07.bin":{"s":108288,"h":"8a11e55452","l":"Recordings"},"body/clips/kin/kreact_08.bin":{"s":117312,"h":"44d1e5f57c","l":"Recordings"},"body/clips/kin/kreact_09.bin":{"s":117312,"h":"8655a468ce","l":"Recordings"},"body/clips/kin/kreact_10.bin":{"s":117312,"h":"6f1f9b398e","l":"Recordings"},"body/clips/kin/kreact_11.bin":{"s":117312,"h":"333c97515f","l":"Recordings"},"body/clips/kin/kreact_12.bin":{"s":117312,"h":"9509cf78ca","l":"Recordings"},"body/clips/kin/kreact_13.bin":{"s":117312,"h":"8915806439","l":"Recordings"},"body/clips/kin/kreact_14.bin":{"s":117312,"h":"a63725938d","l":"Recordings"},"body/clips/kin/kreact_15.bin":{"s":117312,"h":"46b08a8fd0","l":"Recordings"},"body/clips/kin/kreact_16.bin":{"s":85728,"h":"d73c4545ec","l":"Recordings"},"body/clips/kin/kreact_17.bin":{"s":111296,"h":"e439be2873","l":"Recordings"},"body/clips/kin/kreact_18.bin":{"s":117312,"h":"3ab17600dc","l":"Recordings"},"body/clips/kin/kreact_19.bin":{"s":117312,"h":"0213609dc1","l":"Recordings"},"body/clips/kin/kreact_20.bin":{"s":117312,"h":"7b7654f08f","l":"Recordings"},"body/clips/kin/kreact_21.bin":{"s":117312,"h":"6e9c93d78c","l":"Recordings"},"body/clips/kin/kreact_22.bin":{"s":117312,"h":"24ea0c5565","l":"Recordings"},"body/clips/kin/kreact_23.bin":{"s":112800,"h":"47ccc17394","l":"Recordings"},"body/clips/kin/kreact_24.bin":{"s":93248,"h":"5df6161100","l":"Recordings"},"body/clips/kin/kreact_25.bin":{"s":117312,"h":"e1b20d5627","l":"Recordings"},"body/clips/kin/kreact_26.bin":{"s":117312,"h":"7e8eaf5959","l":"Recordings"},"body/clips/kin/kreact_27.bin":{"s":117312,"h":"e3f3976b82","l":"Recordings"},"body/clips/kin/kreact_28.bin":{"s":117312,"h":"96b641f022","l":"Recordings"},"body/clips/kin/kreact_29.bin":{"s":117312,"h":"9de6608eb0","l":"Recordings"},"body/clips/kin/kreact_30.bin":{"s":117312,"h":"8174ea40cf","l":"Recordings"},"body/clips/kin/kreact_31.bin":{"s":112800,"h":"a03ffc21aa","l":"Recordings"},"body/clips/kin/kreact_32.bin":{"s":93248,"h":"cac6412116","l":"Recordings"},"body/clips/kin/kreact_33.bin":{"s":117312,"h":"8bcfed9401","l":"Recordings"},"body/clips/kin/kreact_34.bin":{"s":117312,"h":"a3386fc046","l":"Recordings"},"body/clips/kin/kreact_35.bin":{"s":117312,"h":"052e5984bd","l":"Recordings"},"body/clips/kin/kreact_36.bin":{"s":117312,"h":"024109d1bf","l":"Recordings"},"body/clips/kin/kreact_37.bin":{"s":117312,"h":"b9c1d1698a","l":"Recordings"},"body/clips/kin/kreact_38.bin":{"s":117312,"h":"3e5186a137","l":"Recordings"},"body/clips/kin/kreact_39.bin":{"s":117312,"h":"0eff065249","l":"Recordings"},"body/clips/kin/kreact_40.bin":{"s":117312,"h":"798f0eed55","l":"Recordings"},"body/clips/kin/kreact_41.bin":{"s":117312,"h":"d27af0ece4","l":"Recordings"},"body/clips/kin/kreact_42.bin":{"s":96256,"h":"7cd1673a95","l":"Recordings"},"body/clips/kin/kreact_43.bin":{"s":115808,"h":"9c8fec1e45","l":"Recordings"},"body/clips/kin/kreact_44.bin":{"s":115808,"h":"aae09bb071","l":"Recordings"},"body/clips/kin/kback_A028.bin":{"s":114304,"h":"4043e4e465","l":"Recordings"},"body/clips/kin/kback_A030.bin":{"s":136864,"h":"9a08d53a23","l":"Recordings"},"body/clips/kin/kback_A044.bin":{"s":103776,"h":"c07739e384","l":"Recordings"},"body/clips/kin/getup_back_A472.bin":{"s":279744,"h":"100aa8d00e","l":"Recordings"},"body/clips/kin/getup_back_A473.bin":{"s":275232,"h":"fe83447539","l":"Recordings"},"body/clips/kin/getup_back_A474.bin":{"s":339904,"h":"8432614eae","l":"Recordings"},"body/clips/kin/getup_front_A472.bin":{"s":351936,"h":"9a4175d8a0","l":"Recordings"},"body/clips/kin/getup_front_A473.bin":{"s":415104,"h":"3a6c0599a2","l":"Recordings"},"body/clips/kin/getup_front_A474.bin":{"s":395552,"h":"c23e23df52","l":"Recordings"},"body/clips/kin/getup_side_A472.bin":{"s":315840,"h":"3aa5d67761","l":"Recordings"},"body/clips/kin/getup_side_A473.bin":{"s":296288,"h":"7d74485733","l":"Recordings"},"body/clips/kin/getup_side_A474.bin":{"s":281248,"h":"fb6b5cbd59","l":"Recordings"},"body/clips/kin/getup_side_A475.bin":{"s":299296,"h":"d59428dc70","l":"Recordings"},"body/clips/kin/sit_back_A063_1.bin":{"s":117312,"h":"26b5000a6c","l":"Recordings"},"body/clips/kin/sit_back_A244_1.bin":{"s":194016,"h":"b7efc73cf9","l":"Recordings"},"body/clips/kin/sit_back_A245_1.bin":{"s":162432,"h":"483dc79530","l":"Recordings"},"body/clips/kin/sit_back_A248_1.bin":{"s":175968,"h":"0dca3c2a3e","l":"Recordings"},"body/clips/kin/sit_back_A245_2.bin":{"s":117312,"h":"5ef1dda0ff","l":"Recordings"},"body/clips/kin/sit_back_A064_3.bin":{"s":124832,"h":"d0ba3a2d65","l":"Recordings"},"body/clips/kin/sit_back_A063_4.bin":{"s":97760,"h":"0f0f455ccc","l":"Recordings"},"body/clips/kin/sit_back_A167_4.bin":{"s":145888,"h":"0fea5d0032","l":"Recordings"},"body/clips/kin/sit_front_A051_1.bin":{"s":135360,"h":"16fe74d46a","l":"Recordings"},"body/clips/kin/sit_front_A063_2.bin":{"s":130848,"h":"8b0b343907","l":"Recordings"},"body/clips/kin/sit_front_A165_4.bin":{"s":181984,"h":"2ec1e593e3","l":"Recordings"},"body/clips/kin/sit_front_A167_4.bin":{"s":142880,"h":"15a04a83b1","l":"Recordings"},"body/clips/kin/sit_back_A100_2.bin":{"s":121824,"h":"6b1a261338","l":"Recordings"},"body/clips/kin/sit_back_A101_3.bin":{"s":138368,"h":"899ea1a045","l":"Recordings"},"body/clips/kin/sit_back_A184_1.bin":{"s":135360,"h":"65ca4ec572","l":"Recordings"},"body/clips/kin/sit_back_A410_1.bin":{"s":260192,"h":"54202c726b","l":"Recordings"},"body/clips/kin/sit_back_A411_1.bin":{"s":151904,"h":"a3078837d8","l":"Recordings"},"body/clips/kin/sit_back_A412_1.bin":{"s":227104,"h":"082441672f","l":"Recordings"},"body/clips/kin/sit_back_A413_1.bin":{"s":209056,"h":"41224d3787","l":"Recordings"},"body/clips/kin/sit_back_A414_1.bin":{"s":156416,"h":"0ab16e880f","l":"Recordings"},"body/clips/kin/sit_front_A098_2.bin":{"s":124832,"h":"a254d996d4","l":"Recordings"},"body/clips/kin/sit_front_A098_3.bin":{"s":129344,"h":"5d21976775","l":"Recordings"},"body/clips/kin/sit_front_A188_3.bin":{"s":129344,"h":"34f9163df5","l":"Recordings"},"body/clips/kin/sit_front_A410_1.bin":{"s":257184,"h":"33c9ea123d","l":"Recordings"},"body/clips/kin/sit_front_A411_1.bin":{"s":174464,"h":"065e6c449e","l":"Recordings"},"body/clips/kin/sit_front_A412_2.bin":{"s":166944,"h":"59e758d311","l":"Recordings"},"body/clips/kin/sit_front_A414_1.bin":{"s":204544,"h":"4654d60297","l":"Recordings"},"body/clips/kin/sitx_front_A063_2.bin":{"s":132352,"h":"9b66aa9858","l":"Recordings"},"body/clips/kin/sitx_front_A064_1.bin":{"s":135360,"h":"ec056fd122","l":"Recordings"},"body/clips/kin/sitx_front_A101_3.bin":{"s":121824,"h":"48f461331e","l":"Recordings"},"body/clips/kin/sitx_front_A184_3.bin":{"s":136864,"h":"e8c227b745","l":"Recordings"},"body/clips/kin/sitx_front_A185_1.bin":{"s":132352,"h":"c9ff2f8414","l":"Recordings"},"body/clips/kin/sitx_front_A185_2.bin":{"s":133856,"h":"e0f9e20e63","l":"Recordings"},"body/clips/kin/sitx_side_A063_1.bin":{"s":124832,"h":"07e31482f8","l":"Recordings"},"body/clips/kin/sitx_side_A099_2.bin":{"s":135360,"h":"1a65301c06","l":"Recordings"},"body/clips/kin/sitx_side_A184_5.bin":{"s":123328,"h":"769894c5aa","l":"Recordings"},"body/clips/kin/sitx_side_A184_6.bin":{"s":123328,"h":"969ef083f3","l":"Recordings"},"body/clips/kin/sitx_side_A185_4.bin":{"s":184992,"h":"1f2efc0e5d","l":"Recordings"},"body/clips/kin/sitx_side_A188_4.bin":{"s":171456,"h":"03ec4976eb","l":"Recordings"},"body/clips/kin/sitx_side_A188_5.bin":{"s":112800,"h":"9334a43800","l":"Recordings"},"body/clips/kin/sitx_side_A188_6.bin":{"s":166944,"h":"8aa8b55fa7","l":"Recordings"},"body/clips/kin/sitx_side_A189_2.bin":{"s":129344,"h":"5b7f4b6c98","l":"Recordings"},"body/clips/kin/sitx_side_A189_3.bin":{"s":139872,"h":"2b1b4b1a1d","l":"Recordings"},"body/clips/kin/sitx_side_A190_3.bin":{"s":145888,"h":"42226fac00","l":"Recordings"},"body/clips/kin/sitx_side_A191_1.bin":{"s":150400,"h":"65742dc373","l":"Recordings"},"body/clips/kin/faintup_lying_A493_1.bin":{"s":165440,"h":"41b630d343","l":"Recordings"},"body/clips/kin/faintup_lying_A494_1.bin":{"s":157920,"h":"563a98c818","l":"Recordings"},"body/clips/kin/faintup_lying_side_A492_1.bin":{"s":242144,"h":"92d22352ed","l":"Recordings"},"body/clips/kin/faintup_lying_side_A493_1.bin":{"s":233120,"h":"7e8734dd91","l":"Recordings"},"body/clips/kin/faintup_lying_stomach_A494_1.bin":{"s":192512,"h":"cb6789e427","l":"Recordings"},"body/clips/kin/rest_back_A411.bin":{"s":165440,"h":"a5899c22ac","l":"Recordings"},"body/clips/kin/rest_back_A412.bin":{"s":231616,"h":"c259d38629","l":"Recordings"},"body/clips/kin/rest_front_A412.bin":{"s":183488,"h":"c6da21d993","l":"Recordings"},"body/clips/kin/rest_heels_A406.bin":{"s":335392,"h":"acdcf872cc","l":"Recordings"},"body/soma23_box.xml":{"s":24157,"h":"1d9ddd1c11","l":"Body"},"body/clips/kin/limits.json":{"s":2320,"h":"943fb218c8","l":"Body"},"body/models/b08/soma_tracker.json":{"s":1268,"h":"d45a3948de","l":"Brain"},"body/models/b08/soma_tracker.onnx":{"s":25211904,"h":"dfb6ad4f2b","l":"Brain"},"body/soma_tracker.json":{"s":1265,"h":"30bc967c8a","l":"Brain"},"body/soma_tracker.onnx":{"s":12610426,"h":"729407d0cb","l":"Brain"},"body/bodychan.glb":{"s":879116,"h":"4fbeb28a0c","l":"Figure"},"body/bodykun.glb":{"s":944728,"h":"6b94c9e427","l":"Figure"},"https://cdn.jsdelivr.net/npm/@mujoco/mujoco@4.0.1/mujoco.wasm":{"s":11201302,"l":"Physics engine"},"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort-wasm-simd-threaded.wasm":{"s":14848852,"l":"Brain engine"}}/*END FILES*/;
+  const MB = 1048576, rows = new Map(), started = new Map(), used = new Set();
   const list = document.getElementById('loadRows'), pctEl = document.getElementById('loadPct');
   const bar = document.querySelector('#loadBar i');
+  const STORE = 'thebox-files-1';
+  const store = (async () => { try { return self.caches ? await caches.open(STORE) : null; } catch (_) { return null; } })();
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist().catch(() => {}); } catch (_) {}
   let shown = 0, finished = false, queued = false;
   function row(label) {
     let r = rows.get(label);
     if (!r) {
-      r = { label, got: 0, total: 0, left: 0, state: 'wait', el: document.createElement('div') };
+      r = { label, got: 0, total: 0, left: 0, n: 0, kept: 0, state: 'wait', el: document.createElement('div') };
       r.el.className = 'lr'; r.el.innerHTML = '<span></span><span></span>'; r.el.firstChild.textContent = label;
       list.appendChild(r.el); rows.set(label, r);
     }
     return r;
   }
-  const mb = v => (v / MB).toFixed(1);
+  const mb = v => (v / MB).toFixed(1), size = v => v < MB / 10 ? Math.max(1, Math.round(v / 1024)) + ' KB' : mb(v) + ' MB';
   function paint() {
     queued = false;
     let got = 0, total = 0;
     for (const r of rows.values()) {
       got += Math.min(r.got, r.total || r.got); total += Math.max(r.total, r.got);
+      const onPhone = r.n > 0 && r.kept === r.n;
       let t;
       if (r.state === 'load') t = r.total ? mb(r.got) + ' / ' + mb(r.total) + ' MB  ' + Math.min(99, Math.floor(100 * r.got / r.total)) + '%' : (r.got ? mb(r.got) + ' MB' : '…');
+      else if ((r.state === 'got' || r.state === 'ready') && r.total) t = size(r.total) + '  ' + (onPhone ? 'on phone ✓' : r.state === 'ready' ? '✓' : '100%');
       else t = { wait: 'waiting', got: '100%', start: 'starting…', build: 'building…', ready: '✓', fail: 'didn’t load' }[r.state];
       r.el.lastChild.textContent = t; r.el.className = 'lr ' + r.state;
     }
     // the total only moves forward (a file's real size can arrive after its estimate)
     const p = finished ? 100 : Math.min(99, total ? 100 * got / total : 0);
     shown = Math.max(shown, p);
-    pctEl.textContent = Math.floor(shown) + '%'; bar.style.width = shown + '%';
+    pctEl.textContent = (total ? mb(Math.min(got, total)) + ' of ' + mb(total) + ' MB  ' : '') + Math.floor(shown) + '%'; bar.style.width = shown + '%';
   }
   function repaint() { if (!queued) { queued = true; requestAnimationFrame(paint); } }
-  // fetch with progress; `hint` = expected size in bytes (needed where the server compresses: the reader counts
-  // unpacked bytes)
+  // the address a file is asked for: its fingerprint added (files the list doesn't know: as they are)
+  function url(p) { const f = FILES[p]; return f && f.h ? p + (p.includes('?') ? '&' : '?') + 'h=' + f.h : p; }
+  // fetch with progress, from the phone's storage when it is there; `hint` = expected size in bytes (needed where the
+  // server compresses: the reader counts unpacked bytes)
   async function download(url, label, hint = 0) {
-    const r = row(label);
-    r.left++; if (r.state === 'wait' || r.state === 'got') r.state = 'load';
+    const r = row(label), abs = new URL(url, location.href).href;
+    used.add(abs);
+    r.left++; r.n++; if (r.state === 'wait' || r.state === 'got') r.state = 'load';
     let total = hint, got = 0;
     r.total += hint; repaint();
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(url + ': HTTP ' + res.status);
+      const c = await store;
+      let res = null, kept = false;
+      if (c) try { res = await c.match(abs); kept = !!res; } catch (_) { res = null; }
+      if (!res) {
+        res = await fetch(url);
+        if (!res.ok) throw new Error(url + ': HTTP ' + res.status);
+      }
+      if (kept) r.kept++;
       const len = +res.headers.get('content-length') || 0;
       if (!hint && len && !res.headers.get('content-encoding')) { r.total += len; total = len; }
       let out;
@@ -173,6 +196,9 @@ window.BOXLOAD = (() => {
         for (const p of parts) { out.set(p, o); o += p.length; }
       } else { out = new Uint8Array(await res.arrayBuffer()); got = out.length; r.got += got; }
       r.total += got - total;   // the real size
+      // keep a copy on the phone (only files with a fixed address: fingerprinted, or a pinned version from the CDN); made
+      // from the bytes already read (a second reader on the download stalled the copy of the 24 MB brain)
+      if (c && !kept && (FILES[url] || /[?&]h=/.test(url))) { try { c.put(abs, new Response(out, { headers: { 'content-type': res.headers.get('content-type') || 'application/octet-stream' } })).catch(e => console.warn('could not keep ' + url + ' on the phone', e)); } catch (_) {} }
       if (--r.left === 0 && r.state === 'load') r.state = 'got';
       repaint();
       return out.buffer;
@@ -181,32 +207,44 @@ window.BOXLOAD = (() => {
       throw e;
     }
   }
-  function start(url, label, hint) {
-    const p = download(url, label, hint); p.catch(() => {});
-    started.set(url, p); return p;
+  function start(u, label, hint) {
+    const p = download(u, label, hint); p.catch(() => {});
+    started.set(u, p); return p;
+  }
+  // once he is ready: copies of files this page no longer uses (older fingerprints) leave the phone; this release's
+  // files stay even when not used this time (the other brain, the other figure: switching back costs nothing)
+  async function tidy() {
+    try {
+      const c = await store; if (!c) return;
+      const keep = new Set(used); for (const p in FILES) keep.add(new URL(url(p), location.href).href);
+      for (const q of await c.keys()) if (!keep.has(q.url)) await c.delete(q);
+    } catch (_) {}
   }
   const L = {
-    take(url, label, hint) { const p = started.get(url); if (p) { started.delete(url); return p; } return download(url, label, hint); },
+    url,
+    take(u, label, hint) { const p = started.get(u); if (p) { started.delete(u); return p; } return download(u, label, hint ?? (FILES[u.split('?')[0]] || {}).s); },
     state(label, s) { const r = row(label); r.state = s; repaint(); },
-    finish() { finished = true; paint(); document.getElementById('load').classList.add('done'); },
+    finish() { finished = true; paint(); document.getElementById('load').classList.add('done'); setTimeout(tidy, 5000); },
   };
-  // what the page needs, in the order it's listed; the URLs must match the ones the module script asks for
-  const MJ = 'https://cdn.jsdelivr.net/npm/@mujoco/mujoco@4.0.1/', ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/';
+  // what the page needs; the URLs must match the ones the module script asks for (LOAD.url(path))
   row('Page code').state = 'load';
-  start(MJ + 'mujoco.wasm', 'Physics engine', 11201302);
-  start('body/clips/kin/kin.json', 'Recordings');
   // (V40, user 12:54) which brain moves his body while he stands: 08 (ours), NVIDIA's original, or none; Options > Brain
   const BRAINS = { b08: ['body/models/b08/', 25211904], nvidia: ['body/', 12610426], none: null };
   let brainId = 'b08';
   try { brainId = new URLSearchParams(location.search).get('brain') || localStorage.getItem('box.kinBrain') || 'b08'; } catch (_) {}
   if (!(brainId in BRAINS)) brainId = 'b08';
   window.BOXBRAIN = { id: brainId, dir: BRAINS[brainId] && BRAINS[brainId][0], bytes: BRAINS[brainId] && BRAINS[brainId][1] };
-  if (BRAINS[brainId]) { start(BRAINS[brainId][0] + 'soma_tracker.json', 'Brain'); start(BRAINS[brainId][0] + 'soma_tracker.onnx', 'Brain', BRAINS[brainId][1]); }
   let fig = 'female';
   try { fig = localStorage.getItem('box.figure') || fig; } catch (_) {}
   const FIGF = { female: 'body/bodychan.glb', male: 'body/bodykun.glb' };   // = FIGS in the module
-  if (FIGF[fig]) start(FIGF[fig] + '?v=' + encodeURIComponent(document.getElementById('ver').textContent), 'Figure');
-  start('body/soma23_box.xml', 'Body');
+  for (const lab of ['Physics engine', 'Brain engine', 'Brain', 'Recordings', 'Figure', 'Body'])
+    for (const p in FILES) {
+      const f = FILES[p]; if (f.l !== lab) continue;
+      if (lab === 'Figure' && p !== FIGF[fig]) continue;   // only the figure he uses
+      if (lab === 'Brain engine' && !BRAINS[brainId]) continue;   // no brain: no brain engine
+      if (lab === 'Brain' && !(BRAINS[brainId] && p.startsWith(BRAINS[brainId][0]) && !p.slice(BRAINS[brainId][0].length).includes('/'))) continue;   // only the brain he picked
+      start(url(p), lab, f.s);
+    }
   repaint();
   return L;
 })();
@@ -253,16 +291,16 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import loadMujoco from '@mujoco/mujoco';
-import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=40';
+import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=41';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=40';
-import { Springs, humanCap } from './sim/springs.js?v=40';
-import { Balance } from './sim/balance.js?v=40';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=40';
-import { addPins } from './sim/pins.js?v=40';
-import { rigHand, poseHand } from './sim/fingers.js?v=40';
-import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=40';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=41';
+import { Springs, humanCap } from './sim/springs.js?v=41';
+import { Balance } from './sim/balance.js?v=41';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=41';
+import { addPins } from './sim/pins.js?v=41';
+import { rigHand, poseHand } from './sim/fingers.js?v=41';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=41';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -562,7 +600,7 @@ const mjP = (async () => {
   LOAD.state('Physics engine', 'ready');
   return m;
 })();
-const bodyP = LOAD.take(BODY_FILE, 'Body').then(b => new TextDecoder().decode(b));
+const bodyP = LOAD.take(LOAD.url(BODY_FILE), 'Body').then(b => new TextDecoder().decode(b));
 // figure looks the user can switch between (third round button, top right); all are drawn on the same SOMA bodies
 const FIGS = [
   { id: 'female', label: 'Female', file: 'body/bodychan.glb' },   // Body-chan (vinchau, CC0; the user's file, 10:22)
@@ -579,7 +617,7 @@ async function loadFig(id) {
   if (!(id in figCache)) {
     // the release number in the URL, so a phone never keeps an older figure file from its cache
     // (the URL, with the release number in it, must stay the one BOXLOAD starts early)
-    try { figCache[id] = await new GLTFLoader().parseAsync(await LOAD.take(f.file + '?v=' + encodeURIComponent($('ver').textContent), 'Figure'), 'body/'); }
+    try { figCache[id] = await new GLTFLoader().parseAsync(await LOAD.take(LOAD.url(f.file), 'Figure'), 'body/'); }
     catch (e) { console.warn(f.file + ' did not load', e); figCache[id] = null; }
     LOAD.state('Figure', figCache[id] ? 'ready' : 'fail');
   }
@@ -592,8 +630,8 @@ let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
 try { const bb = (window.BOXBRAIN || {}).id; if (bb && bb !== 'b08') document.getElementById('ver').textContent += bb === 'nvidia' ? ' · NVIDIA brain' : ' · no brain'; } catch (_) {}
-const KINV = 40;
-const libP = loadKinLibrary('body/clips/', u => LOAD.take(u + '?v=' + KINV, 'Recordings'));   // ?v: phones keep old copies
+const KINV = 41;
+const libP = loadKinLibrary('body/clips/', u => LOAD.take(LOAD.url(u), 'Recordings'));   // (V40) address = name + fingerprint (BOXLOAD)
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
 let DOLL = await figP;
@@ -608,7 +646,7 @@ let control = null;
 let kin = null, springs = null;
 try { kin = new Kin(G, mj, await libP); kin.onWarn = m => logErr(m); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
-try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=40', 'Body')))); } catch (e) { console.warn('joint limits', e); }
+try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take(LOAD.url('body/clips/kin/limits.json'), 'Body')))); } catch (e) { console.warn('joint limits', e); }
 if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupCap: 0 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
 // round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
@@ -617,10 +655,13 @@ let drive = null;
 const BB = window.BOXBRAIN || { id: 'b08', dir: 'body/models/b08/', bytes: 25211904 };   // (V40) chosen in Options > Brain
 if (kin && PHYSICAL && BB.dir) try {
   ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/'; ort.env.wasm.numThreads = 1;
-  const dir = BB.dir;
-  const meta = JSON.parse(new TextDecoder().decode(await LOAD.take(dir + 'soma_tracker.json', 'Brain')));
-  const bytes = new Uint8Array(await LOAD.take(dir + 'soma_tracker.onnx', 'Brain', BB.bytes));
+  const dir = BB.dir, ORT_WASM = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort-wasm-simd-threaded.wasm';
+  const meta = JSON.parse(new TextDecoder().decode(await LOAD.take(LOAD.url(dir + 'soma_tracker.json'), 'Brain')));
+  const bytes = new Uint8Array(await LOAD.take(LOAD.url(dir + 'soma_tracker.onnx'), 'Brain', BB.bytes));
   LOAD.state('Brain', 'start');
+  // (V40) the brain engine's own program (~15 MB) through the loading list too: its size counts in the total and it is
+  // kept on the phone like the other files
+  try { ort.env.wasm.wasmBinary = await LOAD.take(ORT_WASM, 'Brain engine'); } catch (e) { console.warn('brain engine preload failed, it fetches itself', e); }
   const session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
   const brainNet = new Brain(W, ort, session, meta); brainNet.setStandPose(BRAIN_STAND);
   drive = new BrainDrive(W, kin, brainNet, springs);
