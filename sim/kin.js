@@ -359,7 +359,7 @@ export class Kin {
     // (Version 26) get-ups played as recorded (drive_brain getupBy 'kin') don't feel the slope: the floor tilting past
     // what he can stand on during a get-up puts him down again (he falls, the physics takes him)
     if (this.state === 'getup') {
-      this.tiltedG = tilt > this.fallTilt * 0.85 ? (this.tiltedG || 0) + dt : 0;
+      this.tiltedG = tilt > this.fallTilt ? (this.tiltedG || 0) + dt : 0;
       if (this.tiltedG > 0.25) { this.tiltedG = 0; return this.startFall('floor too steep during the get-up (' + Math.round(tilt * 57.3) + ' deg)'); }
     }
     if (this.state === 'stand') this.updateStand(dt, gl, gn);
@@ -823,7 +823,7 @@ export class Kin {
   // ---------- falling: MuJoCo takes over ----------
   startFall(why) {
     const W = this.W, mj = this.mj, m = W.m, d = W.d;
-    this.havePre = false; this.fallWhy = why;
+    this.havePre = false; this.fallWhy = why; this.resting = null;
     if (this.ext) {   // a real body (sim/springs.js) falls; the ghost only watches it
       this.state = 'fall'; this.fallT = 0; this.restT = 0; this.restoreGains();
       return this.event('fall: ' + why);
@@ -871,17 +871,70 @@ export class Kin {
     // lying still?
     const hipsV = Math.hypot(d.qvel[0], d.qvel[1], d.qvel[2]);
     let jv = 0; for (let k = 6; k < m.nv; k++) jv = Math.max(jv, Math.abs(d.qvel[k]));
-    this.restT = hipsV < 0.12 && jv < 1.5 ? this.restT + dt : 0;
+    // (Version 29; snapshot 09:05: on a ~22 deg slope held in the hand he lay 6 s without getting up: the phone's small
+    // shakes kept him from counting as still, and 24 deg was the limit) still enough with a little jiggle; get-ups on
+    // slopes up to ~27 deg (a person gets up on a steep ramp too)
+    this.restT = hipsV < 0.2 && jv < 2.5 ? this.restT + dt : 0;
     this.localPose(d.qpos, this.cur); this.vel.fill(0);
     const g = W.m.opt.gravity, gl = qv(this.G.q, [g[0], g[1], g[2]]), G = Math.hypot(g[0], g[1], g[2]) || 9.81;
     const tilt = Math.acos(clamp(-gl[2] / G, -1, 1));
     // (user 19:06: "if the phone is rotated like this and he has less space, he would still get on his knees") a floor
     // with less than standing room (the back wall when the phone lies flat: ~1.3-1.5 m) still gets a get-up, held where
     // his head would reach the opposite wall (kneeling), see updateGetup
-    if (this.fallT > 1.0 && this.restT > 0.6 && tilt < this.fallTilt * 0.75 && this.G.room >= 1.15) this.startGetup();
+    // (user 09:11: "why isn't she getting up when the phone is rotated to the side and the space is smaller?") the phone on
+    // its side leaves 1.07 m (was: no get-up under 1.15 m): he gets up as far as the room allows, then rests sitting
+    if (this.fallT > 1.0 && this.restT > 0.6 && tilt < this.fallTilt * 0.85 && this.G.room >= 0.8) this.startGetup();
   }
 
   // ---------- getting up ----------
+  // ---------- resting where there's no room to stand (sitting on the floor) ----------
+  // the sitting idle that fits under the ceiling (its head 15 cm below it), the moment of it most like him now; a wall
+  // within 40 cm behind his back: the one with his hands on his knees, and he settles back against the wall (his
+  // picture, 09:25); else leaning back on his hands
+  startRest() {
+    const R = this.lib.rests || []; if (!R.length) return false;
+    const W = this.W, d = W.d, room = this.G.room;
+    const fits = R.filter(e => { if (e.headMax === undefined) { let h = 0; for (let i = 0; i < e.clip.n; i++) h = Math.max(h, e.clip.body(i, 6)[2]); e.headMax = h; } return e.headMax + 0.15 < room; });
+    if (!fits.length) return false;
+    const behind = this.wallBehind(0.4), kinds = behind ? ['front', 'back', 'heels'] : ['back', 'front', 'heels'];
+    const me = this.bodyFeat(i => { const id = W.bodyId[BODY23[i]]; return this.toLocal([d.xpos[3 * id], d.xpos[3 * id + 1], d.xpos[3 * id + 2]]); }, [this.cur[3], this.cur[4], this.cur[5], this.cur[6]], this.cur[2]);
+    let best = null;
+    for (const kind of kinds) {
+      for (const e of fits.filter(x => x.kind === kind)) { const F = this.getupFeats(e.clip); for (let i = 0; i < F.length; i += 3) { let dd = 0; for (let j = 0; j < me.length; j++) dd += (me[j] - F[i][j]) ** 2; if (!best || dd < best.d) best = { e, i, d: dd }; } }
+      if (best) break;
+    }
+    if (!best) return false;
+    this.play(best.e.clip, best.i, 'pingpong', { hl: 0.6, still: true, fromCur: true });
+    this.resting = { e: best.e, t: 0, back: behind, slid: 0, roomT: 0 };
+    this.event('sitting down to rest: no room to stand (' + best.e.file + ')');
+    return true;
+  }
+  updateRest(dt) {
+    const R = this.resting; R.t += dt;
+    this.anim.speed = 1; this.advance(dt);
+    // his back against the wall behind him: the recording slides back to it, slowly, until his back touches
+    if (R.back && R.slid < 0.4 && R.t > 0.6) { const s = this.slideBack(Math.min(0.08 * dt, 0.4 - R.slid)); R.slid += s; if (!s) R.back = false; }
+    // room to stand again (the phone turned back) for 0.8 s: he gets up from sitting
+    R.roomT = this.G.room >= 1.9 ? R.roomT + dt : 0;
+    if (R.roomT > 0.8) { this.resting = null; this.event('room to stand again'); this.startGetup(); }
+  }
+  // his back's way along the ground (the chest's +y, flattened)
+  backDir() { const d = this.W.d, cb = this.W.bodyId.Chest, R = d.xmat.slice(9 * cb, 9 * cb + 9), b = this.dirLocal([R[1], R[4], R[7]]), l = Math.hypot(b[0], b[1]) || 1; return [b[0] / l, b[1] / l]; }
+  // a wall within dist behind his back (moving the recording back that far would touch it with his back)
+  wallBehind(dist) {
+    const W = this.W, d = W.d, m = W.m, pl = this.cur.slice(), bd = this.backDir(); if (W.open) return false;
+    pl[0] += bd[0] * dist; pl[1] += bd[1] * dist; this.writeWorld(pl); this.mj.mj_forward(m, d);
+    const back = new Set(['Hips', 'Spine1', 'Spine2', 'Chest'].map(n => W.bodyId[n]));
+    let hit = false; for (let i = 0; i < d.ncon; i++) { const c = d.contact.get(i), b1 = m.geom_bodyid[c.geom1], b2 = m.geom_bodyid[c.geom2]; c.delete(); if ((back.has(b1) && !W.isFig[b2]) || (back.has(b2) && !W.isFig[b1])) hit = true; }
+    this.writeWorld(this.cur); this.mj.mj_forward(m, d);
+    return hit;
+  }
+  // move the recording back by up to s (m) unless his back already touches a wall; returns how far it moved
+  slideBack(s) {
+    if (s <= 0) return 0;
+    if (this.wallBehind(0.01)) return 0;
+    const bd = this.backDir(); this.anchor.x += bd[0] * s; this.anchor.y += bd[1] * s; return s;
+  }
   recentlyFailed(clip) { const t = this.failedGetups && this.failedGetups.get(clip); return t !== undefined && this.t - t < 20; }
   startGetup() {
     const W = this.W, d = W.d;
@@ -959,7 +1012,8 @@ export class Kin {
     return clip._gf;
   }
   updateGetup(dt) {
-    if (this.faceChanged) { this.faceChanged = false; return this.startFall('the box turned over'); }
+    if (this.faceChanged) { this.faceChanged = false; this.resting = null; return this.startFall('the box turned over'); }
+    if (this.resting) return this.updateRest(dt);
     // the recording waits for him (worker 'getup'): when his real hips are behind the recording's (getupLag, metres
     // along "up", set by the physics layer), it slows down, to a quarter speed at 33 cm behind; and it isn't over
     // until his hips are within 15 cm of standing (or 4 s past its end: then he is down, and falls again)
@@ -976,7 +1030,11 @@ export class Kin {
     // opposite wall (on his knees, or sitting up) until the room is there (the phone turned back)
     const nx = Math.min(this.anim.clip.n - 1, Math.floor(this.anim.x) + 2), headZ = this.anim.clip.body(nx, 6)[2];
     this.kneeling = this.G.room < 1.9 && headZ > this.G.room - 0.25;
-    if (this.kneeling) { this.anim.speed = 0; this.getupHold = 0; if (this.last !== 'kneeling: no room to stand') this.event('kneeling: no room to stand'); return; }
+    // (user 09:22: "if he's getting up and suddenly has no more space ... currently he freezes ... He would have to go
+    // into a kind of crouched idle position ... so he's comfortable waiting"; 09:25, his pictures: sitting calmly, knees
+    // up, leaning back on his hands, or his back against the wall, hands on his knees) no room to stand: he sits down to
+    // rest in a recorded sitting idle that fits the room, and gets up from there when the room is back
+    if (this.kneeling) { this.getupHold = 0; if (this.startRest()) return; this.anim.speed = 0; if (this.last !== 'kneeling: no room to stand') this.event('kneeling: no room to stand'); return; }
     // stuck: his hips more than 40 cm behind the recording for 3 s -> give this get-up up now (and start a new one
     // from the pose he is really in), instead of creeping on at a quarter speed and waiting 4 s at its end
     this.getupStuck = lag > (globalThis.STUCKL || 0.2) ? (this.getupStuck || 0) + dt : 0;
@@ -1015,6 +1073,7 @@ export async function loadKinLibrary(base = 'body/clips/', fetchBuf = u => fetch
   const load = async e => ({ ...e, clip: new Clip(new Float32Array(await fetchBuf(base + e.file)), e) });
   const lib = { idles: await Promise.all(J.idles.map(load)), reacts: await Promise.all(J.reacts.map(load)), getups: {} };
   for (const k of Object.keys(J.getups)) lib.getups[k] = await Promise.all(J.getups[k].map(load));
+  lib.rests = J.rests ? await Promise.all(J.rests.map(load)) : [];
   lib.reacts.forEach(r => { r.ang = r.ang; });
   return lib;
 }

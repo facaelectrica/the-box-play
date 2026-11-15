@@ -676,5 +676,27 @@
     "src": "BONES"
    }
   ]
- }
+ },
+ "rests": [
+  {
+   "file": "kin/rest_back_A411.bin",
+   "src": "BONES sitting_legs_bend_arms_back_loop_R_002__A411",
+   "kind": "back"
+  },
+  {
+   "file": "kin/rest_back_A412.bin",
+   "src": "BONES sitting_legs_bend_arms_back_loop_R_002__A412",
+   "kind": "back"
+  },
+  {
+   "file": "kin/rest_front_A412.bin",
+   "src": "BONES sitting_legs_bend_arms_front_loop_R_001__A412",
+   "kind": "front"
+  },
+  {
+   "file": "kin/rest_heels_A406.bin",
+   "src": "BONES sit_on_heels_loop_001__A406",
+   "kind": "heels"
+  }
+ ]
 }

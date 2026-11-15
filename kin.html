@@ -32,7 +32,8 @@
   #note{position:fixed;left:50%;top:calc(22px + env(safe-area-inset-top));transform:translateX(-50%);z-index:2;max-width:82%;text-align:center;font-size:13px;line-height:1.4;background:rgba(28,18,10,.7);border:1px solid rgba(255,230,200,.2);border-radius:14px;padding:9px 14px;opacity:0;transition:opacity .6s;pointer-events:none}
   #note.show{opacity:1}
   #look{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
-  #look::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:rgba(255,235,205,.9)}
+  #look::before,#look::after{content:"";position:absolute;top:50%;width:3.5px;height:12px;margin-top:-6px;border-radius:1px;background:rgba(255,235,205,.95)}
+  #look::before{left:11px}#look::after{left:17.5px}
   #place{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(56px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #place::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border:2px solid rgba(255,235,205,.9);border-radius:2px;box-sizing:border-box}
   #fig{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(100px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
@@ -57,7 +58,26 @@
   #pose.on{background:#ffd400;border-color:#ffd400}#pose.on::before{background:#111}#pose.on::after{border-color:#111}
   #dbg.on{background:#ffd400;border-color:#ffd400}#dbg.on::after{border-color:#111}
   #place.floor{background:#ffd400;border-color:#ffd400}#place.floor::after{border:0;height:3px;margin-top:2px;background:#111;width:16px;margin-left:-8px;border-radius:2px}
-  #look.on{background:#ffd400;border-color:#ffd400}#look.on::after{background:#111;width:10px;height:10px;border-radius:2px}
+  #look.on{background:#ffd400;border-color:#ffd400}#look.on::before{display:none}#look.on::after{left:12px;width:0;height:0;margin-top:-6.5px;border-radius:0;background:none;border-style:solid;border-width:6.5px 0 6.5px 11px;border-color:transparent transparent transparent #111}
+  /* (user 09:30: "a button that's like the debug button ... it shows the other buttons ... so the UI stays clean")
+     clean: pause, box, figure, tilt, debug; debug on: wireframe, balance, poses, snapshot below, and the state label */
+  #tilt{top:calc(144px + env(safe-area-inset-top))!important}
+  #dbgui{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(188px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #dbgui::before{content:"";position:absolute;left:50%;top:50%;width:10px;height:13px;margin:-5px 0 0 -5px;border-radius:5px 5px 6px 6px;background:rgba(255,235,205,.95)}
+  #dbgui::after{content:"";position:absolute;left:50%;top:6px;width:14px;height:7px;margin-left:-7px;border:2px solid rgba(255,235,205,.95);border-bottom:0;border-radius:7px 7px 0 0;box-sizing:border-box}
+  #dbgui.on{background:#ffd400;border-color:#ffd400}#dbgui.on::before{background:#111}#dbgui.on::after{border-color:#111}
+  body:not(.debug) #dbg,body:not(.debug) #bal,body:not(.debug) #pose,body:not(.debug) #snap,body:not(.debug) #balTxt,body:not(.debug) #brainver{display:none!important}
+  body.debug #pose,body.debug #snap{display:block!important}
+  #dbg{top:calc(232px + env(safe-area-inset-top))!important}
+  #bal{top:calc(276px + env(safe-area-inset-top))!important}
+  #pose{top:calc(320px + env(safe-area-inset-top))!important}
+  #snap{top:calc(364px + env(safe-area-inset-top))!important}
+  #ver{font-size:15px!important;padding:3px 9px!important}
+  /* (user 09:30: "once the game has finished loading, we see this text on top of everything for like 3 seconds") */
+  #title{position:fixed;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity 1.1s ease}
+  #title.show{opacity:1;transition:opacity .35s ease}
+  @font-face{font-family:"BoxTitle";font-weight:600;font-display:swap;src:url("https://cdn.jsdelivr.net/npm/@fontsource/jost@5.0.17/files/jost-latin-600-normal.woff2") format("woff2")}
+  #title div{font-family:"BoxTitle",Futura,"Futura PT","Century Gothic","Avenir Next",Jost,"Trebuchet MS",system-ui,sans-serif;font-weight:600;color:#fff;text-align:center;line-height:1.02;font-size:min(26vw,16vh);letter-spacing:-.005em;text-shadow:0 4px 30px rgba(0,0,0,.22)}
   #brainver{position:fixed;left:calc(12px + env(safe-area-inset-left));top:calc(46px + env(safe-area-inset-top));z-index:6;font-size:12px;font-weight:700;color:#111;background:#ffe866;border-radius:6px;padding:2px 8px;pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.35)}
   #brainver:empty{display:none}
   #ver{position:fixed;left:calc(12px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));z-index:6;font-size:16px;font-weight:800;letter-spacing:.5px;color:#111;background:#ffd400;border-radius:8px;padding:4px 10px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.45)}
@@ -88,7 +108,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">Version 28</div><div id="brainver"></div>
+<div id="ver">V29</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -190,6 +210,8 @@ window.BOXLOAD = (() => {
 <button id="snap" aria-label="Save a snapshot for Claude (paused)"></button>
 <button id="bal" aria-label="Balance view: where his weight is vs what holds him up, and how hard his muscles work"></button>
 <div id="balTxt"></div>
+<button id="dbgui" aria-label="Debug: wireframe, balance, poses, snapshot and what he is doing"></button>
+<div id="title" aria-hidden="true"><div>YOU<br>CAN’T<br>BREAK<br>ME.</div></div>
 <button id="tilt" class="on" aria-label="Phone tilt moves the box (off: gravity stays straight down)"></button>
 <div id="note"></div>
 <div id="hud">
@@ -224,12 +246,12 @@ import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=28';
-import { Springs, humanCap } from './sim/springs.js?v=28';
-import { Balance } from './sim/balance.js?v=28';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=28';
-import { addPins } from './sim/pins.js?v=28';
-import { rigHand, poseHand } from './sim/fingers.js?v=28';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=29';
+import { Springs, humanCap } from './sim/springs.js?v=29';
+import { Balance } from './sim/balance.js?v=29';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=29';
+import { addPins } from './sim/pins.js?v=29';
+import { rigHand, poseHand } from './sim/fingers.js?v=29';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -474,7 +496,12 @@ scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12));
 const lightUp = new THREE.Vector3(0, 1, 0);
 // open floor: the view (and the key light with it) pans sideways to follow him (user 14:58); 0 in the box
 let camPan = 0; const _panV = new THREE.Vector3();
+// (user 09:30: "when we are in pause mode and I rotate the camera, the lighting always respects the camera, so I can
+// examine the model and always have a nice top-down lighting") paused: the key light rides with the camera, above and a
+// little in front of it, aimed at what the camera looks at
+let lookLight = null;
 function placeLight() {
+  if (lookLight) { lookLight(); return; }
   const dir = new THREE.Vector3(lightUp.x * 0.75, lightUp.y * 0.75, 0.85);
   if (dir.z < 0.55) dir.z = 0.55;
   dir.normalize();
@@ -550,7 +577,7 @@ const figP = loadFig(FIG);
 let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
-const KINV = 28;
+const KINV = 29;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(u + '?v=' + KINV, 'Recordings'));   // ?v: phones keep old copies
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -566,7 +593,7 @@ let control = null;
 let kin = null, springs = null;
 try { kin = new Kin(G, mj, await libP); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
-try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=28', 'Body')))); } catch (e) { console.warn('joint limits', e); }
+try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=29', 'Body')))); } catch (e) { console.warn('joint limits', e); }
 if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupCap: 0 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
 // round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
@@ -677,9 +704,62 @@ function buildFigure() {
       ball.castShadow = true; grp.add(ball);
     }
   }
+  skinTorso(look && DOLL ? look : null);
   syncFigure();
   applyDebug();
   rigHands();
+}
+// (user 09:15, Nov 15: "The torso and neck parts are bent in a way that seems broken ... it's the way the pieces of the
+// mannequin rotate or are assembled or they're pivoted in relation to the skeleton") the figure file has one rigid
+// piece per part, but no piece for Spine2 or Neck2: the "Spine1" piece covers both lower-back joints and the "Neck1"
+// piece both neck joints, so a bend at Spine2 or Neck2 opened a step between the belly and the chest, and the neck stuck
+// out with the head floating off it. The trunk pieces (hips, belly, chest, neck) are now skinned across the seven
+// spine joints: each point follows the joint below it, blended over 2.5 cm at each joint, like a bending mannequin.
+// The head and the limbs stay rigid. The rigid pieces stay (hidden) for touching him.
+const TORSO = ['Hips', 'Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head'];
+let torso = null;   // { bones, meshes }
+function skinTorso(look) {
+  const m = W.m;
+  if (torso) { for (const o of [...torso.meshes, ...(torso.meshes.wires || []), ...torso.bones]) { figRoot.remove(o); if (o.isMesh && !o.userData.wire) o.geometry.dispose(); } torso = null; }
+  if (!look) return;
+  // the rest pose: every SOMA body frame world-aligned, at the sum of its parents' offsets (Hips at 0)
+  const rest = {};
+  for (const n of W.bodyNames) { let b = W.bodyId[n], p = [0, 0, 0]; while (b > 0 && W.isFig[b]) { const par = m.body_parentid[b]; if (W.isFig[par]) for (let k = 0; k < 3; k++) p[k] += m.body_pos[3 * b + k]; b = par; } rest[n] = p; }
+  const zj = TORSO.map(n => rest[n][2]), axY = rest.Neck1[1], B = 0.025;
+  const sm = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+  // which spine segments each piece may follow (its own and its neighbours'); the head stays the head's
+  const ALLOW = { Hips: [0, 1], Spine1: [0, 1, 2, 3], Chest: [2, 3, 4], Neck1: [3, 4, 5, 6] };
+  const bones = TORSO.map(n => { const bn = new THREE.Bone(); bn.name = n; bn.position.set(...rest[n]); figRoot.add(bn); return bn; });
+  figRoot.updateMatrixWorld(true);
+  const skel = new THREE.Skeleton(bones), meshes = [];
+  for (const piece of Object.keys(ALLOW)) {
+    const items = look[piece] || [], grp = bodyGroup[W.bodyId[piece]], own = TORSO.indexOf(piece);
+    items.forEach((it, idx) => {
+      const geo = it.geo.clone(); geo.translate(...rest[piece]);
+      const P = geo.attributes.position, n = P.count, si = new Uint16Array(4 * n), sw = new Float32Array(4 * n);
+      for (let v = 0; v < n; v++) {
+        const x = P.getX(v), y = P.getY(v), z = P.getZ(v);
+        // the share above each joint j (smooth over +-B), the segment weights are the differences
+        const t = zj.map((zz, j) => j === 0 ? 1 : sm((z - (zz - B)) / (2 * B)));
+        let w = t.map((tj, k) => tj - (k + 1 < t.length ? t[k + 1] : 0));
+        // the chest piece's shoulders don't follow the neck: only its middle (within ~7 cm of the neck's axis) does
+        if (piece === 'Chest') { const r = Math.hypot(x, y - axY), f = 1 - sm((r - 0.06) / 0.03); for (let k = 4; k < 7; k++) { w[3] += w[k] * (1 - f); w[k] *= f; } }
+        w = w.map((wk, k) => ALLOW[piece].includes(k) ? wk : 0);
+        let sum = w.reduce((a, b) => a + b, 0); if (sum < 1e-6) { w = w.map((_, k) => k === own ? 1 : 0); sum = 1; }
+        const top = w.map((wk, k) => [wk / sum, k]).sort((a, b) => b[0] - a[0]).slice(0, 4);
+        top.forEach(([wk, k], c) => { si[4 * v + c] = k; sw[4 * v + c] = wk; });
+      }
+      geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+      geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+      const mat = it.mat === 'shell' || it.mat === 'joint' ? SHELL : it.mat === 'dark2' ? JOINT2 : JOINT;
+      const sk = new THREE.SkinnedMesh(geo, mat); sk.castShadow = true; sk.receiveShadow = true; sk.frustumCulled = false;
+      sk.userData.torsoPiece = piece;
+      figRoot.add(sk); sk.updateMatrixWorld(true); sk.bind(skel, sk.matrixWorld); meshes.push(sk);
+      // the rigid piece stays for touching him (raycasts), not drawn
+      const rig = grp && grp.children.filter(o => o.isMesh)[idx]; if (rig) { rig.visible = false; rig.userData.hiddenRigid = true; }
+    });
+  }
+  torso = { bones, meshes };
 }
 // fingers (sim/fingers.js; user 21:33): spread on a wall or the floor, together and a little curled when relaxed
 const handRig = {}, handPose = { Left: { s: 0.1, c: 0.35 }, Right: { s: 0.1, c: 0.35 } };
@@ -735,6 +815,7 @@ function syncFigure() {
     g.position.set(d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]);
     g.quaternion.set(d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]);
   }
+  if (torso) for (const bn of torso.bones) { const b = W.bodyId[bn.name]; bn.position.set(d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]); bn.quaternion.set(d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]); }
   if (dbgMode === 2) updateSkel();
   footShadows();
 }
@@ -816,12 +897,17 @@ function updateSkel() {
 }
 function applyDebug() {
   for (const g of bodyGroup) if (g) for (const o of [...g.children]) {
-    if (!o.isMesh || o.userData.wire) continue;
+    if (!o.isMesh || o.userData.wire || o.userData.hiddenRigid) continue;
     let w = o.userData.wireMesh;
     if (!w && dbgMode === 1) {
       w = new THREE.Mesh(o.geometry, WIRE); w.userData.wire = true;
       w.position.copy(o.position); w.quaternion.copy(o.quaternion); w.scale.copy(o.scale); g.add(w); o.userData.wireMesh = w;
     }
+    if (w) w.visible = dbgMode === 1;
+  }
+  if (torso) for (const sk of torso.meshes) {
+    let w = sk.userData.wireMesh;
+    if (!w && dbgMode === 1) { w = new THREE.SkinnedMesh(sk.geometry, WIRE); w.userData.wire = true; w.frustumCulled = false; figRoot.add(w); w.bind(sk.skeleton, sk.bindMatrix); sk.userData.wireMesh = w; torso.meshes.wires = (torso.meshes.wires || []).concat(w); }
     if (w) w.visible = dbgMode === 1;
   }
   const ghost = dbgMode === 2 || dbgMode === 3, bones = dbgMode === 2;
@@ -1226,6 +1312,16 @@ $('dbg').onclick = e => {
   applyDebug();
 };
 for (const ev of ['pointerdown', 'pointerup']) $('dbg').addEventListener(ev, e => e.stopPropagation());
+function setDebugUI(on) {
+  document.body.classList.toggle('debug', on); $('dbgui').classList.toggle('on', on);
+  // hidden debug buttons leave nothing switched on behind them (balance overlay, wireframe/skeleton)
+  if (!on && balOn) $('bal').onclick(new Event('click'));
+  if (!on && dbgMode) { dbgMode = 0; $('dbg').classList.remove('on'); applyDebug(); }
+  try { localStorage.setItem('box.debugui', on ? '1' : '0'); } catch (_) {}
+}
+$('dbgui').onclick = e => { e.stopPropagation(); setDebugUI(!document.body.classList.contains('debug')); };
+for (const ev of ['pointerdown', 'pointerup']) $('dbgui').addEventListener(ev, e => e.stopPropagation());
+try { setDebugUI(localStorage.getItem('box.debugui') === '1'); } catch (_) { setDebugUI(false); }
 $('resetVals').onclick = () => { for (const o of OPTS) if (o.k) SET[o.k] = o.def; saveSettings(); buildOptions(); applyQuality(); };
 for (const ev of ['pointerdown', 'pointermove', 'touchmove']) $('opts').addEventListener(ev, e => e.stopPropagation(), { passive: true });
 
@@ -1344,7 +1440,6 @@ function restoreBody(s) {
 $('look').onclick = e => {
   e.stopPropagation();
   look.on = !look.on; $('look').classList.toggle('on', look.on);
-  $('pose').style.display = look.on ? 'block' : 'none'; $('snap').style.display = look.on ? 'block' : 'none';
   if (!look.on && poseIdx !== 0 && look.snap) restoreBody(look.snap);   // carry on from the paused moment, not a test pose
   poseIdx = 0; $('pose').classList.remove('on');
   if (look.on) {
@@ -1352,9 +1447,11 @@ $('look').onclick = e => {
     const p = bodyPoint('Hips'), h = bodyPoint('Head');
     look.tgt.copy(p).lerp(h, 0.25);
     look.yaw = 0; look.pitch = 0.1; look.dist = 1.75 * S * 1.75;
+    look.box = true;   // (user 09:30: "when it pauses, by default, it should stay on the box. I have to click again to hide the box")
     poke.on = false; drag = null;
-    note('Paused. Slide to look around him; tap the circle to carry on.', 2600);
+    note('Paused. Slide to look around him; tap again to carry on.', 2600);
   } else { acc = 0; last = performance.now(); }
+  lookLight = look.on ? lookCameraLight : null;
   applyPlaceVis();   // looking him over: a plain 50% grey behind him, no box or floor
 };
 for (const ev of ['pointerdown', 'pointerup']) $('look').addEventListener(ev, e => e.stopPropagation());
@@ -1408,7 +1505,7 @@ window.__loadSnap = sn => {
 let poseIdx = 0;
 $('pose').onclick = e => {
   e.stopPropagation();
-  if (!look.on) return;
+  if (!look.on) $('look').onclick(new Event('click'));   // the test poses need the world paused
   poseIdx = (poseIdx + 1) % POSES.length;
   if (poseIdx === 0 && look.snap) restoreBody(look.snap);   // the cycle ends back where he was paused
   else applyPose(W, mj, POSES[poseIdx], brain ? BRAIN_STAND : STAND);
@@ -1427,6 +1524,13 @@ el.addEventListener('pointermove', e => {
   look.pitch = clamp(look.drag.pitch + (e.clientY - look.drag.y) * k, -1.2, 1.35);
 }, true);
 el.addEventListener('pointerup', e => { if (look.on) look.drag = null; }, true);
+function lookCameraLight() {
+  const t = look.tgt, c = new THREE.Vector3().subVectors(camera.position, t).normalize();
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+  const dir = c.multiplyScalar(0.55).addScaledVector(up, 0.85).normalize(), dist = Math.max(look.dist * 1.8, 2.5);
+  spot.position.copy(t).addScaledVector(dir, dist); spot.target.position.copy(t);
+  spot.angle = Math.atan(1.3 * S / dist) + 0.15;
+}
 function lookCamera() {
   const c = Math.cos(look.pitch);
   camera.position.set(look.tgt.x + look.dist * c * Math.sin(look.yaw), look.tgt.y + look.dist * Math.sin(look.pitch), look.tgt.z + look.dist * c * Math.cos(look.yaw));
@@ -1596,6 +1700,7 @@ $('go').onclick = async () => {
   window.addEventListener('devicemotion', onMotion);
   $('start').classList.add('hide');
   $('hud').classList.add('show');
+  $('title').classList.add('show'); setTimeout(() => $('title').classList.remove('show'), 3000);
   fullSync();
   setTimeout(() => { if (mode !== 'sensor') { mode = 'touch'; note('No motion sensors here, so drag to turn the box.', 4500); } }, 1300);
 };
@@ -1614,6 +1719,7 @@ standUp();
 applyQuality();
 LOAD.state('Building the room', 'ready');
 LOAD.finish();
+try { document.fonts && document.fonts.load('600 40px BoxTitle'); } catch (_) {}
 $('go').disabled = false; $('go').textContent = 'Start';
 requestAnimationFrame(frame);
 </script>
