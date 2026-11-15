@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The Box — Rulebook</title>
+<style>
+:root{
+  --bg:#f3efe9; --surface:#fffdf9; --ink:#1d1712; --muted:#6b5f53; --line:#e0d7cb;
+  --accent:#c4661f; --accent-soft:#f7e3d1; --head-bg:#1d1712; --head-fg:#f4ece2; --head-muted:#a8998a;
+  --good:#2f7d4f; --good-soft:#dcefe2; --warn:#a86a00; --warn-soft:#f6e9c8; --bad:#a83a2c; --bad-soft:#f5dcd6;
+  --c1:#a83a2c; --c2:#2f6f9f; --c3:#2f7d4f; --c4:#7a5aa8;
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#13100d; --surface:#1d1915; --ink:#efe7dd; --muted:#a89a8b; --line:#352d25;
+  --accent:#f0954f; --accent-soft:#3d2817; --head-bg:#0b0907; --head-fg:#f4ece2; --head-muted:#8d7f71;
+  --good:#6cc28f; --good-soft:#173322; --warn:#e2b04a; --warn-soft:#3a2e12; --bad:#ec8576; --bad-soft:#3d1c17;
+  --c1:#ec8576; --c2:#7fb4dd; --c3:#6cc28f; --c4:#b79be0;
+}}
+*{box-sizing:border-box} [hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.5;-webkit-text-size-adjust:100%}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--head-bg)}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--head-bg);color:var(--head-fg);padding:0 max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px))}
+.bar-in{max-width:880px;margin:0 auto;display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-block:12px}
+.bar h1{margin:0;font-size:1.1rem;font-weight:700}
+.stamp{font-size:.78rem;color:var(--head-muted);white-space:nowrap}
+.page{max-width:880px;margin:0 auto;padding:20px max(16px,env(safe-area-inset-right,0px)) 64px max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:16px}
+h2{font-size:1.35rem;line-height:1.25;margin:22px 0 0;padding-top:16px;border-top:1px solid var(--line)}
+h2:first-child{border:0;margin-top:0;padding-top:0}
+p{margin:0;max-width:68ch}
+.lead{font-size:1.06rem}
+.note{color:var(--muted);font-size:.86rem}
+ul,ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:4px}
+li::marker{color:var(--accent)}
+.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.facts div{background:var(--surface);padding:10px 12px;display:flex;flex-direction:column}
+.facts span{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.facts b{font-size:1.25rem;font-variant-numeric:tabular-nums}
+@media (max-width:600px){.facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.pill{display:inline-block;font-size:.72rem;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap}
+.pill.done{background:var(--good-soft);color:var(--good)}
+.pill.prog{background:var(--warn-soft);color:var(--warn)}
+.pill.open{background:var(--bad-soft);color:var(--bad)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 46px);z-index:4;background:var(--bg);padding:8px 0;border-bottom:1px solid var(--line)}
+.chips button{font:inherit;font-size:.85rem;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.chips button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.cat{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.cat i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.cat.safe{color:var(--c1)} .cat.safe i{background:var(--c1)}
+.cat.phys{color:var(--c2)} .cat.phys i{background:var(--c2)}
+.cat.human{color:var(--c3)} .cat.human i{background:var(--c3)}
+.cat.stage{color:var(--c4)} .cat.stage i{background:var(--c4)}
+.rules{display:flex;flex-direction:column;gap:10px}
+.rule{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.rule summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:start;padding:12px 14px}
+.rule summary::-webkit-details-marker{display:none}
+.rule .n{font-weight:800;font-size:1.45rem;line-height:1.1;color:var(--muted);text-align:center}
+.rule .t b{display:block;font-size:1.02rem;line-height:1.3;margin-top:2px}
+.rule .t .one{font-size:.88rem;color:var(--muted);margin-top:2px;display:block}
+.rule[open] summary{border-bottom:1px solid var(--line)}
+.rule .body{padding:12px 14px 14px 64px;display:flex;flex-direction:column;gap:12px}
+@media (max-width:600px){.rule .body{padding-left:14px}}
+.rule h4{margin:0 0 4px;font-size:.7rem;text-transform:uppercase;letter-spacing:.08em;color:var(--accent)}
+.asks{list-style:none;padding:0}
+.asks li{display:grid;grid-template-columns:86px minmax(0,1fr);gap:8px;font-size:.92rem}
+.asks time{color:var(--muted);font-size:.8rem;font-variant-numeric:tabular-nums;padding-top:2px}
+.asks q{font-style:italic}
+.meter{display:flex;flex-direction:column;gap:6px}
+.trend{display:flex;align-items:flex-end;gap:6px;height:74px}
+.trend div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%}
+.trend span{width:100%;max-width:46px;background:var(--accent);border-radius:4px 4px 0 0;opacity:.85}
+.trend small{font-size:.68rem;color:var(--muted);white-space:nowrap}
+.trend em{font-style:normal;font-size:.75rem;font-weight:700;font-variant-numeric:tabular-nums}
+.vers{display:flex;flex-wrap:wrap;gap:6px}
+.vers span{font-size:.75rem;padding:2px 8px;border-radius:6px;background:var(--bg);border:1px solid var(--line)}
+.tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.88rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+.now{display:flex;flex-direction:column;gap:8px}
+.now div{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.now div b.k{font-size:1.1rem;color:var(--accent)}
+.now p{font-size:.92rem}
+.steps{counter-reset:s;list-style:none;padding:0;gap:8px}
+.steps li{counter-increment:s;display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px}
+.steps li::before{content:counter(s);font-weight:800;color:var(--accent);font-size:1.05rem}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.empty{color:var(--muted);font-size:.9rem;padding:8px 2px}
+</style>
+</head>
+<body>
+<header class="bar"><div class="bar-in"><h1>The Box — Rulebook</h1><span class="stamp">V38 · Nov 15, 12:45</span></div></header>
+<div class="page">
+
+<section>
+<h2>How he should behave</h2>
+<p class="lead">Each request you've made is filed under one of these ten rules. They're ranked: <b>when two rules clash, the higher one wins.</b> Every rule has a piece of code that owns it and a test that checks it.</p>
+</section>
+
+<div class="facts">
+  <div><span>Rules</span><b>10</b></div>
+  <div><span>Done</span><b style="color:var(--good)">6</b></div>
+  <div><span>In progress</span><b style="color:var(--warn)">4</b></div>
+  <div><span>Latest build</span><b>V38</b></div>
+</div>
+
+<h2>Being worked on now</h2>
+<div class="now">
+  <div><b class="k">1</b><p><b>Feet sliding in get-ups</b> (rule 5). Down from ~20 to 6.6 cm/s. Worst in turned rooms and the narrow box.</p></div>
+  <div><b class="k">2</b><p><b>Catch the fall with hands first</b> (rule 3). A rework is in progress: he turns toward the fall and puts his hands out. The head guard is only for when he can't.</p></div>
+  <div><b class="k">3</b><p><b>Standing balance</b> (rule 6): in tilts and pushes his weight still goes outside his feet. 3 falls in 36 standing tests.</p></div>
+  <div><b class="k">4</b><p><b>Human strength while standing; palms, not the backs of the hands</b> (rule 4).</p></div>
+</div>
+
+<h2>The rules, highest first</h2>
+<div class="chips" role="group" aria-label="Filter rules">
+  <button data-f="all" aria-pressed="true">All</button>
+  <button data-f="safe">Never broken</button>
+  <button data-f="phys">Honest physics</button>
+  <button data-f="human">Like a person</button>
+  <button data-f="stage">Staging &amp; page</button>
+  <button data-f="todo">Not done yet</button>
+</div>
+
+<div class="rules" id="rules">
+
+<details class="rule" data-cat="safe" data-st="done">
+<summary><span class="n">1</span><span class="t"><span class="cat safe"><i></i>Never broken</span><b>Never stuck, never through the box</b><span class="one">The page never freezes. No part of him goes into a wall, the floor or the ceiling.</span></span><span class="pill done">Done</span></summary>
+<div class="body">
+  <div><h4>What you asked</h4><ul class="asks">
+    <li><time>Nov 14 23:19</time><span>Log errors in the snapshot when something goes wrong</span></li>
+    <li><time>Nov 15 11:04</time><span><q>The whole thing has to be smooth. There cannot be a freeze</q></span></li>
+    <li><time>Nov 15</time><span>Figure froze while the menu still worked</span></li>
+  </ul></div>
+  <div><h4>How it's done</h4><p>The freeze was a memory leak: every time the code checked his contacts with the box, it made a copy that was never freed. Fixed in V37. Even if something goes wrong now, the page keeps running, with watchdogs on falls and get-ups. A last step every frame pushes any limb out of the walls.</p></div>
+  <div><h4>Still to watch</h4><p>If it freezes again, send a snapshot: it now includes errors and memory use.</p></div>
+  <div class="vers"><span>V29</span><span>V31</span><span>V36</span><span>V37</span></div>
+</div>
+</details>
+
+<details class="rule" data-cat="safe" data-st="done">
+<summary><span class="n">2</span><span class="t"><span class="cat safe"><i></i>Never broken</span><b>A body that could exist</b><span class="one">Every joint stays within a person's range. No broken-looking back, neck, arms, ankles or knees.</span></span><span class="pill done">Done</span></summary>
+<div class="body">
+  <div><h4>What you asked</h4><ul class="asks">
+    <li><time>Nov 14 21:20</time><span>Ankles never fold sideways</span></li>
+    <li><time>Nov 14 21:40</time><span>Check that every joint's range is humanly possible</span></li>
+    <li><time>Nov 14 23:03–23:20</time><span>No impossible bends in the back, neck or arms</span></li>
+    <li><time>Nov 15 09:15</time><span>Knees popping out; the mannequin's pieces must stay joined when he bends</span></li>
+  </ul></div>
+  <div><h4>How it's done</h4><p>Joint limits are taken from real people's recordings. Fall poses stay in the middle of each joint's range. The trunk and neck of the figure bend smoothly instead of as separate pieces.</p></div>
+  <div><h4>Still to check</h4><p>Since V34 his knees bend fully to reach the floor in get-ups. Send snapshots of get-ups so we can check they look natural.</p></div>
+  <div class="vers"><span>V17</span><span>V29</span><span>V34</span></div>
+</div>
+</details>
+
+<details class="rule" data-cat="human" data-st="prog">
+<summary><span class="n">3</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Catch the fall, like a person</b><span class="one">He turns toward the fall and puts his hands, arms or a knee out. He protects his head only when he can't.</span></span><span class="pill prog">In progress</span></summary>
+<div class="body">
+  <div><h4>What you asked</h4><ul class="asks">
+    <li><time>Nov 14 19:12</time><span><q>the head is very important</q></span></li>
+    <li><time>Nov 14 23:09</time><span>Arms protect the head; curl into a ball when flipped</span></li>
+    <li><time>Nov 15 09:10</time><span>Face never pressed on a wall</span></li>
+    <li><time>Nov 15 12:21</time><span>Catch himself with hands out when he feels he's falling — <q>super important</q></span></li>
+  </ul></div>
+  <div><h4>How it's done</h4><p>Today he mostly guards his head. The rework (hands out first, head guard only when there's no time or room, or he's upside down) is being built.</p></div>
+  <div class="vers"><span>V10</span><span>V29</span><span>next</span></div>
+</div>
+</details>
+
+<details class="rule" data-cat="phys" data-st="prog">
+<summary><span class="n">4</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>Physically honest</b><span class="one">No invisible lifting. A person's strength at every joint. He pushes with his palms.</span></span><span class="pill prog">In progress</span></summary>
+<div class="body">
+  <div><h4>What you asked</h4><ul class="asks">
+    <li><time>Nov 14 20:59</time><span>No rising <q>like gravity didn't exist</q></span></li>
+    <li><time>Nov 14 23:06</time><span>No physics cheating, like lifting himself with one hand</span></li>
+    <li><time>Nov 15 12:23</time><span><q>a human always uses the palm against the floor … never the back</q></span></li>
+  </ul></div>
+  <div><h4>How it's done</h4><p>During get-ups his strength is capped at a person's. Feet and hands grip no harder than a real sole or palm on wood.</p></div>
+  <div><h4>Agreed exception</h4><p>Get-ups play a real person's recording, so the poses are human but his muscles don't drive them. A firm push or a steep floor still knocks him down.</p></div>
+  <div><h4>Still open</h4><ul><li>While standing, his spine and knees sometimes use more than a person's strength</li><li>Hands on the floor turned palm down during get-ups</li></ul></div>
+  <div class="vers"><span>V13</span><span>V25</span><span>next</span></div>
+</div>
+</details>
+
+<details class="rule" data-cat="phys" data-st="prog">
+<summary><span class="n">5</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>What touches stays put</b><span class="one">A foot or hand on the floor or a wall doesn't slide. Whole sole down: never tiptoe, never floating.</span></span><span class="pill prog">In progress</span></summary>
+<div class="body">
+  <div><h4>What you asked</h4><ul class="asks">
+    <li><time>Nov 14 18:50</time><span>Feet planted: the core ability, the whole sole down</span></li>
+    <li><time>Nov 14 21:12</time><span>The hand stays put and the body pivots around it</span></li>
+    <li><time>Nov 15 09:07</time><span>Feet slide during get-ups</span></li>
+    <li><time>Nov 15 10:28</time><span><q>keep working on the blend to fix the sliding. That's very important</q></span></li>
+    <li><time>Nov 15 11:44</time><span><q>when he's getting up, the feet are floating</q></span></li>
+  </ul></div>
+  <div class="meter"><h4>Feet sliding in get-ups (cm per second, lower is better)</h4>
+    <div class="trend">
+      <div><em>20</em><span style="height:56px"></span><small>V29</small></div>
+      <div><em>14</em><span style="height:39px"></span><small>V31</small></div>
+      <div><em>6.1</em><span style="height:17px"></span><small>V35</small></div>
+      <div><em>6.6*</em><span style="height:18px"></span><small>V37</small></div>
+      <div><em>0</em><span style="height:2px;opacity:.3"></span><small>goal</small></div>
+    </div>
+    <p class="note">*V37 uses a stricter test (sliding measured against the box's own walls and floor, which is correct in turned rooms). Under the same test V35 was 10.0.</p>
+  </div>
+  <div><h4>Still open</h4><ul><li>Some sliding in turned rooms, in the narrow box, and while the box is still turning</li><li>Heels float about 1 cm (cosmetic)</li></ul></div>
+  <div class="vers"><span>V11</span><span>V31</span><span>V34</span><span>V35</span><span>V37</span></div>
+</div>
+</details>
+
+<details class="rule" data-cat="phys" data-st="prog">
+<summary><span class="n">6</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>Balanced like a person</b><span class="one">His weight stays over what supports him. A hand on a wall counts as support, like a foot. If his weight goes outside that, he steps, grabs or falls.</span></span><span class="pill prog">In progress</span></summary>
+<div class="body">
+  <div><h4>What you asked</h4><ul class="asks">
+    <li><time>Nov 14 23:09</time><span>No positions that would make him fall in real life (cross-arm pose)</span></li>
+    <li><time>Nov 15 12:18</time><span><q>if I shake the phone left and right and the hands are on the wall, he should be able to stay stable</q></span></li>
+  </ul></div>
+  <div><h4>How we check it</h4><p>The balance overlay (debug menu → balance) shows where his weight is compared with his feet. A standing test suite covers tilts, tremor, pushes and standing off-centre.</p></div>
+  <div><h4>Still open</h4><ul><li>In tilts and pushes his weight leaves his feet: 3 falls in 36 standing tests</li><li>A step when his weight leaves his support (coming)</li><li>Gentle pushes during a get-up do nothing (a person would wobble)</li></ul></div>
+  <div class="vers"><span>next</span></div>
+</div>
+</details>
+
+<details class="rule" data-cat="human" data-st="done">
+<summary><span class="n">7</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Real human motion first</b><span class="one">Recordings of real people drive his movement. Changes are smooth, and get-ups use arms and legs as levers.</span></span><span class="pill done">Done</span></summary>
+<div class="body">
+  <div><h4>What you asked</h4><ul class="asks">
+    <li><time>Nov 14 16:21</time><span>No manual animation; use real motion</span></li>
+    <li><time>Nov 14 21:15</time><span>From sitting: sit up and stand, don't turn over</span></li>
+    <li><time>Nov 14 21:16</time><span>Get-ups use legs and arms as levers, hands planted</span></li>
+    <li><time>Nov 15 09:09</time><span>No snap when a get-up starts</span></li>
+  </ul></div>
+  <div><h4>How it's done</h4><p>He has 2,485 recorded moves on his body. Get-ups, sit-to-stands and push recoveries come from real people. Each get-up blends in from how he landed over 0.8 s.</p></div>
+  <div class="vers"><span>V16</span><span>V25</span><span>V29</span><span>V35</span></div>
+</div>
+</details>
+
+<details class="rule" data-cat="human" data-st="done">
+<summary><span class="n">8</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Comfortable and economical</b><span class="one">No effort held for no reason: arms on something or hanging, elbows down. He rests when he can.</span></span><span class="pill done">Done</span></summary>
+<div class="body">
+  <div><h4>What you asked</h4><ul class="asks">
+    <li><time>Nov 14 21:11</time><span>Elbows down and back, not forward</span></li>
+    <li><time>Nov 14 22:51</time><span>Lean on a wall to rest</span></li>
+    <li><time>Nov 14 23:02</time><span>No arm left half-raised near a wall</span></li>
+    <li><time>Nov 15 09:22–09:25</time><span>Rest like a person: crouch, sit, kneel when the room is low</span></li>
+  </ul></div>
+  <div class="vers"><span>V14</span><span>V29</span></div>
+</div>
+</details>
+
+<details class="rule" data-cat="stage" data-st="done">
+<summary><span class="n">9</span><span class="t"><span class="cat stage"><i></i>Staging &amp; page</span><b>Social and staging</b><span class="one">He faces the glass and goes back to the middle only when the box is level.</span></span><span class="pill done">Done</span></summary>
+<div class="body">
+  <div><h4>What you asked</h4><ul class="asks">
+    <li><time>Nov 15 09:51</time><span>Back to the middle only when the box is level, facing us</span></li>
+  </ul></div>
+  <div><h4>How it's done</h4><p>When things are calm and the box is within about 10° of level, he steps to the middle and slowly turns back to face the glass. When it's tipped toward a near wall, he leans on the wall instead.</p></div>
+  <div class="vers"><span>V29</span></div>
+</div>
+</details>
+
+<details class="rule" data-cat="stage" data-st="done">
+<summary><span class="n">10</span><span class="t"><span class="cat stage"><i></i>Staging &amp; page</span><b>Page and buttons</b><span class="one">A clean page: V label, pause, debug menu (wireframe, poses, balance, snapshot).</span></span><span class="pill done">Done</span></summary>
+<div class="body">
+  <div><h4>What you asked</h4><ul class="asks">
+    <li><time>Nov 15 09:30</time><span>Clean up the page; label builds "V" + number</span></li>
+    <li><time>Nov 15 09:52</time><span>The recordings page becomes the official one</span></li>
+  </ul></div>
+  <div class="vers"><span>V29</span></div>
+</div>
+</details>
+
+<p class="empty" id="none" hidden>No rules in this group.</p>
+</div>
+
+<h2>When two rules clash</h2>
+<div class="tbl"><table>
+<thead><tr><th>Clash</th><th>Winner</th><th>How it works</th></tr></thead>
+<tbody>
+<tr><td>Recording vs planted feet (7 vs 5)</td><td>Feet</td><td>The recording is placed where his feet are. His body moves over the feet, and his legs reach the spots.</td></tr>
+<tr><td>Planted feet vs walls (5 vs 1)</td><td>Walls</td><td>A last step moves him out of any wall and moves his foot spots with him.</td></tr>
+<tr><td>Recording's arms vs walls (7 vs 1)</td><td>Walls</td><td>An arm going into a wall is bent out at its own joints. His body moves only if the arm can't get out.</td></tr>
+<tr><td>Catching with hands vs protecting the head (3)</td><td>Catch first</td><td>He puts his hands out. The head guard is only for when he can't.</td></tr>
+<tr><td>Hands on the floor vs head guard (3 vs 5)</td><td>Head, while a hit is coming</td><td>Once he's still, his hands go to the floor beside his chest, or onto the wall if his face is against one.</td></tr>
+<tr><td>Recording's hand vs palm on the floor (7 vs 4)</td><td>Palm</td><td>A hand pressing on the floor is turned palm down.</td></tr>
+<tr><td>Middle of the box vs leaning on a wall (9 vs 8)</td><td>Settled by you, Nov 15 09:51</td><td>Level box: he goes to the middle. Tipped toward a near wall: he leans on it.</td></tr>
+<tr><td>Honest physics vs reliable get-ups (4 vs 7)</td><td>Get-ups (agreed)</td><td>Get-ups replay recordings. Pushes and steep floors still knock him down.</td></tr>
+<tr><td>Smooth start vs feet planted at once (7 vs 5)</td><td>Both</td><td>His hips and trunk blend in, feet already on the floor stay put, and a new foot spot is reached over 0.2 s.</td></tr>
+</tbody></table></div>
+
+<h2>Separate feature: cracking mode</h2>
+<div class="box">
+  <p>An on/off button. These rules sit outside the ranking above.</p>
+  <ul>
+    <li>He's damaged by how hard he hits. Below 2.8 m/s there's no damage (hands and feet: 4.2 m/s). Damage adds up, and a part breaks when it's had enough.</li>
+    <li>Feet and hands used as support while standing never crack, and nothing counts during a get-up.</li>
+    <li>Wood sound; branching cracks with chips; dent marks on the box. Broken pieces keep moving and can split further.</li>
+    <li>No freeze when he breaks. If the head, neck or trunk breaks, he stops.</li>
+  </ul>
+  <div class="vers"><span>V30</span><span>V32</span><span>V33</span><span>V36</span><span>V38</span></div>
+</div>
+
+<h2>Not now</h2>
+<div class="box"><p>No work on speed, download size or battery until the behaviour is right (Nov 15 12:18). Brain 08 stays.</p></div>
+
+<h2>How a new request joins</h2>
+<ol class="steps">
+  <li><span><b>It gets a place in the ranking:</b> it either becomes a new rule or is added to an existing one.</span></li>
+  <li><span><b>Clashes are written down</b> in the table above, with which rule wins and how.</span></li>
+  <li><span><b>One piece of code owns it</b> and gets a test that measures it.</span></li>
+  <li><span><b>It's built, tested against all the rules, and released.</b> This page is updated with the build.</span></li>
+</ol>
+<p class="note">Source: the project doc "rulebook-test-page.md". Live copy next to the game: <a href="https://facaelectrica.github.io/the-box-play/rules.html">facaelectrica.github.io/the-box-play/rules.html</a>. Every agent updates it with each build.</p>
+
+</div>
+<script>
+(function(){
+  var btns=document.querySelectorAll('.chips button');
+  var rules=document.querySelectorAll('.rule');
+  var none=document.getElementById('none');
+  function apply(f){
+    var shown=0;
+    rules.forEach(function(r){
+      var ok = f==='all' || (f==='todo' ? r.dataset.st!=='done' : r.dataset.cat===f);
+      r.hidden=!ok; if(ok) shown++;
+    });
+    none.hidden=shown>0;
+    btns.forEach(function(b){b.setAttribute('aria-pressed', b.dataset.f===f ? 'true':'false');});
+    try{localStorage.setItem('rbf',f);}catch(e){}
+  }
+  btns.forEach(function(b){b.addEventListener('click',function(){apply(b.dataset.f);});});
+  var saved='all'; try{saved=localStorage.getItem('rbf')||'all';}catch(e){}
+  apply(saved);
+})();
+</script>
+</body>
+</html>
