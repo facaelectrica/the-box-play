@@ -91,12 +91,12 @@ tr:last-child td{border-bottom:0}
 </style>
 </head>
 <body>
-<header class="bar"><div class="bar-in"><h1>The Box — Rulebook</h1><span class="stamp">V43 · Nov 15, 13:40</span></div></header>
+<header class="bar"><div class="bar-in"><h1>The Box — Rulebook</h1><span class="stamp">V43 · Nov 15, 13:45</span></div></header>
 <div class="page">
 
 <section>
 <h2>How he should behave</h2>
-<p class="lead">What we're aiming for in how he behaves, and what's being done about it. Every request about him is filed under one of these nine rules. They're ranked: <b>when two rules clash, the higher one wins.</b> Each rule says whether it works yet.</p>
+<p class="lead">The target behaviour for the character, ranked by priority: <b>when two rules conflict, the higher one wins.</b> Each rule states what he should do and whether it works yet.</p>
 </section>
 
 <div class="facts">
@@ -106,93 +106,61 @@ tr:last-child td{border-bottom:0}
   <div><span>Not yet</span><b style="color:var(--bad)">2</b></div>
 </div>
 
-<h2>Being worked on now</h2>
-<div class="now">
-  <div><b class="k">1</b><p><b>Floating feet and hands; palms flat on walls</b> (rules 4, 5). V42: in get-ups a hand on the floor turns palm down (was mostly the back of the hand) and lets go when he lifts it. Next: hands on walls land flat and stick; feet stay down in the "faint" get-ups.</p></div>
-  <div><b class="k">2</b><p><b>Protect the head on a flip, fast</b> (rule 3): arms wrapped over the head as soon as the phone turns over. Catch with the hands when there is a wall to catch.</p></div>
-  <div><b class="k">3</b><p><b>Hands on the wall he is falling toward</b> (rule 6). V42: a bracing hand only goes on the wall he tips toward (or both when level); he no longer props himself on the far wall.</p></div>
-  <div><b class="k">4</b><p><b>Feet sliding in get-ups</b> (rule 5). V42: an arm in a wall no longer shoves his whole body (and feet) out. Worst left: turned rooms.</p></div>
-</div>
-
 <h2>The rules, highest first</h2>
 <div class="chips" role="group" aria-label="Filter rules">
   <button data-f="all" aria-pressed="true">All</button>
-  <button data-f="safe">Never broken</button>
-  <button data-f="phys">Honest physics</button>
-  <button data-f="human">Like a person</button>
-  <button data-f="stage">Facing you</button>
+  <button data-f="safe">Integrity</button>
+  <button data-f="phys">Physics</button>
+  <button data-f="human">Human behaviour</button>
+  <button data-f="stage">Presentation</button>
   <button data-f="todo">Not working yet</button>
 </div>
 
 <div class="rules" id="rules">
 
 <details class="rule" data-cat="safe" data-st="done">
-<summary><span class="n">1</span><span class="t"><span class="cat safe"><i></i>Never broken</span><b>Never through the box</b><span class="one">No part of him goes into a wall, the floor or the ceiling, in any pose, fall or get-up.</span></span><span class="pill done">Works</span></summary>
+<summary><span class="n">1</span><span class="t"><span class="cat safe"><i></i>Integrity</span><b>Stays inside the box</b><span class="one">No body part passes through a wall, the floor or the ceiling.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
-  <div><h4>What you asked</h4><ul class="asks">
-    <li><time>Nov 15</time><span>Limbs going into the walls during get-ups and when the box flips</span></li>
-  </ul></div>
-  <div><h4>How it works now</h4><p>A last step every frame moves him out of any wall, and his foot spots move with him. An arm going into a wall bends out at its own joints, so it no longer shoves his whole body.</p></div>
+  <div><h4>Status</h4><p>Works. After every frame, any limb that has entered a surface is pushed back out. An arm resolves by bending at its own joints; the body is moved only if that isn't enough.</p></div>
   <div class="vers"><span>V29</span><span>V31</span><span>V37</span><span>V42</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="safe" data-st="done">
-<summary><span class="n">2</span><span class="t"><span class="cat safe"><i></i>Never broken</span><b>A body that could exist</b><span class="one">Every joint stays within a person's range. No broken-looking back, neck, arms, ankles or knees.</span></span><span class="pill done">Works</span></summary>
+<summary><span class="n">2</span><span class="t"><span class="cat safe"><i></i>Integrity</span><b>Anatomically possible poses</b><span class="one">Every joint stays within a human range of motion. The body bends as one continuous figure.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
-  <div><h4>What you asked</h4><ul class="asks">
-    <li><time>Nov 14 21:20</time><span>Ankles never fold sideways</span></li>
-    <li><time>Nov 14 21:40</time><span>Check that every joint's range is humanly possible</span></li>
-    <li><time>Nov 14 23:03–23:20</time><span>No impossible bends in the back, neck or arms</span></li>
-    <li><time>Nov 15 09:15</time><span>Knees popping out; the mannequin's pieces must stay joined when he bends</span></li>
-  </ul></div>
-  <div><h4>How it works now</h4><p>Joint limits are taken from real people's recordings. Fall poses stay in the middle of each joint's range. The trunk and neck of the figure bend smoothly instead of as separate pieces.</p></div>
-  <div><h4>Still to check</h4><p>Since V34 his knees bend fully to reach the floor in get-ups. Send snapshots of get-ups so we can check they look natural.</p></div>
+  <div><h4>Rule</h4><ul><li>No over-bent spine, neck, shoulders, ankles or knees.</li><li>Body segments never separate or show gaps when he bends.</li></ul></div>
+  <div><h4>Status</h4><p>Works. Joint limits are measured from real human motion. Falls aim for the middle of each joint's range rather than its extremes.</p></div>
+  <div><h4>To verify</h4><p>Full knee bend during get-ups (since V34). A snapshot of a get-up would confirm it looks natural.</p></div>
   <div class="vers"><span>V17</span><span>V29</span><span>V34</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="human" data-st="open">
-<summary><span class="n">3</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Catch the fall, like a person</b><span class="one">He turns toward the fall and puts his hands, arms or a knee out. He protects his head only when he can't.</span></span><span class="pill open">Not yet</span></summary>
+<summary><span class="n">3</span><span class="t"><span class="cat human"><i></i>Human behaviour</span><b>Breaks his fall</b><span class="one">When he loses balance, he turns toward the impact and catches himself with his hands, forearms or a knee.</span></span><span class="pill open">Not yet</span></summary>
 <div class="body">
-  <div><h4>What you asked</h4><ul class="asks">
-    <li><time>Nov 14 19:12</time><span><q>the head is very important</q></span></li>
-    <li><time>Nov 14 23:09</time><span>Arms protect the head; curl into a ball when flipped</span></li>
-    <li><time>Nov 15 09:10</time><span>Face never pressed on a wall</span></li>
-    <li><time>Nov 15 12:21</time><span>Catch himself with hands out when he feels he's falling — <q>super important</q></span></li>
-  </ul></div>
-  <div><h4>How it works now</h4><p>Not working yet: today he mostly guards his head. Being built: arms wrapped over his head as soon as the box flips, and hands out to catch a wall when there is one to catch.</p></div>
+  <div><h4>Rule</h4><ul><li><b>Catch first.</b> Brace against the surface he is about to hit.</li><li><b>Shield only when a catch is impossible</b>: no time, no room, upside down, or arms blocked. Then his forearms go between his head and the surface.</li><li>His face never rests against a wall. Upside down, he tucks.</li></ul></div>
+  <div><h4>Status</h4><p>Not yet. Head shielding works; the catch is in development, so for now he mostly shields.</p></div>
   <div class="vers"><span>V10</span><span>V29</span><span>next</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="phys" data-st="prog">
-<summary><span class="n">4</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>Physically honest</b><span class="one">No invisible lifting. A person's strength at every joint. He pushes with his palms.</span></span><span class="pill prog">Partly</span></summary>
+<summary><span class="n">4</span><span class="t"><span class="cat phys"><i></i>Physics</span><b>Human strength only</b><span class="one">Every force he uses is one a person could produce. He pushes with his palms, never the backs of his hands.</span></span><span class="pill prog">Partly</span></summary>
 <div class="body">
-  <div><h4>What you asked</h4><ul class="asks">
-    <li><time>Nov 14 20:59</time><span>No rising <q>like gravity didn't exist</q></span></li>
-    <li><time>Nov 14 23:06</time><span>No physics cheating, like lifting himself with one hand</span></li>
-    <li><time>Nov 15 12:23</time><span><q>a human always uses the palm against the floor … never the back</q></span></li>
-  </ul></div>
-  <div><h4>How it works now</h4><p>During get-ups his strength is capped at a person's. Feet and hands grip no harder than a real sole or palm on wood.</p></div>
-  <div><h4>Agreed exception</h4><p>Get-ups play a real person's recording, so the poses are human but his muscles don't drive them. A firm push or a steep floor still knocks him down.</p></div>
-  <div><h4>Not working yet</h4><ul><li>While standing, his spine and knees sometimes use more than a person's strength</li><li>Hands on walls don't land flat yet (being worked on)</li></ul></div>
-  <div><h4>Fixed lately</h4><p>V42: in get-ups a hand on the floor turns palm down (it was mostly the back of the hand) and lets go when he lifts it.</p></div>
+  <div><h4>Rule</h4><ul><li>No external lifting.</li><li>Joint strength capped at human levels.</li><li>Grip no stronger than a sole or palm on wood.</li></ul></div>
+  <div><h4>Exception (agreed)</h4><p>Get-ups replay recorded motion, so the poses are human but not muscle-driven. A firm push or a steep floor still knocks him down.</p></div>
+  <div><h4>Status</h4><ul><li><b>Works:</b> in get-ups, a hand on the floor turns palm-down and releases when lifted (V42).</li><li><b>Not yet:</b> standing, his spine and knees sometimes exceed human strength.</li><li><b>Not yet:</b> hands don't land flat on walls.</li></ul></div>
   <div class="vers"><span>V13</span><span>V25</span><span>V42</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="phys" data-st="open">
-<summary><span class="n">5</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>What touches stays put</b><span class="one">A foot or hand on the floor or a wall doesn't slide. Whole sole down: never tiptoe, never floating.</span></span><span class="pill open">Not yet</span></summary>
+<summary><span class="n">5</span><span class="t"><span class="cat phys"><i></i>Physics</span><b>Contacts stay planted</b><span class="one">A foot or hand on a surface doesn't slide. The body moves over its contacts, never the contacts under the body.</span></span><span class="pill open">Not yet</span></summary>
 <div class="body">
-  <div><h4>What you asked</h4><ul class="asks">
-    <li><time>Nov 14 18:50</time><span>Feet planted: the core ability, the whole sole down</span></li>
-    <li><time>Nov 14 21:12</time><span>The hand stays put and the body pivots around it</span></li>
-    <li><time>Nov 15 09:07</time><span>Feet slide during get-ups</span></li>
-    <li><time>Nov 15 10:28</time><span><q>keep working on the blend to fix the sliding. That's very important</q></span></li>
-    <li><time>Nov 15 11:44</time><span><q>when he's getting up, the feet are floating</q></span></li>
-  </ul></div>
-  <div class="meter"><h4>Feet sliding in get-ups (cm per second, lower is better)</h4>
+  <div><h4>Rule</h4><ul><li>Feet: whole sole down, never on tiptoe, never hovering.</li><li>Hands: palm flat.</li><li>Kneeling: toes tucked under.</li></ul></div>
+  <div><h4>Status</h4><ul><li><b>Works</b> while standing.</li><li><b>Not yet</b> in get-ups: the feet still slide, worst when the box is rotated or narrow, or while it is turning.</li><li><b>Not yet:</b> in some get-ups the feet hover. Heels sit about 1 cm high.</li></ul></div>
+  <div class="meter"><h4>Foot slip during get-ups (cm/s, lower is better)</h4>
     <div class="trend">
       <div><em>20</em><span style="height:56px"></span><small>V29</small></div>
       <div><em>14</em><span style="height:39px"></span><small>V31</small></div>
@@ -200,61 +168,45 @@ tr:last-child td{border-bottom:0}
       <div><em>6.6*</em><span style="height:18px"></span><small>V37</small></div>
       <div><em>0</em><span style="height:2px;opacity:.3"></span><small>goal</small></div>
     </div>
-    <p class="note">*V37 uses a stricter test (sliding measured against the box's own walls and floor, which is correct in turned rooms). Under the same test V35 was 10.0.</p>
+    <p class="note">*From V37, slip is measured relative to the box itself, which is correct when the box is rotated. On that measure V35 scored 10.0.</p>
   </div>
-  <div><h4>Not working yet</h4><ul><li>Feet still slide in get-ups, worst in turned rooms, the narrow box and while the box is turning</li><li>Feet float in the "faint" get-ups (being worked on); heels float about 1 cm</li></ul></div>
-  <div><h4>Works</h4><p>Standing: feet stay planted. V42: an arm in a wall no longer shoves his whole body and feet.</p></div>
   <div class="vers"><span>V11</span><span>V31</span><span>V34</span><span>V35</span><span>V37</span><span>V42</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="phys" data-st="prog">
-<summary><span class="n">6</span><span class="t"><span class="cat phys"><i></i>Honest physics</span><b>Balanced like a person</b><span class="one">His weight stays over what supports him. A hand on a wall counts as support, like a foot. If his weight goes outside that, he steps, grabs or falls.</span></span><span class="pill prog">Partly</span></summary>
+<summary><span class="n">6</span><span class="t"><span class="cat phys"><i></i>Physics</span><b>Balanced</b><span class="one">His weight stays over his support: his feet plus any hand braced on a wall. When it leaves that area, he steps, grabs or falls.</span></span><span class="pill prog">Partly</span></summary>
 <div class="body">
-  <div><h4>What you asked</h4><ul class="asks">
-    <li><time>Nov 14 23:09</time><span>No positions that would make him fall in real life (cross-arm pose)</span></li>
-    <li><time>Nov 15 12:18</time><span><q>if I shake the phone left and right and the hands are on the wall, he should be able to stay stable</q></span></li>
-  </ul></div>
-  <div><h4>Works</h4><p>V42: a bracing hand goes on the wall he tips toward (both when level); he no longer props himself on the far wall.</p></div>
-  <div><h4>Not working yet</h4><ul><li>In tilts and pushes his weight leaves his feet: 3 falls in 36 standing tests</li><li>No step yet when his weight leaves his support</li><li>Gentle pushes during a get-up do nothing (a person would wobble)</li></ul></div>
+  <div><h4>Rule</h4><ul><li>A braced hand counts as support, like a foot.</li><li>He never holds a pose that couldn't balance.</li><li>Hands braced on the walls should keep him upright while the box is shaken side to side.</li></ul></div>
+  <div><h4>Status</h4><ul><li><b>Works:</b> he braces on the wall he is tipping toward, not the far one (V42).</li><li><b>Not yet:</b> 3 falls in 36 standing tests.</li><li><b>Not yet:</b> no recovery step.</li><li><b>Not yet:</b> no reaction to light pushes during a get-up.</li></ul></div>
+  <div><h4>How it's checked</h4><p>Balance overlay (debug menu → balance) and a standing test set: tilts, shaking, pushes, off-centre stances.</p></div>
   <div class="vers"><span>V42</span><span>next</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="human" data-st="done">
-<summary><span class="n">7</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Real human motion first</b><span class="one">Recordings of real people drive his movement. Changes are smooth, and get-ups use arms and legs as levers.</span></span><span class="pill done">Works</span></summary>
+<summary><span class="n">7</span><span class="t"><span class="cat human"><i></i>Human behaviour</span><b>Real human motion</b><span class="one">His movement comes from recordings of real people, with smooth transitions.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
-  <div><h4>What you asked</h4><ul class="asks">
-    <li><time>Nov 14 16:21</time><span>No manual animation; use real motion</span></li>
-    <li><time>Nov 14 21:15</time><span>From sitting: sit up and stand, don't turn over</span></li>
-    <li><time>Nov 14 21:16</time><span>Get-ups use legs and arms as levers, hands planted</span></li>
-    <li><time>Nov 15 09:09</time><span>No snap when a get-up starts</span></li>
-  </ul></div>
-  <div><h4>How it works now</h4><p>He has 2,485 recorded moves on his body. Get-ups, sit-to-stands and push recoveries come from real people. Each get-up blends in from how he landed over 0.8 s.</p></div>
+  <div><h4>Rule</h4><ul><li>No hand-made animation.</li><li>No snapping between movements.</li><li>Get-ups use arms and legs as levers, with feet planted before he rises.</li><li>From sitting, he sits up and stands instead of rolling over.</li></ul></div>
+  <div><h4>Status</h4><p>Works. 2,485 recorded movements. Each get-up blends in from his landing pose over 0.8 s.</p></div>
   <div class="vers"><span>V16</span><span>V25</span><span>V29</span><span>V35</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="human" data-st="done">
-<summary><span class="n">8</span><span class="t"><span class="cat human"><i></i>Like a person</span><b>Comfortable and economical</b><span class="one">No effort held for no reason: arms on something or hanging, elbows down. He rests when he can.</span></span><span class="pill done">Works</span></summary>
+<summary><span class="n">8</span><span class="t"><span class="cat human"><i></i>Human behaviour</span><b>Minimal effort</b><span class="one">No muscle effort without a purpose. He rests whenever he can.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
-  <div><h4>What you asked</h4><ul class="asks">
-    <li><time>Nov 14 21:11</time><span>Elbows down and back, not forward</span></li>
-    <li><time>Nov 14 22:51</time><span>Lean on a wall to rest</span></li>
-    <li><time>Nov 14 23:02</time><span>No arm left half-raised near a wall</span></li>
-    <li><time>Nov 15 09:22–09:25</time><span>Rest like a person: crouch, sit, kneel when the room is low</span></li>
-  </ul></div>
+  <div><h4>Rule</h4><ul><li>Arms either rest on a surface or hang.</li><li>Elbows stay low and back.</li><li>He rests when he can: leaning on a wall, sitting, or kneeling when the ceiling is low.</li></ul></div>
+  <div><h4>Status</h4><p>Works.</p></div>
   <div class="vers"><span>V14</span><span>V29</span></div>
 </div>
 </details>
 
 <details class="rule" data-cat="stage" data-st="done">
-<summary><span class="n">9</span><span class="t"><span class="cat stage"><i></i>Facing you</span><b>Faces you</b><span class="one">He faces the glass and goes back to the middle only when the box is level.</span></span><span class="pill done">Works</span></summary>
+<summary><span class="n">9</span><span class="t"><span class="cat stage"><i></i>Presentation</span><b>Faces the viewer</b><span class="one">He faces the glass. He returns to the centre only when the box is level.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
-  <div><h4>What you asked</h4><ul class="asks">
-    <li><time>Nov 15 09:51</time><span>Back to the middle only when the box is level, facing us</span></li>
-  </ul></div>
-  <div><h4>How it works now</h4><p>When things are calm and the box is within about 10° of level, he steps to the middle and slowly turns back to face the glass. When it's tipped toward a near wall, he leans on the wall instead.</p></div>
+  <div><h4>Rule</h4><ul><li>Level (within about 10°): he walks to the centre and turns to face the glass.</li><li>Tilted toward a nearby wall: he leans on that wall instead.</li></ul></div>
+  <div><h4>Status</h4><p>Works.</p></div>
   <div class="vers"><span>V29</span></div>
 </div>
 </details>
@@ -262,42 +214,52 @@ tr:last-child td{border-bottom:0}
 <p class="empty" id="none" hidden>No rules in this group.</p>
 </div>
 
-<h2>When two rules clash</h2>
+<h2>When rules conflict</h2>
 <div class="tbl"><table>
-<thead><tr><th>Clash</th><th>Winner</th><th>How it works</th></tr></thead>
+<thead><tr><th>Conflict</th><th>Winner</th><th>Resolution</th></tr></thead>
 <tbody>
-<tr><td>Recording vs planted feet (7 vs 5)</td><td>Feet</td><td>The recording is placed where his feet are. His body moves over the feet, and his legs reach the spots.</td></tr>
-<tr><td>Planted feet vs walls (5 vs 1)</td><td>Walls</td><td>A last step moves him out of any wall and moves his foot spots with him.</td></tr>
-<tr><td>Recording's arms vs walls (7 vs 1)</td><td>Walls</td><td>An arm going into a wall is bent out at its own joints. His body moves only if the arm can't get out.</td></tr>
-<tr><td>Catching with hands vs protecting the head (3)</td><td>Catch first</td><td>He puts his hands out. The head guard is only for when he can't.</td></tr>
-<tr><td>Hands on the floor vs head guard (3 vs 5)</td><td>Head, while a hit is coming</td><td>Once he's still, his hands go to the floor beside his chest, or onto the wall if his face is against one.</td></tr>
-<tr><td>Recording's hand vs palm on the floor (7 vs 4)</td><td>Palm</td><td>A hand pressing on the floor is turned palm down.</td></tr>
-<tr><td>Middle of the box vs leaning on a wall (9 vs 8)</td><td>Settled by you, Nov 15 09:51</td><td>Level box: he goes to the middle. Tipped toward a near wall: he leans on it.</td></tr>
-<tr><td>Honest physics vs reliable get-ups (4 vs 7)</td><td>Get-ups (agreed)</td><td>Get-ups replay recordings. Pushes and steep floors still knock him down.</td></tr>
-<tr><td>Smooth start vs feet planted at once (7 vs 5)</td><td>Both</td><td>His hips and trunk blend in, feet already on the floor stay put, and a new foot spot is reached over 0.2 s.</td></tr>
+<tr><td>Recorded motion vs planted contacts (7 vs 5)</td><td>Contacts</td><td>The recording is aligned to where his feet are. His body follows it while his legs keep the feet in place.</td></tr>
+<tr><td>Planted contacts vs staying inside (5 vs 1)</td><td>Staying inside</td><td>He is pushed out of the wall, and his foot positions move with him.</td></tr>
+<tr><td>Recorded arm motion vs staying inside (7 vs 1)</td><td>Staying inside</td><td>The arm bends out at its own joints. The body moves only if that isn't enough.</td></tr>
+<tr><td>Catching vs shielding the head (3)</td><td>Catching</td><td>He shields only when a catch is impossible.</td></tr>
+<tr><td>Hands on the floor vs shielding (3 vs 5)</td><td>Shielding, while an impact is coming that he can't catch</td><td>At rest, his hands go to the floor beside his chest, or to the wall his face is against.</td></tr>
+<tr><td>Recorded hand pose vs palm contact (7 vs 4)</td><td>Palm</td><td>A hand bearing weight on the floor is turned palm-down.</td></tr>
+<tr><td>Returning to the centre vs leaning on a wall (9 vs 8)</td><td>Your call (Nov 15)</td><td>Level box: centre. Tilted toward a nearby wall: lean.</td></tr>
+<tr><td>Human strength vs reliable get-ups (4 vs 7)</td><td>Get-ups (agreed)</td><td>Get-ups replay recordings. Pushes and steep floors still knock him down.</td></tr>
+<tr><td>Smooth blend vs instant planting (7 vs 5)</td><td>Both</td><td>Hips and trunk blend in gradually. Feet already down stay where they are. New foot positions are reached over 0.2 s.</td></tr>
 </tbody></table></div>
 
-<h2>Separate feature: cracking mode</h2>
+<h2>Separate feature: breakable body</h2>
 <div class="box">
-  <p>An on/off button. These rules sit outside the ranking above.</p>
+  <p>Switched on or off independently. Not ranked with the rules above. <span class="pill done">Works</span></p>
   <ul>
-    <li>He's damaged by how hard he hits. Below 2.8 m/s there's no damage (hands and feet: 4.2 m/s). Damage adds up, and a part breaks when it's had enough.</li>
-    <li>Feet and hands used as support while standing never crack, and nothing counts during a get-up.</li>
-    <li>Wood sound; branching cracks with chips; dent marks on the box. Broken pieces keep moving and can split further.</li>
+    <li>Damage depends on impact speed: none below 2.8 m/s (4.2 m/s for hands and feet). Damage accumulates until a part breaks.</li>
+    <li>Feet and hands that are supporting him while standing never crack. Nothing counts during a get-up.</li>
+    <li>Wood sounds, branching cracks with chips, and dents in the box. Broken pieces keep moving and can split again.</li>
     <li>If the head, neck or trunk breaks, he stops.</li>
   </ul>
   <div class="vers"><span>V30</span><span>V32</span><span>V33</span><span>V36</span><span>V38</span></div>
 </div>
 
-<h2>How a new request joins</h2>
+<h2>Adding a new request</h2>
 <ol class="steps">
-  <li><span><b>It gets a place in the ranking:</b> it either becomes a new rule or is added to an existing one.</span></li>
-  <li><span><b>Clashes are written down</b> in the table above, with which rule wins and how.</span></li>
-  <li><span><b>It's built and tested against all the rules.</b> This page says whether it works yet, and is updated with each build.</span></li>
+  <li><span><b>Rank it:</b> make it a new rule or add it to an existing one.</span></li>
+  <li><span><b>Resolve conflicts:</b> record which rule wins and how.</span></li>
+  <li><span><b>Build and test it against every rule.</b> This page is updated with each build.</span></li>
 </ol>
-<p class="note">Only how he behaves is tracked here, not the app. Source: the project doc "rulebook-test-page.md". Live copy next to the game: <a href="https://facaelectrica.github.io/the-box-play/rules.html">facaelectrica.github.io/the-box-play/rules.html</a>. Every agent updates it with each build.</p>
+
+<h2>Being worked on now</h2>
+<div class="now">
+  <div><b class="k">1</b><p><b>Hand and foot contact</b> (rules 4, 5). Make hands land flat and stay put on walls, and keep feet grounded in every get-up. <span class="note">Done in V42: floor hands turn palm-down.</span></p></div>
+  <div><b class="k">2</b><p><b>Fast head protection</b> (rule 3). Forearms over the head as soon as the box turns upside down; a hand catch when a wall is within reach.</p></div>
+  <div><b class="k">3</b><p><b>Wall bracing</b> (rule 6). Brace on the wall he is tipping toward. <span class="note">Done in V42.</span></p></div>
+  <div><b class="k">4</b><p><b>Foot slip in get-ups</b> (rule 5). Currently 6.6 cm/s, worst when the box is rotated. <span class="note">V42: arms touching a wall no longer displace his body.</span></p></div>
+</div>
+
+<p class="note">Covers the character's behaviour only, not the app. Source: the project doc "rulebook-test-page.md". Live copy: <a href="https://facaelectrica.github.io/the-box-play/rules.html">facaelectrica.github.io/the-box-play/rules.html</a>. Updated with every build.</p>
 
 </div>
+
 <script>
 (function(){
   var btns=document.querySelectorAll('.chips button');
