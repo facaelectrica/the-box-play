@@ -19,7 +19,7 @@
 //  5. handed to the joints' servos as targets (torque = kp (target - q) - kd qd, so the servo gives exactly that torque
 //     now and stays a soft spring between ticks)
 import { Brain, ND } from './brain.js';
-import { humanCap } from './springs.js?v=51';
+import { humanCap } from './springs.js?v=52';
 
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 const qv = (q, v) => { const [w, x, y, z] = q, tx = 2 * (y * v[2] - z * v[1]), ty = 2 * (z * v[0] - x * v[2]), tz = 2 * (x * v[1] - y * v[0]); return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)]; };
@@ -82,8 +82,21 @@ export class PhysBrain extends Brain {
     this.maxJ = opt.maxJ ?? 60;      // rad/s^2 per joint (a hand stopped by a wall while the ghost's hand goes on: not a reason to heave the trunk)
     this.hands = new Set(['RightHand', 'LeftHand', 'RightForeArm', 'LeftForeArm'].map(n => W.bodyId[n]));     // servo stiffness between ticks, as a fraction of the body file's gains
     this.hcap = W.act.map(a => humanCap(a.name));
+    this.extLoad = opt.extLoad ?? (globalThis.PH_EXT !== undefined ? !!+globalThis.PH_EXT : true);
+    // held by every joint between them and the floor (extAll; extAll false: the shoulder girdle and arm joints only),
+    // each push counted up to extMax N (a knock into the wall is not a load to hold)
+    this.extAll = opt.extAll ?? (globalThis.PH_EXTALL !== undefined ? !!+globalThis.PH_EXTALL : true); this.extMax = opt.extMax ?? globalThis.PH_EXTMAX ?? 400;
+    this.girdleDofs = W.act.filter(a => /(Shoulder|Arm)_/.test(a.name) && !/ForeArm/.test(a.name)).map(a => a.dof); this.allDofs = [...Array(m.nv).keys()];
     this.footB = { L: W.bodyId.LeftFoot, R: W.bodyId.RightFoot };
     this.prevGq = null; this.gqd = new Float64Array(m.nq);
+    // get-ups (user 14:17, option A): the get-up recording is the guide, his muscles and real contacts do the work
+    // (thinkGetup). The director stops placing the recording on his body when this is set (drive_brain)
+    this.getupReady = opt.getupReady ?? false;   // (off until it stands him up as often as the recordings placed on him: 6/40 vs 27/40) this.getupMode = false; this.getupInfo = null;
+    this.guWLeg = opt.guWLeg ?? 9; this.guWArm = opt.guWArm ?? 7; this.guWTrunk = opt.guWTrunk ?? 5; this.guWHead = opt.guWHead ?? 4;
+    this.guWr = opt.guWr ?? 5; this.guWo = opt.guWo ?? 5; this.guMaxLin = opt.guMaxLin ?? 3; this.guMaxAng = opt.guMaxAng ?? 12;
+    this.guUpMax = opt.guUpMax ?? 2.5;   // m/s^2 up at most (a quarter of g)
+    this.guFootUp = opt.guFootUp ?? 0.06; this.guComIn = opt.guComIn ?? 0.03; this.guWc = opt.guWc ?? 3; this.guFollow = opt.guFollow ?? 3; this.guJw = opt.guJw ?? globalThis.PG_JW ?? 20; this.guFeetCon = opt.guFeetCon ?? !!globalThis.PG_FEETCON; this.guRelease = opt.guRelease ?? globalThis.PG_REL ?? 0.03;
+    this.fig = W.isFig; this.bname = [...Array(m.nbody).keys()].map(b => mj.mj_id2name(m, mj.mjtObj.mjOBJ_BODY.value, b) || '');
     this.stats = { resid: 0, n: 0, tau: 0, over: 0, contacts: 0 };
     this.dsbl = mj.mjtDisableBit.mjDSBL_CONSTRAINT.value;
   }
@@ -107,8 +120,8 @@ export class PhysBrain extends Brain {
     this.prevGq.set(gq.subarray(0, n));
   }
 
-  soleHeight(S) {
-    const W = this.W, m = W.m, d = W.d, K = this.kin; let lo = 9;
+  soleHeight(S, d = this.W.d) {
+    const W = this.W, m = W.m, K = this.kin; let lo = 9;
     for (const g of S.geoms) {
       const c = [d.geom_xpos[3 * g], d.geom_xpos[3 * g + 1], d.geom_xpos[3 * g + 2]], R = d.geom_xmat.subarray(9 * g, 9 * g + 9), sz = m.geom_size.subarray(3 * g, 3 * g + 3);
       for (let c8 = 0; c8 < 8; c8++) {
@@ -155,10 +168,222 @@ export class PhysBrain extends Brain {
     L.forEach((v, k) => { let s = 0; for (let r = 0; r < 6; r++) s += J[r][k] * y[r]; qacc[v] += s; });
   }
 
+  // the box's present pushes on bodies other than his soles and hands (which the plan counts as support), as generalized
+  // forces: moved to the known side (like gravity), so the joints between them and his hips hold them
+  externalLoads(...needs) {
+    const W = this.W, m = W.m, d = W.d, mj = W.mj, nv = this.nv, cf = this.cfb || (this.cfb = new mj.DoubleBuffer(6));
+    const skip = b => this.hands.has(b) || this.soles.some(S => S.bodies.includes(b));
+    let n = 0;
+    for (let i = 0; i < d.ncon; i++) {
+      const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, pos = [c.pos[0], c.pos[1], c.pos[2]], fr = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(k => c.frame[k]); c.delete();
+      const b1 = m.geom_bodyid[g1], b2 = m.geom_bodyid[g2], f1 = W.isFig[b1], f2 = W.isFig[b2]; if (f1 === f2) continue;
+      const b = f2 ? b2 : b1, sg = f2 ? 1 : -1; if (skip(b)) continue;
+      mj.mj_contactForce(m, d, i, cf); const f = cf.GetView(); if (!(f[0] > 0)) continue;
+      const fw = [0, 1, 2].map(k => sg * (fr[k] * f[0] + fr[3 + k] * f[1] + fr[6 + k] * f[2]));
+      mj.mj_jac(m, d, this.jp, this.jr, pos, b); const J = this.jp.GetView();
+      const fl = Math.hypot(...fw), k = fl > this.extMax ? this.extMax / fl : 1;   // a knock into the wall is not a load to hold
+      for (const v of (this.extAll ? this.allDofs : this.girdleDofs)) { const g = k * (J[v] * fw[0] + J[nv + v] * fw[1] + J[2 * nv + v] * fw[2]); for (const N of needs) N[v] -= g; }
+      n++;
+    }
+    this.stats.ext = n;
+  }
+  // 4. the plan for an ambition sc (1 = all the accelerations asked; less = gentler, same gravity): the contacts' share
+  // (non-negative least squares on the hips' 6), then the joints' torques; too much for a person: ask less (a person
+  // under a hard knock doesn't follow his plan exactly, he gives); then capped at a person's strength and handed to the
+  // servos as targets
+  applyPlan(need0, needA, cols, jw = 0) {
+    const W = this.W, m = W.m, d = W.d, nv = this.nv;
+    // jw > 0: the contacts' pushes are also chosen to spare his joints (each joint's torque counted as a fraction of a
+    // person's strength): a hand on the floor takes weight where it relieves the elbow, not where it overloads it
+    let solve = null;
+    if (cols.length && jw > 0) { const rw = new Float64Array(nv); for (let v = 0; v < 6; v++) rw[v] = this.rowW[v]; W.act.forEach((a, i) => { rw[a.dof] = jw / this.hcap[i]; }); solve = nnlsPrep(cols, nv, 1e-6, rw); }
+    else if (cols.length) solve = nnlsPrep(cols, 6, 1e-6, this.rowW);
+    const plan = sc => {
+      const b = need0.map((v, i) => v + sc * needA[i]);
+      const w = solve ? solve(b) : null;
+      const t = b;
+      if (w) for (let k = 0; k < cols.length; k++) if (w[k] > 0) { const c = cols[k]; for (let v = 0; v < nv; v++) t[v] -= w[k] * c[v]; }
+      let r = 0; W.act.forEach((a, i) => { r = Math.max(r, Math.abs(t[a.dof]) / this.hcap[i]); });
+      return { t, r, sc };
+    };
+    let P = plan(1);
+    if (P.r > 1.05 && this.giveWay) {
+      let best = P;
+      for (const sc of [0.6, 0.35, 0.15]) { const Q = plan(sc); if (Q.r < best.r) best = Q; if (Q.r <= 1.05) { best = Q; break; } }
+      P = best;
+    }
+    const tau = P.t; this.planSc = P.sc; this.planR = P.r;
+    let resid = 0; for (let v = 0; v < 6; v++) resid += tau[v] * tau[v];
+    this.stats.resid += (Math.sqrt(resid) - this.stats.resid) * 0.1;
+    // capped at a person's strength, handed to the servos
+    let over = 0, tsum = 0;
+    W.act.forEach((a, i) => {
+      let t = tau[a.dof]; const H = this.hcap[i];
+      if (Math.abs(t) > H) { over++; if (globalThis.PHOVER) (this.overN || (this.overN = {}))[a.name] = (this.overN[a.name] || 0) + 1; t = Math.sign(t) * H; }
+      tsum += Math.abs(t);
+      const kpa = m.actuator_gainprm[10 * i], kda = -m.actuator_biasprm[10 * i + 2];
+      this.targets[i] = d.qpos[a.qadr] + (t + kda * d.qvel[a.dof]) / Math.max(1e-6, kpa);
+    });
+    this.stats.over = over; this.stats.tau = tsum; this.stats.n++;
+    return tau;
+  }
+
+  // ---- get-ups (user 14:17, option A) ----
+  // The director plays the get-up recording on the ghost (and waits for him: kin.getupLag); his body is not written to
+  // it. Each tick, as think() but for a body lying, sitting, kneeling:
+  //  - joints toward the recording's: legs firmly, arms less, trunk and head softly (a person rising doesn't hold his
+  //    head and trunk exactly as the recording did; asking it every tick put 11x a person's strength on his neck)
+  //  - hips: up and down as the recording's (height over the floor); along the floor where the recording has them
+  //    relative to its planted feet, put over his planted feet
+  //  - before rising: his centre of mass over what holds him once his hips leave the floor (feet, knees, hands); while it
+  //    isn't, the hips are asked to go there first and to rise only a little
+  //  - planted feet stay put (closed chains, as standing)
+  //  - every contact with the box is support (feet, knees, hands, forearms, hips, back): pushes along its normal within
+  //    friction; never asked to accelerate up harder than ~0.25 g (pushing too hard throws him off all his supports)
+  thinkGetup(ref) {
+    const W = this.W, m = W.m, d = W.d, mj = W.mj, nv = this.nv, dt = 1 / this.hz, gd = this.Gw.d, K = this.kin;
+    const t0 = performance.now(), clip = K.anim && K.anim.clip;
+    if (!this.gu || this.gu.clip !== clip) this.gu = { t: 0, h0: null, prog: 0, clip, stallT: 0 };
+    const gu = this.gu; gu.t += dt;
+    this.getupMode = true; this.down = false;
+    this.ghostVel(dt);
+    const o = K.toWorld([0, 0, 0]), z = K.toWorld([0, 0, 1]), up = [z[0] - o[0], z[1] - o[1], z[2] - o[2]];
+    const hb = W.bodyId.Hips, ht = dd => (dd.xpos[3 * hb] - o[0]) * up[0] + (dd.xpos[3 * hb + 1] - o[1]) * up[1] + (dd.xpos[3 * hb + 2] - o[2]) * up[2];
+    const hMe = ht(d), hGh = ht(gd); if (gu.h0 === null) gu.h0 = hMe;
+    const qacc = new Float64Array(nv), mx = this.maxJ;
+    // 1. joints
+    for (const a of W.act) {
+      const w = /(Leg|Shin|Foot|ToeBase)_/.test(a.name) ? this.guWLeg : /^(Spine|Chest)/.test(a.name) ? this.guWTrunk : /^(Neck|Head)/.test(a.name) ? this.guWHead : this.guWArm;
+      let e = gd.qpos[a.qadr] - d.qpos[a.qadr]; e = Math.atan2(Math.sin(e), Math.cos(e));
+      qacc[a.dof] = Math.max(-mx, Math.min(mx, w * w * e + 2 * w * (this.gqd[a.qadr] - d.qvel[a.dof])));
+    }
+    // his contacts with the box
+    const sup = { feet: 0, hands: 0, knees: 0, other: 0 }, con = [], spts = [];
+    for (let i = 0; i < d.ncon; i++) {
+      const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, pos = [c.pos[0], c.pos[1], c.pos[2]], fr = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(k => c.frame[k]); c.delete();
+      if (dist > 0.005) continue;
+      const b1 = m.geom_bodyid[g1], b2 = m.geom_bodyid[g2], f1 = this.fig[b1], f2 = this.fig[b2]; if (f1 === f2) continue;
+      const b = f2 ? b2 : b1, sg = f2 ? 1 : -1, nm = this.bname[b];   // the frame's normal points from geom1 to geom2: the push on geom2 is +n
+      const kind = /Foot|ToeBase/.test(nm) ? 'feet' : /Hand|ForeArm/.test(nm) ? 'hands' : /Shin/.test(nm) ? 'knees' : 'other';
+      const nn = [fr[0] * sg, fr[1] * sg, fr[2] * sg];
+      // a floor contact the recording is lifting off (the same point of the recording's body over 3 cm above the floor):
+      // not support - the floor can't push a knee or a hip that is going up (planning with it, he stayed on his knee
+      // while the plan believed the floor was lifting him)
+      if (this.guRelease > 0 && (kind === 'knees' || kind === 'other') && nn[0] * up[0] + nn[1] * up[1] + nn[2] * up[2] > 0.7) {
+        const R = d.xmat.subarray(9 * b, 9 * b + 9), GR = gd.xmat.subarray(9 * b, 9 * b + 9), r = [0, 1, 2].map(k => pos[k] - d.xpos[3 * b + k]);
+        const l = [0, 1, 2].map(j => R[j] * r[0] + R[3 + j] * r[1] + R[6 + j] * r[2]), pg = [0, 1, 2].map(k => gd.xpos[3 * b + k] + GR[3 * k] * l[0] + GR[3 * k + 1] * l[1] + GR[3 * k + 2] * l[2]);
+        if ((pg[0] - pos[0]) * nn[0] + (pg[1] - pos[1]) * nn[1] + (pg[2] - pos[2]) * nn[2] > this.guRelease) { sup.off = (sup.off || 0) + 1; continue; }
+      }
+      sup[kind]++;
+      con.push({ pos, b, kind, n: nn, u1: [fr[3], fr[4], fr[5]], u2: [fr[6], fr[7], fr[8]] });
+      if (kind !== 'other') { const l = K.toLocal(pos); spts.push([l[0], l[1]]); }
+    }
+    // planted feet: his sole on the floor where the recording's is
+    for (const S of this.soles) { S.h = this.soleHeight(S); S.gh = this.soleHeight(S, gd); S.down = S.h <= this.onFloor && S.gh <= this.guFootUp; }
+    const planted = this.soles.filter(S => S.down);
+    // his centre of mass (dropped along gravity onto the floor) and how far inside what will hold him it is
+    const c0 = K.toLocal([d.subtree_com[3 * hb], d.subtree_com[3 * hb + 1], d.subtree_com[3 * hb + 2]]);
+    const gl = K.dirLocal([m.opt.gravity[0], m.opt.gravity[1], m.opt.gravity[2]]), tg = gl[2] < -1e-3 ? c0[2] / -gl[2] : 0;
+    const com = [c0[0] + gl[0] * tg, c0[1] + gl[1] * tg];
+    const hull = convexHull(spts);
+    let comOver = -1;
+    if (hull.length >= 3) comOver = insideDist(hull, com);
+    else if (spts.length) comOver = -Math.min(...spts.map(p => Math.hypot(p[0] - com[0], p[1] - com[1])));
+    // 2. hips
+    const dz = hGh - hMe;
+    let hor = [0, 0, 0];
+    if (planted.length) {
+      const fb = planted.map(S => W.bodyId[S.side + 'Foot']), mid = dd => { const p = [0, 0, 0]; for (const b of fb) for (let k = 0; k < 3; k++) p[k] += dd.xpos[3 * b + k] / fb.length; return p; };
+      const me = mid(d), gh = mid(gd), t = [0, 1, 2].map(k => me[k] + gd.qpos[k] - gh[k] - d.qpos[k]), tu = t[0] * up[0] + t[1] * up[1] + t[2] * up[2];
+      hor = t.map((v, k) => v - tu * up[k]);
+    }
+    // rising while his weight is outside what holds him: the hips go over it first, and up only a little
+    let dzE = dz, acom = [0, 0, 0];
+    const rising = dz > 0.02 && sup.other > 0;   // the recording lifts his hips while something besides feet/knees/hands still holds him
+    if (rising && comOver < this.guComIn && spts.length) {
+      const k = Math.max(0, Math.min(1, (comOver + 0.1) / (0.1 + this.guComIn)));
+      dzE = Math.min(dz, 0.03 + dz * k * k);
+      // toward the middle of his feet (or of all his supports)
+      const fp = con.filter(q => q.kind === 'feet').map(q => K.toLocal(q.pos)), P = fp.length ? fp : spts.map(p => [p[0], p[1], 0]);
+      const cx = P.reduce((a, p) => a + p[0], 0) / P.length, cy = P.reduce((a, p) => a + p[1], 0) / P.length;
+      const wc = this.guWc, al = [wc * wc * (cx - com[0]), wc * wc * (cy - com[1]), 0], l = Math.hypot(al[0], al[1]);
+      if (l > 3) { al[0] *= 3 / l; al[1] *= 3 / l; }
+      const aw = K.toWorld(al); acom = [aw[0] - o[0], aw[1] - o[1], aw[2] - o[2]];
+    }
+    gu.wait = rising && dzE < dz - 0.01;
+    const wr = this.guWr;
+    for (let k = 0; k < 3; k++) qacc[k] = wr * wr * (dzE * up[k] + hor[k]) + 2 * wr * (this.gqd[k] - d.qvel[k]) + acom[k];
+    {
+      const q = [d.qpos[3], d.qpos[4], d.qpos[5], d.qpos[6]], g = [gd.qpos[3], gd.qpos[4], gd.qpos[5], gd.qpos[6]];
+      const e = [q[0] * g[0] + q[1] * g[1] + q[2] * g[2] + q[3] * g[3], q[0] * g[1] - q[1] * g[0] - q[2] * g[3] + q[3] * g[2], q[0] * g[2] + q[1] * g[3] - q[2] * g[0] - q[3] * g[1], q[0] * g[3] - q[1] * g[2] + q[2] * g[1] - q[3] * g[0]];
+      if (e[0] < 0) for (let k = 0; k < 4; k++) e[k] = -e[k];
+      const sn = Math.hypot(e[1], e[2], e[3]), th = 2 * Math.atan2(sn, e[0]), f = sn > 1e-9 ? th / sn : 2, wo = this.guWo;
+      for (let k = 0; k < 3; k++) qacc[3 + k] = wo * wo * e[1 + k] * f - 2 * wo * d.qvel[3 + k];
+    }
+    clampVec(qacc, 0, this.guMaxLin); clampVec(qacc, 3, this.guMaxAng);
+    { const au = qacc[0] * up[0] + qacc[1] * up[1] + qacc[2] * up[2]; if (au > this.guUpMax) for (let k = 0; k < 3; k++) qacc[k] -= (au - this.guUpMax) * up[k]; }
+    for (const S of planted) this.closeChain(S, qacc);
+    // 3. inverse dynamics, contacts off
+    const d2 = this.d2; d2.qpos.set(d.qpos.subarray(0, m.nq)); d2.qvel.set(d.qvel.subarray(0, nv)); d2.qacc.set(qacc);
+    const fl = m.opt.disableflags; m.opt.disableflags = fl | this.dsbl; mj.mj_inverse(m, d2); m.opt.disableflags = fl;
+    const needFull = Float64Array.from(d2.qfrc_inverse.subarray(0, nv));
+    d2.qacc.fill(0); m.opt.disableflags = fl | this.dsbl; mj.mj_inverse(m, d2); m.opt.disableflags = fl;
+    const need0 = Float64Array.from(d2.qfrc_inverse.subarray(0, nv)), needA = needFull.map((v, i) => v - need0[i]);
+    // 4. what the box can give: planted soles at their bottom corners along the floor's normal, every other contact
+    // along its own normal, within friction
+    const cols = [], pushCol = (p, b, nn, u1, u2) => {
+      mj.mj_jac(m, d, this.jp, this.jr, p, b); const J = this.jp.GetView();
+      for (const [tt, s2] of [[u1, 1], [u1, -1], [u2, 1], [u2, -1]]) {
+        const e = [nn[0] + this.mu * s2 * tt[0], nn[1] + this.mu * s2 * tt[1], nn[2] + this.mu * s2 * tt[2]], col = new Float64Array(nv);
+        for (let v = 0; v < nv; v++) col[v] = J[v] * e[0] + J[nv + v] * e[1] + J[2 * nv + v] * e[2];
+        cols.push(col);
+      }
+    };
+    const ta = Math.abs(up[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], t1 = norm(cross(up, ta)), t2 = cross(up, t1), plantedB = new Set();
+    for (const S of (this.guFeetCon ? [] : planted)) {
+      for (const b of S.bodies) plantedB.add(b);
+      const pts = [];
+      for (const g of S.geoms) {
+        const c = [d.geom_xpos[3 * g], d.geom_xpos[3 * g + 1], d.geom_xpos[3 * g + 2]], R = d.geom_xmat.subarray(9 * g, 9 * g + 9), sz = m.geom_size.subarray(3 * g, 3 * g + 3);
+        for (let c8 = 0; c8 < 8; c8++) {
+          const l = [(c8 & 1 ? 1 : -1) * sz[0], (c8 & 2 ? 1 : -1) * sz[1], (c8 & 4 ? 1 : -1) * sz[2]];
+          const p = [0, 1, 2].map(r => c[r] + R[3 * r] * l[0] + R[3 * r + 1] * l[1] + R[3 * r + 2] * l[2]);
+          pts.push({ p, h: K.toLocal(p)[2], b: m.geom_bodyid[g] });
+        }
+      }
+      const lo = Math.min(...pts.map(q => q.h));
+      for (const q of pts) if (q.h <= lo + 0.012) pushCol(q.p, q.b, up, t1, t2);
+    }
+    for (const q of con) if (!plantedB.has(q.b)) pushCol(q.pos, q.b, q.n, q.u1, q.u2);
+    this.stats.contacts = cols.length / 4; this.stats.soles = planted.length; this.stats.hands = sup.hands;
+    this.applyPlan(need0, needA, cols, this.guJw);
+    // 5. the recording waits for him (kin.updateGetup reads getupLag), and its spot follows his hips along the floor
+    const lag = Math.max(0, hGh - hMe);
+    K.getupLag = gu.wait ? Math.max(lag, 0.2) : lag;
+    if (K.anchor && this.guFollow > 0) {
+      const A = K.anchor, me = K.toLocal([d.qpos[0], d.qpos[1], d.qpos[2]]), gh = K.toLocal([gd.qpos[0], gd.qpos[1], gd.qpos[2]]), k = 1 - Math.exp(-dt * this.guFollow);
+      A.x += (me[0] - gh[0]) * k; A.y += (me[1] - gh[1]) * k;
+    }
+    const stalled = K.getupLag > 0.14;
+    gu.stallT = stalled ? gu.stallT + dt : 0;
+    const hEnd = clip ? clip.q(clip.n - 1)[2] : 0.9;
+    gu.prog = Math.max(gu.prog, Math.max(0, Math.min(1, (hMe - gu.h0) / Math.max(0.1, hEnd - gu.h0))));
+    this.getupInfo = { t: gu.t, support: { feet: sup.feet, hands: sup.hands, knees: sup.knees, other: sup.other }, comOver, height: hMe, stalled, stallT: gu.stallT, wait: gu.wait, progress: gu.prog };
+    if (globalThis.PGDBG && this.stats.n % globalThis.PGDBG === 0) console.log('PG', d.time.toFixed(2), 'x', clip ? K.anim.x.toFixed(0) + '/' + clip.n : '-', 'h', hMe.toFixed(2), 'gh', hGh.toFixed(2), 'hEnd', hEnd.toFixed(2), 'com', comOver.toFixed(2), 'sup', JSON.stringify(sup), 'planted', planted.length, 'wait', gu.wait, 'sc', this.planSc, 'r', this.planR.toFixed(1), 'over', this.stats.over, 'resid', this.stats.resid.toFixed(0), JSON.stringify(this.overN || {})); this.overN = {};
+    if (globalThis.PGJ) { const pv = this._pgv; if (pv && this.stats.n % globalThis.PGDBG === 0) console.log('PGA', d.time.toFixed(2), 'asked', pv.a.map(v => v.toFixed(1)).join(','), 'got', [0, 1, 2, 3, 4, 5].map(k => ((d.qvel[k] - pv.v[k]) / dt).toFixed(1)).join(','), 'jointErr', pv.j.toFixed(1)); let je = 0; for (const a of W.act) if (/Leg_x|Shin_x/.test(a.name)) je += Math.abs(qacc[a.dof]); this._pgv = { a: Array.from(qacc.slice(0, 6)), v: Array.from(d.qvel.slice(0, 6)), j: je }; }
+    if (globalThis.PGJ && this.stats.n % globalThis.PGDBG === 0) console.log('PGJ', d.time.toFixed(2), 'qacc0-5', Array.from(qacc.slice(0, 6)).map(v => v.toFixed(1)).join(','), 'vel', Array.from(d.qvel.slice(0, 3)).map(v => v.toFixed(2)).join(','), W.act.filter(a => /Leg_x|Shin_x|Foot_x|Spine1_x|Chest_x/.test(a.name)).map(a => a.name.replace(/_/, '') + ':' + (d.qpos[a.qadr] * 57.3).toFixed(0) + '/' + (gd.qpos[a.qadr] * 57.3).toFixed(0) + '/' + d.actuator_force[W.act.indexOf(a)].toFixed(0) + '/' + this.hcap[W.act.indexOf(a)].toFixed(0)).join(' '));
+    this.msNet += (performance.now() - t0 - this.msNet) * 0.1;
+    let e = 0; for (let b = 0; b < this.bodyId.length; b++) e = Math.max(e, Math.hypot(this.pos[3 * b] - ref.pos[3 * b], this.pos[3 * b + 1] - ref.pos[3 * b + 1], this.pos[3 * b + 2] - ref.pos[3 * b + 2]));
+    this.err = e; this.lost = 0;
+    return this.targets;
+  }
+
   async think(ref) {
     const W = this.W, m = W.m, d = W.d, mj = W.mj, nv = this.nv, dt = 1 / this.hz, gd = this.Gw.d;
     this.tNext = d.time + dt - 1e-9;
     this.readState();
+    if (this.getupReady && this.kin.state === 'getup') return this.thinkGetup(ref);
+    this.getupMode = false; this.gu = null;
     if (this.down) { for (let i = 0; i < ND; i++) this.targets[this.actIdx[i]] = d.qpos[this.hingeQ[i]]; return this.targets; }
     this.ghostVel(dt);
     const t0 = performance.now();
@@ -222,6 +447,11 @@ export class PhysBrain extends Brain {
     // joint for more than a person's strength
     d2.qacc.fill(0); m.opt.disableflags = fl | this.dsbl; mj.mj_inverse(m, d2); m.opt.disableflags = fl;
     const need0 = Float64Array.from(d2.qfrc_inverse.subarray(0, nv)), needA = needFull.map((v, i) => v - need0[i]);
+    // (user's snapshot V47: right shoulder leaning on the wall, his collarbone at its stop for 4 s while the recording
+    // asked 14 deg less) the box pushing on parts of him the plan doesn't count as support (upper arm, shoulder, chest,
+    // head on a wall): those pushes, as they are now, are loads his joints must hold - the collarbone holds the arm
+    // against the wall instead of giving way to its stop (a person's shoulder girdle carries a lean into the ribcage)
+    if (this.extLoad) this.externalLoads(need0, needFull);
     const need = needFull; this.need0 = need.slice(0, 6);
     // 3. the floor's share through his soles: each sole near the floor can be pushed at its corners, along the floor's
     // normal and within friction (a foot held by its weld is still a foot on the floor)
@@ -292,39 +522,9 @@ export class PhysBrain extends Brain {
       this.realBal = { t: d.time, com: c, v: vs, cp, support: hull, margin: hull.length >= 3 ? insideDist(hull, cp) : -1, comMargin: hull.length >= 3 ? insideDist(hull, c) : -1 };
     }
     this.stats.contacts = cols.length / 4;
-    // 4a. the plan for a given ambition s (1 = all the accelerations asked; less = gentler, same gravity): the floor's
-    // share, then the joints' torques; how far over a person's strength the worst joint would be
-    const solve = cols.length ? nnlsPrep(cols, 6, 1e-6, this.rowW) : null;
-    const plan = sc => {
-      const b = need0.map((v, i) => v + sc * needA[i]);
-      const w = solve ? solve(b) : null;
-      const t = b;
-      if (w) for (let k = 0; k < cols.length; k++) if (w[k] > 0) { const c = cols[k]; for (let v = 0; v < nv; v++) t[v] -= w[k] * c[v]; }
-      let r = 0; W.act.forEach((a, i) => { r = Math.max(r, Math.abs(t[a.dof]) / this.hcap[i]); });
-      return { t, r };
-    };
-    // 4b. too much for a person: ask less (a person under a hard knock doesn't follow his plan exactly, he gives)
-    let P = plan(1);
-    if (P.r > 1.05 && this.giveWay) {
-      let best = P;
-      for (const sc of [0.6, 0.35, 0.15]) { const Q = plan(sc); if (Q.r < best.r) best = Q; if (Q.r <= 1.05) { best = Q; break; } }
-      P = best;
-    }
-    const tau = P.t;
-    let resid = 0; for (let v = 0; v < 6; v++) resid += tau[v] * tau[v];
-    this.stats.resid += (Math.sqrt(resid) - this.stats.resid) * 0.1;
-    // 4 + 5. capped at a person's strength, handed to the servos
-    let over = 0, tsum = 0;
-    W.act.forEach((a, i) => {
-      let t = tau[a.dof]; const H = this.hcap[i];
-      if (Math.abs(t) > H) { over++; if (globalThis.PHOVER) (this.overN || (this.overN = {}))[a.name] = (this.overN[a.name] || 0) + 1; t = Math.sign(t) * H; }
-      tsum += Math.abs(t);
-      const kpa = m.actuator_gainprm[10 * i], kda = -m.actuator_biasprm[10 * i + 2];
-      this.targets[i] = d.qpos[a.qadr] + (t + kda * d.qvel[a.dof]) / Math.max(1e-6, kpa);
-    });
-    this.stats.over = over; this.stats.tau = tsum; this.stats.n++;
+    const tau = this.applyPlan(need0, needA, cols);
     if (globalThis.PHJ && this.stats.n % globalThis.PHDBG === 0) console.log('PHJ', d.time.toFixed(2), W.act.filter(a => /Spine|Chest|Neck|Leg_x|Shin_x|Foot_x/.test(a.name)).map(a => a.name.replace(/_/, '') + ':' + (d.qpos[a.qadr] * 57.3).toFixed(0) + '/' + (goal[a.qadr] * 57.3).toFixed(0) + '/' + tau[a.dof].toFixed(0) + '/' + this.targets[W.act.indexOf(a)].toFixed(2)).join(' '));
-    if (globalThis.PHDBG && this.stats.n % globalThis.PHDBG === 0) console.log('PH', d.time.toFixed(2), 'bal', this.realBal.margin.toFixed(2), this.realBal.comMargin.toFixed(2), 'soles', nsole, 'pts', cols.length / 4, 'need0', Array.from(this.need0).map(v => v.toFixed(0)).join(','), 'resid', Array.from(need.slice(0, 6)).map(v => v.toFixed(0)).join(','), 'root acc', Array.from(qacc.slice(0, 6)).map(v => v.toFixed(1)).join(','), 'hips', [0, 1, 2].map(k => (d.qpos[k] - me[k]).toFixed(2)).join(','), 'ghost', [0, 1, 2].map(k => (gd.qpos[k] - gh[k]).toFixed(2)).join(','), 'over', over, 'g', Array.from(m.opt.gravity).map(v => v.toFixed(2)).join(','));
+    if (globalThis.PHDBG && this.stats.n % globalThis.PHDBG === 0) console.log('PH', d.time.toFixed(2), 'bal', this.realBal.margin.toFixed(2), this.realBal.comMargin.toFixed(2), 'soles', nsole, 'pts', cols.length / 4, 'need0', Array.from(this.need0).map(v => v.toFixed(0)).join(','), 'resid', Array.from(need.slice(0, 6)).map(v => v.toFixed(0)).join(','), 'root acc', Array.from(qacc.slice(0, 6)).map(v => v.toFixed(1)).join(','), 'hips', [0, 1, 2].map(k => (d.qpos[k] - me[k]).toFixed(2)).join(','), 'ghost', [0, 1, 2].map(k => (gd.qpos[k] - gh[k]).toFixed(2)).join(','), 'over', this.stats.over, 'g', Array.from(m.opt.gravity).map(v => v.toFixed(2)).join(','));
     this.msNet += (performance.now() - t0 - this.msNet) * 0.1;
     // how far he is from the ghost (the drive uses it to tell a fall)
     let e = 0; for (let b = 0; b < this.bodyId.length; b++) e = Math.max(e, Math.hypot(this.pos[3 * b] - ref.pos[3 * b], this.pos[3 * b + 1] - ref.pos[3 * b + 1], this.pos[3 * b + 2] - ref.pos[3 * b + 2]));

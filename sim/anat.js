@@ -10,6 +10,7 @@
 // before mj_step and taken out again just after it, so it never builds up and whatever the controllers write there
 // (set or add) is left exactly as they left it.
 // Use: const anat = new AnatGuard(W, L); anat.install();   (L = parsed limits.json; install wraps W.step)
+//      anat.isStanding = () => K.state === 'stand' || K.state === 'react';   (the standing shoulder spring, see ANAT.stand)
 //      anat.violations(qpos) -> [{ joint, depth (deg) }] for joints outside their envelope (tests)
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 
@@ -41,6 +42,12 @@ export const ANAT = {
   soft: 4,        // deg: the stop gets stiffer with depth: k * (1 + depth / soft)
   amax: 4000,     // rad/s^2: cap on the push (stability at 480 Hz with a deep start pose)
   minI: 0.01,     // kg m^2: floor on a hinge's inertia used to scale its push
+  // (lead, user 14:32) while he stands, his shoulders stay where standing people hold them (BONES standing moves,
+  // 2.4 M frames: shoulder joint height above the chest, along the chest's up: median L 22.4 R 22.1 cm, 0.5% 17.6/16.3
+  // cm; right minus left 0.5-99.5% -6.0..7.7 cm). A gentle spring on the shoulder joint along the chest's up, through
+  // the collarbone's 3 hinges only (a ligament, not a muscle): it lifts a shoulder pushed under hmin, and the shoulder
+  // furthest from its median when the two differ by more than asym. On only while isStanding() says so (ramped).
+  stand: { hmin: 17, asym: 6.5, med: [22.4, 22.1], k: 2000, zeta: 1, mEff: 2, fmax: 300, rampIn: 0.3, rampOut: 0.2 },
 };
 
 export class AnatGuard {
@@ -60,7 +67,12 @@ export class AnatGuard {
       this.J.push({ name: b, h: e.h, mg: e.mg, lo: e.lo, n: e.n, s1: n2, s0: n1 * n2, D: edt3(occ, n0, n1, n2), qa, da, I });
     }
     this.tau = new Float64Array(3 * this.J.length); this.g = new Float64Array(3);
-    this.stats = { steps: 0, out: 0, worst: 0, worstJ: '', perJ: this.J.map(() => 0) };
+    // the standing shoulder spring: per side the collarbone's 3 hinges (joint id, dof), the upper arm's and chest's bodies
+    const id = (t, n) => mj.mj_name2id(m, t, n), JT = mj.mjtObj.mjOBJ_JOINT.value, BT = mj.mjtObj.mjOBJ_BODY.value;
+    this.sh = ['Left', 'Right'].map(sd => { const j = ['_x', '_y', '_z'].map(a => id(JT, sd + 'Shoulder' + a)); return { j, da: j.map(k => m.jnt_dofadr[k]), arm: id(BT, sd + 'Arm'), dh: new Float64Array(3), h: 0, v: 0 }; });
+    this.shOk = this.sh.every(x => x.arm >= 0 && x.j.every(k => k >= 0)); this.chest = id(BT, 'Chest');
+    this.tauS = new Float64Array(6); this.standW = 0; this.isStanding = null; this.dt = m.opt.timestep;
+    this.stats = { steps: 0, out: 0, worst: 0, worstJ: '', perJ: this.J.map(() => 0), standSteps: 0, standOut: 0, standWorst: 0 };
   }
   // depth (deg) of one joint outside its envelope at hinge angles a0..a2 (rad); the way out (unit, hinge space) in this.g
   depth(J, a0, a1, a2) {
@@ -85,7 +97,7 @@ export class AnatGuard {
   // the torques for the state in d (adds them into d.qfrc_applied, remembers them in this.tau)
   push() {
     const d = this.W.d, q = d.qpos, qv = d.qvel, F = d.qfrc_applied, o = this.opt, tau = this.tau, g = this.g, S = this.stats;
-    const w2 = o.w * o.w, c = 2 * o.zeta * o.w; let any = false; S.steps++;
+    const w2 = o.w * o.w, c = 2 * o.zeta * o.w; let any = false; S.steps++; S.lastA = 0; S.lastJ = '';
     for (let j = 0; j < this.J.length; j++) {
       const J = this.J[j], qa = J.qa, k3 = 3 * j;
       const dep = this.depth(J, q[qa[0]], q[qa[1]], q[qa[2]]);
@@ -94,11 +106,50 @@ export class AnatGuard {
       const da = J.da, vn = g[0] * qv[da[0]] + g[1] * qv[da[1]] + g[2] * qv[da[2]];   // rad/s along the way out
       let a = w2 * dep * D2R * (1 + dep / o.soft) + c * Math.max(0, vn);
       if (a > o.amax) a = o.amax;
+      if (a > S.lastA) { S.lastA = a; S.lastJ = J.name + ' ' + dep.toFixed(0); }
       for (let i = 0; i < 3; i++) { const t = -J.I[i] * a * g[i]; tau[k3 + i] = t; F[da[i]] += t; }
     }
     if (any) S.out++;
+    this.pushStand();
+  }
+  // each shoulder joint's height above the chest along the chest's up (m) and its rate of change per hinge (this.sh)
+  shoulders() {
+    const d = this.W.d, xp = d.xpos, xa = d.xaxis, an = d.xanchor, c = this.chest, R = d.xmat, qv = d.qvel;
+    const ux = R[9 * c + 2], uy = R[9 * c + 5], uz = R[9 * c + 8];
+    for (const S of this.sh) {
+      const a = S.arm, px = xp[3 * a], py = xp[3 * a + 1], pz = xp[3 * a + 2]; let v = 0;
+      S.h = ux * (px - xp[3 * c]) + uy * (py - xp[3 * c + 1]) + uz * (pz - xp[3 * c + 2]);
+      for (let i = 0; i < 3; i++) {   // d(arm root)/d(hinge) = axis x (arm root - hinge anchor); its part along up
+        const j = S.j[i], ax = xa[3 * j], ay = xa[3 * j + 1], az = xa[3 * j + 2], rx = px - an[3 * j], ry = py - an[3 * j + 1], rz = pz - an[3 * j + 2];
+        const dh = ux * (ay * rz - az * ry) + uy * (az * rx - ax * rz) + uz * (ax * ry - ay * rx); S.dh[i] = dh; v += dh * qv[S.da[i]];
+      }
+      S.v = v;
+    }
+    return this.sh;
+  }
+  pushStand() {
+    const o = this.opt.stand, on = this.isStanding ? !!this.isStanding() : false, St = this.stats;
+    this.standW = on ? Math.min(1, this.standW + this.dt / o.rampIn) : Math.max(0, this.standW - this.dt / o.rampOut);
+    if (this.standW <= 0 || !this.shOk) return;
+    St.standSteps++;
+    const [L, Rr] = this.shoulders(), F = this.W.d.qfrc_applied, tau = this.tauS, c = 2 * o.zeta * Math.sqrt(o.k * o.mEff);
+    const ex = [0, 0];   // how far (m) each shoulder should go up (+) / down (-)
+    for (let s = 0; s < 2; s++) { const lo = o.hmin / 100 - this.sh[s].h; if (lo > 0) ex[s] = lo; }
+    const df = Rr.h - L.h, over = Math.abs(df) - o.asym / 100;
+    if (over > 0) { const s = Math.abs(L.h - o.med[0] / 100) > Math.abs(Rr.h - o.med[1] / 100) ? 0 : 1, up = (s === 1) === (df < 0) ? 1 : -1;
+      ex[s] = up > 0 ? Math.max(ex[s], over) : Math.min(ex[s], -over); }
+    for (let s = 0; s < 2; s++) {
+      const S = this.sh[s], e = ex[s];
+      if (e === 0) { tau[3 * s] = tau[3 * s + 1] = tau[3 * s + 2] = 0; continue; }
+      if (Math.abs(e) * 100 > St.standWorst) St.standWorst = Math.abs(e) * 100;
+      let f = o.k * e - c * S.v; if (e > 0 ? f < 0 : f > 0) f = 0;   // never pulls the wrong way
+      f = Math.max(-o.fmax, Math.min(o.fmax, f)) * this.standW;
+      for (let i = 0; i < 3; i++) { const t = f * S.dh[i]; tau[3 * s + i] = t; F[S.da[i]] += t; }
+    }
+    if (ex[0] !== 0 || ex[1] !== 0) St.standOut++;
   }
   pop() {
+    { const F = this.W.d.qfrc_applied, t = this.tauS; for (let s = 0; s < 2 && this.shOk; s++) for (let i = 0; i < 3; i++) { F[this.sh[s].da[i]] -= t[3 * s + i]; t[3 * s + i] = 0; } }
     const F = this.W.d.qfrc_applied, tau = this.tau;
     for (let j = 0; j < this.J.length; j++) { const da = this.J[j].da; for (let i = 0; i < 3; i++) { F[da[i]] -= tau[3 * j + i]; tau[3 * j + i] = 0; } }
   }

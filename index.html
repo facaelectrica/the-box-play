@@ -111,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V51</div><div id="brainver"></div>
+<div id="ver">V52</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -293,18 +293,18 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import loadMujoco from '@mujoco/mujoco';
-import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=51';
+import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=52';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=51';
-import { Springs, humanCap } from './sim/springs.js?v=51';
-import { Balance } from './sim/balance.js?v=51';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=51';
-import { AnatGuard } from './sim/anat.js?v=51';
-import { PhysBrain } from './sim/physctl.js?v=51';
-import { addPins } from './sim/pins.js?v=51';
-import { rigHand, poseHand } from './sim/fingers.js?v=51';
-import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=51';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=52';
+import { Springs, humanCap } from './sim/springs.js?v=52';
+import { Balance } from './sim/balance.js?v=52';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=52';
+import { AnatGuard } from './sim/anat.js?v=52';
+import { PhysBrain } from './sim/physctl.js?v=52';
+import { addPins } from './sim/pins.js?v=52';
+import { rigHand, poseHand } from './sim/fingers.js?v=52';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=52';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -634,7 +634,7 @@ let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
 try { const bb = (window.BOXBRAIN || {}).id; if (bb) document.getElementById('ver').textContent += bb === 'nvidia' ? ' · NVIDIA brain' : bb === 'phys' ? ' · physics' : bb === 'b08' ? ' · brain 08' : ' · no brain'; } catch (_) {}
-const KINV = 51;
+const KINV = 52;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(LOAD.url(u), 'Recordings'));   // (V40) address = name + fingerprint (BOXLOAD)
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -1591,7 +1591,9 @@ for (const ev of ['pointerdown', 'pointerup']) $('look').addEventListener(ev, e 
 const hist = [];   // last 3 s of his body, 30 times a second (filled by the frame loop)
 function recordHist() {
   if (look.on || !W) return;
-  const t = W.d.time; if (hist.length && t - hist[hist.length - 1][0] < 1 / 30 - 1e-6) return;
+  const t = W.d.time;
+  if (hist.length && t < hist[hist.length - 1][0] - 1e-6) hist.length = 0;   // (V52) time went back (reset): start over - before, the history stopped recording after a reset
+  if (hist.length && t - hist[hist.length - 1][0] < 1 / 30 - 1e-6) return;
   // (V39) kept as raw numbers (was ~2,200 number->text->number roundings a second); rounded when a snapshot is made
   const q = W.d.qpos, h = new Float64Array(q.length + 1); h[0] = t; h.set(q, 1);
   hist.push(h); if (hist.length > 90) hist.shift();
