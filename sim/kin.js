@@ -442,7 +442,15 @@ export class Kin {
     this.xiPrev = this.xi.slice(); this.xiRate = xr;
     // (feet planted, user 18:50) a step only when balance is really lost: past the margin for 0.15 s, or far past it
     this.outT = b.out > this.stepMargin ? (this.outT || 0) + dt : 0;
-    if (this.outT > 0.15 || b.out > 3 * this.stepMargin) { this.outT = 0; return this.startReact(b.dir, b.out, xr); }
+    // (V49+, physics controller) his REAL balance is known (drive_brain hands it over: realBal, realBalT): this model's
+    // step is only taken when his real capture point is near or past the edge of his planted feet too (realGate m inside).
+    // With his real weight well inside his feet the ghost's 'lost balance' is the model's, not his: in the physics
+    // standing tests 9 of 10 of these steps ended in a fall 1-2 s later while his real body had been balanced (real
+    // capture point 6 cm inside: tiltSideQuick12, pushWallA, turnedAway). When his real weight does go out, drive_brain's
+    // weightCheck asks for the step (requestStep).
+    const rb = this.realBal, realIn = rb && this.t - (this.realBalT ?? -9) < 0.15 && this.realGate !== false && rb.margin > (this.realGateM ?? globalThis.REALGATE ?? 0.03);
+    if (realIn && (this.outT > 0.15 || b.out > 3 * this.stepMargin)) { this.outT = 0; if (this.lastGated == null || this.t - this.lastGated > 1) this.event('no step: his real weight is inside his feet (' + Math.round(rb.margin * 100) + ' cm)'); this.lastGated = this.t; }
+    else if (this.outT > 0.15 || b.out > 3 * this.stepMargin) { this.outT = 0; return this.startReact(b.dir, b.out, xr); }
     // round 6: he turns back to face the glass, slowly (a person standing re-squares to what they look at): when calm and
     // more than 12 deg off, the recording's facing turns ~6 deg/s about his hips; planted feet pivot with the IK
     if (Math.hypot(this.cv[0], this.cv[1]) < 0.05 && (this.G.name === 'floor' || this.G.name === 'ceil')) {

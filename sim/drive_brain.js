@@ -10,8 +10,9 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=52';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=52';
+import { Pins } from './pins.js?v=53';
+import { Balance } from './balance.js?v=53';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=53';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function hullPts(P) {
   const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
@@ -944,10 +945,99 @@ export class BrainDrive {
     for (const j of this.armJ) { const dof = W.act[j].qadr - 1; d.qfrc_applied[dof] = !phys && (this.armW || 0) > 0 && this.kin.state !== 'fall' ? d.qfrc_bias[dof] * this.armW : 0; }
   }
   height(dd, b) { return this.kin.toLocal([dd.xpos[3 * b], dd.xpos[3 * b + 1], dd.xpos[3 * b + 2]])[2]; }
+  // (user 14:13 snapshot: "a normal human would approach his feet to the center of gravity"; helper B's weightCheck, R3)
+  // his REAL body's capture point (where his weight would have to go to stop) against what really holds him up decides
+  // a step, not only the director's own model of him (kin.js balance(), which only balanced the ghost: real CoM 15 cm
+  // past the ghost's, weight 28 cm outside his feet, the ghost balanced -> no step, the ghost 'caught up with his body'
+  // six times). Past his support by 5 cm for 0.25 s (or 10 cm at once) while he stands: a step that way (a recovery
+  // recording, kin.requestStep); too many steps in a row end in a fall (kin.js). The physics controller measures it
+  // itself (brain.realBal: soles that are really planted); other brains use sim/balance.js (contacts + pins).
+  // Braced (a hand flat on a wall, or bracing while the phone is shaken): judged on a ~0.5 s average, never a step into
+  // the wall a hand holds (helper F, shake falls 5 -> 0). Just up from a get-up: see upHold below.
+  weightCheck(dt) {
+    const K = this.kin, W = this.W, B = this.brain, d = W.d;
+    // the moment he is up again after a get-up (or caught himself): the weight settles onto the feet first
+    if (K.state !== this.wcPrevState) { if (this.wcPrevState === 'getup' || this.wcPrevState === 'fall') this.upT = K.t; this.wcPrevState = K.state; }
+    if (B.meta && B.meta.physics && B.realBal && K.state === 'stand') { K.realBal = B.realBal; K.realBalT = K.t; }   // kin's own steps check it (updateStand)
+    const wcOff = this.noWeightCheck ?? (B.meta && B.meta.physics ? !globalThis.WCPHYS : false);   // physics: off (steps it asked for fell 30-32/32 vs 20/32 without, quick standing set)
+    if (wcOff || globalThis.NOWC || K.state !== 'stand') { this.cpOutT = 0; if (this.bal) this.bal.prev = null; return; }
+    let out, away, n = 0;
+    if (B.meta && B.meta.physics) {
+      const r = B.realBal; if (!r || !r.support || r.support.length < 3 || d.time - r.t > 0.1) { this.cpOutT = 0; return; }
+      const S = r.support, c0 = [0, 0]; for (const p of S) { c0[0] += p[0] / S.length; c0[1] += p[1] / S.length; }
+      out = -r.margin; away = [r.cp[0] - c0[0], r.cp[1] - c0[1], 0]; n = S.length;
+      this.balNow = r;
+      // the first ticks after a get-up (the kinematic replay moved him without speeds: his centre of mass 'jumped') or a
+      // jump in the support give capture points metres away: judged only after 0.3 s of steady readings
+      this.wcLiveT = r.t - (this.wcLastT ?? -9) < 0.1 && out < 0.6 ? (this.wcLiveT || 0) + dt : 0; this.wcLastT = r.t;
+      if (this.wcLiveT < 0.3) { this.cpOutT = 0; return; }
+    } else {
+      const r = (this.bal || (this.bal = new Balance(W))).update(dt, this.pins); this.balNow = r; n = r.n;
+      if (!(r.n > 0)) { this.cpOutT = 0; return; }
+      const D = r.draw(), H = D.hull, c0 = [0, 0, 0]; for (const p of H) for (let k = 0; k < 3; k++) c0[k] += p[k] / Math.max(1, H.length);
+      out = -r.cpMargin; away = K.dirLocal([D.cp[0] - c0[0], D.cp[1] - c0[1], D.cp[2] - c0[2]]);
+    }
+    { const al = Math.hypot(away[0], away[1]) || 1; away = [away[0] / al, away[1] / al, 0]; }
+    if (K.t - (K.resetT || 0) < 1.2 || !(n > 0)) { this.cpOutT = 0; return; }
+    // a hand pinned flat on a wall (sim/pins.js) or bracing while the phone is shaken: the 0.5 s average
+    const wallHands = this.pins && !globalThis.NOHANDHOLD ? Object.entries(this.pins.on).filter(([nm, P]) => /Hand/.test(nm) && !P.ground && P.out) : [];
+    const k = 1 - Math.exp(-dt / (globalThis.HANDAVG ?? 0.5));
+    if (!this.cpAvg) this.cpAvg = { out, away: away.slice() };
+    this.cpAvg.out += (out - this.cpAvg.out) * k; for (let i = 0; i < 2; i++) this.cpAvg.away[i] += (away[i] - this.cpAvg.away[i]) * k;
+    if (wallHands.length || ((K.braceW || 0) > 0.5 && (K.upRate || 0) > (globalThis.AVGRATE ?? 0.26) && !globalThis.NOBRACEAVG)) {
+      out = this.cpAvg.out; const al = Math.hypot(this.cpAvg.away[0], this.cpAvg.away[1]) || 1; away = [this.cpAvg.away[0] / al, this.cpAvg.away[1] / al, 0];
+      if (wallHands.some(([, P]) => { const o = K.dirLocal(P.out); return -(away[0] * o[0] + away[1] * o[1]) > 0.5; })) { this.cpOutT = 0; return; }
+    }
+    // just up from a get-up (helper B: 4 of 40 get-ups fell from steps in the first seconds standing, with a 2 s pause):
+    // his weight is still settling onto his feet from the recording; for upHold s he steps only if it is far out (upLim)
+    const fresh = this.upT != null && K.t - this.upT < (this.upHold ?? globalThis.WCUPT ?? 2);
+    const lim = fresh ? (this.upLim ?? globalThis.WCUPLIM ?? 0.15) : (this.cpStepAt ?? globalThis.WCLIM ?? 0.05), lim2 = fresh ? Math.max(lim, 0.2) : (globalThis.WCLIM2 ?? 0.1);
+    this.cpOutT = out > lim ? (this.cpOutT || 0) + dt : 0;
+    if (this.cpOutT > (this.cpStepT ?? globalThis.WCT ?? 0.25) || out > lim2) {
+      this.cpOutT = 0;
+      const { f, l } = K.facing();
+      let ang = Math.atan2(away[0] * l[0] + away[1] * l[1], away[0] * f[0] + away[1] * f[1]) * 180 / Math.PI;
+      const wb = this.wcBack ?? (globalThis.WCBACK === 1 ? 'skip' : globalThis.WCBACK === 2 ? 'side' : null);
+      if (Math.abs(ang) > 112 && wb === 'skip') return;
+      if (Math.abs(ang) > 112 && wb === 'side') ang = Math.sign(ang || 1) * 90;
+      this.stats.cpSteps = (this.stats.cpSteps || 0) + 1;
+      K.event('his weight past his feet (' + Math.round(out * 100) + ' cm, ' + Math.round(ang) + ' deg)');
+      K.requestStep(ang, out);
+    }
+  }
+  // (physics controller) a recovery step's next foot lifts only once his REAL weight is over the other foot. The
+  // recordings are a person whose weight is already there; his physical body lags (14:13-style falls in the physics
+  // standing tests: the front foot landed 56 cm ahead, the rear foot lifted at once with his centre of mass still 23 cm
+  // behind the front foot, and he fell backward between his feet). While the recording is about to lift a planted foot
+  // (it is planted now and not in ~0.15 s) and his real centre of mass is not yet mostly over the other planted foot
+  // (wsShare of the way from the lifting foot to it), the recording waits (plays at 10%), at most wsMax s.
+  weightShift(dt) {
+    const K = this.kin, B = this.brain, W = this.W, d = W.d, a = K.anim, r = B.realBal;
+    if (!(B.meta && B.meta.physics) || this.noWeightShift || globalThis.NOWS || !r || !a || !a.clip.contact) { this.wsHoldT = 0; return; }
+    const la = (globalThis.WSLA ?? 0.15) * 30 * (a.speed || 1), c = s => a.clip.contact(a.x, LEGS[s].k) > 0.5, cn = s => a.clip.contact(a.x + la, LEGS[s].k) > 0.5;
+    let lift = null; for (const s of ['Left', 'Right']) if (c(s) && !cn(s)) lift = s;
+    const st = lift === 'Left' ? 'Right' : 'Left';
+    // the other foot is (or within ~0.15 s will be) planted in the recording, and his real one is near the floor
+    const P = s => { const b = W.bodyId[LEGS[s].foot]; return K.toLocal([d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]]); };
+    if (!lift || !cn(st)) { this.wsHoldT = 0; return; }
+    const pl = P(lift), ps = P(st);
+    if (ps[2] - pl[2] > 0.05) { this.wsHoldT = 0; return; }   // his stance foot not down yet (holding then made it worse)
+    const ax = [ps[0] - pl[0], ps[1] - pl[1]], L2 = ax[0] * ax[0] + ax[1] * ax[1];
+    // only a staggered stance (one foot over wsSpan ahead of the other along where he faces: the step has landed it well
+    // ahead or behind), not the first step out of his normal (side by side) stance, which needs no full weight shift and must not be delayed
+    const { f } = K.facing();
+    if (L2 < 0.01 || Math.abs(ax[0] * f[0] + ax[1] * f[1]) < (this.wsSpan ?? globalThis.WSSPAN ?? 0.25)) { this.wsHoldT = 0; return; }
+    const share = ((r.com[0] - pl[0]) * ax[0] + (r.com[1] - pl[1]) * ax[1]) / L2;
+    if (share < (this.wsShare ?? globalThis.WSSHARE ?? 0.6) && (this.wsHoldT || 0) < (this.wsMax ?? globalThis.WSMAX ?? 0.6)) {
+      if (!this.wsHoldT) { this.stats.wsHolds = (this.stats.wsHolds || 0) + 1; if (globalThis.WSDBG) console.log('WS', d.time.toFixed(2), lift, 'share', share.toFixed(2), 'lift', pl.map(v => v.toFixed(2)).join(','), 'stance', ps.map(v => v.toFixed(2)).join(','), 'com', r.com.map(v => v.toFixed(2)).join(',')); }
+      this.wsHoldT = (this.wsHoldT || 0) + dt; a.speed = Math.min(a.speed, globalThis.WSSPEED ?? 0.1);
+    } else if (share >= (this.wsShare ?? globalThis.WSSHARE ?? 0.6)) this.wsHoldT = 0;
+  }
   async update(dt, fingerPush) {
     const W = this.W, d = W.d, m = W.m, K = this.kin, B = this.brain, PH = 1 / 480;
     if (this.pins && !this.noPins) this.pins.update(dt);
     else if (this.pins) this.pins.reset();
+    const physUp = K.state === 'getup' && B.meta.physics && B.getupReady;   // (PHYS) the physics controller drives the get-up
     if (this.springs && K.state === 'getup' && this.getupBy === 'brain') {
       // the network moves his joints through the get-up recording; the springs' hips help (outside force) lifts
       if (this.mode !== 'getup') { this.mode = 'getup'; B.attach(); B.told = true; this.prevRef = null; this.springs.helpK = 0; this.springs.gPrev = null; }
@@ -969,7 +1059,7 @@ export class BrainDrive {
     // physics and the balance network take over again once he stands (the recording's last pose, still). Driving his
     // physical body through the recordings with muscles failed 3 times in 4 (stuck in a squat, a wall-sit, a frog), and
     // made poses no person makes (his trunk held up on one hand).
-    if (K.state === 'getup' && this.getupBy === 'kin') {
+    if (K.state === 'getup' && this.getupBy === 'kin' && !physUp) {
       if (this.mode !== 'getup') { this.mode = 'getup'; this.kinFrom = Float64Array.from(d.qpos); this.kinT = 0; this.gLocks = {}; this.gLocksInit = false; this.gShift = null; d.xfrc_applied.fill(0); d.qfrc_applied.fill(0); if (this.springs) this.springs.restoreStrength(); }
       this.kinT += dt;
       // (Version 28) your finger pressing on him while he gets up: the recording can't feel it; a firm push (over a
@@ -1071,7 +1161,7 @@ export class BrainDrive {
       K.getupLag = 0; K.getupHandWait = false; K.getupLeanWait = false;
       this.stats.err = 0; this.stats.help = 0; return;
     }
-    if (this.springs && K.state === 'getup') {
+    if (this.springs && K.state === 'getup' && !physUp) {
       if (this.mode !== 'getup') { this.mode = 'getup'; const S = this.springs; S.mode = 'follow'; S.helpK = 0; S.gPrev = null; S.lostT = 0; S.setGains(S.stiff, Math.sqrt(S.stiff)); }
       this.springs.update(dt, fingerPush); this.stats.err = 0; this.stats.help = this.springs.stats.help; return;
     }
@@ -1079,6 +1169,7 @@ export class BrainDrive {
     if (this.mode === 'getup') { this.mode = 'follow'; d.qfrc_applied.fill(0); if (this.springs) this.springs.restoreStrength(); B.attach(); B.told = true; this.prevRef = null; this.lostT = 0; }
     this.followBody(dt);
     const falling = K.state === 'fall';
+    this.weightCheck(dt);
     // falling (user 18:23 "why does he get all floppy?"): his muscles stay at ~1/3, easing to 1/4 (was 12% -> 4%),
     // holding the pose he had when he went down, so he keeps his shape (with the joint limits) instead of folding
     if (falling && this.mode !== 'fall') {
@@ -1228,6 +1319,7 @@ export class BrainDrive {
     if (!falling) K.setPhys(d.qpos, d, dt);
     // a recovery recording waits for him: when his body lags the recording, it plays slower (down to 60%)
     if (K.state === 'react' && K.anim) K.anim.speed = Math.max(0.6, Math.min(1, 1 - ((B.err || 0) - 0.15) * 1.6));
+    if (K.state === 'react' && K.anim) this.weightShift(dt); else this.wsHoldT = 0;
     // round 5: far from the recording's pose is not the same as falling. He falls when his body is really going down
     // (hips under 60 cm, or head 40 cm below the recording's) for 0.4 s; if he is still up but the recording has
     // drifted away from him (err > 35 cm for 0.3 s: a step on a slope, the return to idle after it), the recording
@@ -1245,10 +1337,17 @@ export class BrainDrive {
         const gd = this.G.d, ids = ['Hips', 'Head', 'LeftFoot', 'RightFoot'].map(n => W.bodyId[n]);
         let core = 0; for (const b of ids) core = Math.max(core, Math.hypot(d.xpos[3 * b] - gd.xpos[3 * b], d.xpos[3 * b + 1] - gd.xpos[3 * b + 1], d.xpos[3 * b + 2] - gd.xpos[3 * b + 2]));
         this.driftT = core > lim ? (this.driftT || 0) + dt : 0;
-        if (this.driftT > tl) { this.driftT = 0; K.resync(d.qpos); this.prevRef = null; }
+        // (user 15:18, s2 snapshot: 8 'caught up with his body' in 6 s, frozen, then toppled into the wall head first)
+        // (OFF by default: in the quick standing set it turned 10 survived runs into falls, 20 -> 30/32, head hits 57 -> 54)
+        // physics controller: while his REAL weight is off his feet (centre of mass outside the planted soles), the
+        // ghost catches up with him at most once in 2 s; the next time he is going down: the fall (and its catch -
+        // hands toward the surface, turning to it) starts now, not after his head has hit
+        const rb = B.meta && B.meta.physics ? B.realBal : null, offBal = rb && d.time - rb.t < 0.1 && rb.support && rb.support.length >= 3 && rb.comMargin < -(globalThis.OFFBAL ?? 0.04);
+        if (this.driftT > tl && offBal && (this.resyncLim ?? globalThis.RESYNCLIM) && K.t - (this.resyncT ?? -9) < 2) { this.driftT = 0; this.stats.offBalFalls = (this.stats.offBalFalls || 0) + 1; K.startFall('his weight went past his feet (' + Math.round(-rb.comMargin * 100) + ' cm) and the recording could not follow'); }
+        else if (this.driftT > tl) { this.driftT = 0; K.resync(d.qpos); this.prevRef = null; this.resyncT = K.t; }
       }
     }
-    if (!falling && K.state === 'getup') {   // (no springs given) the network tries the get-up itself
+    if (!falling && K.state === 'getup' && !physUp) {   // (no springs given) the network tries the get-up itself
       this.lostT = (B.err || 0) > 0.6 ? this.lostT + dt : Math.max(0, this.lostT - dt);
       if (this.lostT > 0.8) { this.lostT = 0; K.startFall('the get-up failed'); }
     }
