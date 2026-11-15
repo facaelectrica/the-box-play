@@ -33,24 +33,10 @@ p{margin:0;max-width:68ch}
 .note{color:var(--muted);font-size:.86rem}
 ul,ol{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:4px}
 li::marker{color:var(--accent)}
-.facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.facts div{background:var(--surface);padding:10px 12px;display:flex;flex-direction:column}
-.facts span{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-.facts b{font-size:1.25rem;font-variant-numeric:tabular-nums}
-@media (max-width:600px){.facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .pill{display:inline-block;font-size:.72rem;font-weight:600;padding:2px 9px;border-radius:999px;white-space:nowrap}
 .pill.done{background:var(--good-soft);color:var(--good)}
 .pill.prog{background:var(--warn-soft);color:var(--warn)}
 .pill.open{background:var(--bad-soft);color:var(--bad)}
-.chips{display:flex;flex-wrap:wrap;gap:6px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 46px);z-index:4;background:var(--bg);padding:8px 0;border-bottom:1px solid var(--line)}
-.chips button{font:inherit;font-size:.85rem;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
-.chips button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-.cat{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
-.cat i{width:9px;height:9px;border-radius:50%;display:inline-block}
-.cat.safe{color:var(--c1)} .cat.safe i{background:var(--c1)}
-.cat.phys{color:var(--c2)} .cat.phys i{background:var(--c2)}
-.cat.human{color:var(--c3)} .cat.human i{background:var(--c3)}
-.cat.stage{color:var(--c4)} .cat.stage i{background:var(--c4)}
 .rules{display:flex;flex-direction:column;gap:10px}
 .rule{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .rule summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:start;padding:12px 14px}
@@ -91,7 +77,7 @@ tr:last-child td{border-bottom:0}
 </style>
 </head>
 <body>
-<header class="bar"><div class="bar-in"><h1>The Box — Rulebook</h1><span class="stamp">V43 · Nov 15, 13:45</span></div></header>
+<header class="bar"><div class="bar-in"><h1>The Box — Rulebook</h1><span class="stamp">V43 · Nov 15, 13:42</span></div></header>
 <div class="page">
 
 <section>
@@ -99,35 +85,19 @@ tr:last-child td{border-bottom:0}
 <p class="lead">The target behaviour for the character, ranked by priority: <b>when two rules conflict, the higher one wins.</b> Each rule states what he should do and whether it works yet.</p>
 </section>
 
-<div class="facts">
-  <div><span>Rules</span><b>9</b></div>
-  <div><span>Works</span><b style="color:var(--good)">5</b></div>
-  <div><span>Partly</span><b style="color:var(--warn)">2</b></div>
-  <div><span>Not yet</span><b style="color:var(--bad)">2</b></div>
-</div>
-
 <h2>The rules, highest first</h2>
-<div class="chips" role="group" aria-label="Filter rules">
-  <button data-f="all" aria-pressed="true">All</button>
-  <button data-f="safe">Integrity</button>
-  <button data-f="phys">Physics</button>
-  <button data-f="human">Human behaviour</button>
-  <button data-f="stage">Presentation</button>
-  <button data-f="todo">Not working yet</button>
-</div>
-
 <div class="rules" id="rules">
 
-<details class="rule" data-cat="safe" data-st="done">
-<summary><span class="n">1</span><span class="t"><span class="cat safe"><i></i>Integrity</span><b>Stays inside the box</b><span class="one">No body part passes through a wall, the floor or the ceiling.</span></span><span class="pill done">Works</span></summary>
+<details class="rule" data-st="done">
+<summary><span class="n">1</span><span class="t"><b>Stays inside the box</b><span class="one">No body part passes through a wall, the floor or the ceiling.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
   <div><h4>Status</h4><p>Works. After every frame, any limb that has entered a surface is pushed back out. An arm resolves by bending at its own joints; the body is moved only if that isn't enough.</p></div>
   <div class="vers"><span>V29</span><span>V31</span><span>V37</span><span>V42</span></div>
 </div>
 </details>
 
-<details class="rule" data-cat="safe" data-st="done">
-<summary><span class="n">2</span><span class="t"><span class="cat safe"><i></i>Integrity</span><b>Anatomically possible poses</b><span class="one">Every joint stays within a human range of motion. The body bends as one continuous figure.</span></span><span class="pill done">Works</span></summary>
+<details class="rule" data-st="done">
+<summary><span class="n">2</span><span class="t"><b>Anatomically possible poses</b><span class="one">Every joint stays within a human range of motion. The body bends as one continuous figure.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
   <div><h4>Rule</h4><ul><li>No over-bent spine, neck, shoulders, ankles or knees.</li><li>Body segments never separate or show gaps when he bends.</li></ul></div>
   <div><h4>Status</h4><p>Works. Joint limits are measured from real human motion. Falls aim for the middle of each joint's range rather than its extremes.</p></div>
@@ -136,8 +106,8 @@ tr:last-child td{border-bottom:0}
 </div>
 </details>
 
-<details class="rule" data-cat="human" data-st="open">
-<summary><span class="n">3</span><span class="t"><span class="cat human"><i></i>Human behaviour</span><b>Breaks his fall</b><span class="one">When he loses balance, he turns toward the impact and catches himself with his hands, forearms or a knee.</span></span><span class="pill open">Not yet</span></summary>
+<details class="rule" data-st="open">
+<summary><span class="n">3</span><span class="t"><b>Breaks his fall</b><span class="one">When he loses balance, he turns toward the impact and catches himself with his hands, forearms or a knee.</span></span><span class="pill open">Not yet</span></summary>
 <div class="body">
   <div><h4>Rule</h4><ul><li><b>Catch first.</b> Brace against the surface he is about to hit.</li><li><b>Shield only when a catch is impossible</b>: no time, no room, upside down, or arms blocked. Then his forearms go between his head and the surface.</li><li>His face never rests against a wall. Upside down, he tucks.</li></ul></div>
   <div><h4>Status</h4><p>Not yet. Head shielding works; the catch is in development, so for now he mostly shields.</p></div>
@@ -145,8 +115,8 @@ tr:last-child td{border-bottom:0}
 </div>
 </details>
 
-<details class="rule" data-cat="phys" data-st="prog">
-<summary><span class="n">4</span><span class="t"><span class="cat phys"><i></i>Physics</span><b>Human strength only</b><span class="one">Every force he uses is one a person could produce. He pushes with his palms, never the backs of his hands.</span></span><span class="pill prog">Partly</span></summary>
+<details class="rule" data-st="prog">
+<summary><span class="n">4</span><span class="t"><b>Human strength only</b><span class="one">Every force he uses is one a person could produce. He pushes with his palms, never the backs of his hands.</span></span><span class="pill prog">Partly</span></summary>
 <div class="body">
   <div><h4>Rule</h4><ul><li>No external lifting.</li><li>Joint strength capped at human levels.</li><li>Grip no stronger than a sole or palm on wood.</li></ul></div>
   <div><h4>Exception (agreed)</h4><p>Get-ups replay recorded motion, so the poses are human but not muscle-driven. A firm push or a steep floor still knocks him down.</p></div>
@@ -155,8 +125,8 @@ tr:last-child td{border-bottom:0}
 </div>
 </details>
 
-<details class="rule" data-cat="phys" data-st="open">
-<summary><span class="n">5</span><span class="t"><span class="cat phys"><i></i>Physics</span><b>Contacts stay planted</b><span class="one">A foot or hand on a surface doesn't slide. The body moves over its contacts, never the contacts under the body.</span></span><span class="pill open">Not yet</span></summary>
+<details class="rule" data-st="open">
+<summary><span class="n">5</span><span class="t"><b>Contacts stay planted</b><span class="one">A foot or hand on a surface doesn't slide. The body moves over its contacts, never the contacts under the body.</span></span><span class="pill open">Not yet</span></summary>
 <div class="body">
   <div><h4>Rule</h4><ul><li>Feet: whole sole down, never on tiptoe, never hovering.</li><li>Hands: palm flat.</li><li>Kneeling: toes tucked under.</li></ul></div>
   <div><h4>Status</h4><ul><li><b>Works</b> while standing.</li><li><b>Not yet</b> in get-ups: the feet still slide, worst when the box is rotated or narrow, or while it is turning.</li><li><b>Not yet:</b> in some get-ups the feet hover. Heels sit about 1 cm high.</li></ul></div>
@@ -174,8 +144,8 @@ tr:last-child td{border-bottom:0}
 </div>
 </details>
 
-<details class="rule" data-cat="phys" data-st="prog">
-<summary><span class="n">6</span><span class="t"><span class="cat phys"><i></i>Physics</span><b>Balanced</b><span class="one">His weight stays over his support: his feet plus any hand braced on a wall. When it leaves that area, he steps, grabs or falls.</span></span><span class="pill prog">Partly</span></summary>
+<details class="rule" data-st="prog">
+<summary><span class="n">6</span><span class="t"><b>Balanced</b><span class="one">His weight stays over his support: his feet plus any hand braced on a wall. When it leaves that area, he steps, grabs or falls.</span></span><span class="pill prog">Partly</span></summary>
 <div class="body">
   <div><h4>Rule</h4><ul><li>A braced hand counts as support, like a foot.</li><li>He never holds a pose that couldn't balance.</li><li>Hands braced on the walls should keep him upright while the box is shaken side to side.</li></ul></div>
   <div><h4>Status</h4><ul><li><b>Works:</b> he braces on the wall he is tipping toward, not the far one (V42).</li><li><b>Not yet:</b> 3 falls in 36 standing tests.</li><li><b>Not yet:</b> no recovery step.</li><li><b>Not yet:</b> no reaction to light pushes during a get-up.</li></ul></div>
@@ -184,8 +154,8 @@ tr:last-child td{border-bottom:0}
 </div>
 </details>
 
-<details class="rule" data-cat="human" data-st="done">
-<summary><span class="n">7</span><span class="t"><span class="cat human"><i></i>Human behaviour</span><b>Real human motion</b><span class="one">His movement comes from recordings of real people, with smooth transitions.</span></span><span class="pill done">Works</span></summary>
+<details class="rule" data-st="done">
+<summary><span class="n">7</span><span class="t"><b>Real human motion</b><span class="one">His movement comes from recordings of real people, with smooth transitions.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
   <div><h4>Rule</h4><ul><li>No hand-made animation.</li><li>No snapping between movements.</li><li>Get-ups use arms and legs as levers, with feet planted before he rises.</li><li>From sitting, he sits up and stands instead of rolling over.</li></ul></div>
   <div><h4>Status</h4><p>Works. 2,485 recorded movements. Each get-up blends in from his landing pose over 0.8 s.</p></div>
@@ -193,8 +163,8 @@ tr:last-child td{border-bottom:0}
 </div>
 </details>
 
-<details class="rule" data-cat="human" data-st="done">
-<summary><span class="n">8</span><span class="t"><span class="cat human"><i></i>Human behaviour</span><b>Minimal effort</b><span class="one">No muscle effort without a purpose. He rests whenever he can.</span></span><span class="pill done">Works</span></summary>
+<details class="rule" data-st="done">
+<summary><span class="n">8</span><span class="t"><b>Minimal effort</b><span class="one">No muscle effort without a purpose. He rests whenever he can.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
   <div><h4>Rule</h4><ul><li>Arms either rest on a surface or hang.</li><li>Elbows stay low and back.</li><li>He rests when he can: leaning on a wall, sitting, or kneeling when the ceiling is low.</li></ul></div>
   <div><h4>Status</h4><p>Works.</p></div>
@@ -202,8 +172,8 @@ tr:last-child td{border-bottom:0}
 </div>
 </details>
 
-<details class="rule" data-cat="stage" data-st="done">
-<summary><span class="n">9</span><span class="t"><span class="cat stage"><i></i>Presentation</span><b>Faces the viewer</b><span class="one">He faces the glass. He returns to the centre only when the box is level.</span></span><span class="pill done">Works</span></summary>
+<details class="rule" data-st="done">
+<summary><span class="n">9</span><span class="t"><b>Faces the viewer</b><span class="one">He faces the glass. He returns to the centre only when the box is level.</span></span><span class="pill done">Works</span></summary>
 <div class="body">
   <div><h4>Rule</h4><ul><li>Level (within about 10°): he walks to the centre and turns to face the glass.</li><li>Tilted toward a nearby wall: he leans on that wall instead.</li></ul></div>
   <div><h4>Status</h4><p>Works.</p></div>
@@ -211,7 +181,6 @@ tr:last-child td{border-bottom:0}
 </div>
 </details>
 
-<p class="empty" id="none" hidden>No rules in this group.</p>
 </div>
 
 <h2>When rules conflict</h2>
@@ -241,13 +210,6 @@ tr:last-child td{border-bottom:0}
   <div class="vers"><span>V30</span><span>V32</span><span>V33</span><span>V36</span><span>V38</span></div>
 </div>
 
-<h2>Adding a new request</h2>
-<ol class="steps">
-  <li><span><b>Rank it:</b> make it a new rule or add it to an existing one.</span></li>
-  <li><span><b>Resolve conflicts:</b> record which rule wins and how.</span></li>
-  <li><span><b>Build and test it against every rule.</b> This page is updated with each build.</span></li>
-</ol>
-
 <h2>Being worked on now</h2>
 <div class="now">
   <div><b class="k">1</b><p><b>Hand and foot contact</b> (rules 4, 5). Make hands land flat and stay put on walls, and keep feet grounded in every get-up. <span class="note">Done in V42: floor hands turn palm-down.</span></p></div>
@@ -260,25 +222,5 @@ tr:last-child td{border-bottom:0}
 
 </div>
 
-<script>
-(function(){
-  var btns=document.querySelectorAll('.chips button');
-  var rules=document.querySelectorAll('.rule');
-  var none=document.getElementById('none');
-  function apply(f){
-    var shown=0;
-    rules.forEach(function(r){
-      var ok = f==='all' || (f==='todo' ? r.dataset.st!=='done' : r.dataset.cat===f);
-      r.hidden=!ok; if(ok) shown++;
-    });
-    none.hidden=shown>0;
-    btns.forEach(function(b){b.setAttribute('aria-pressed', b.dataset.f===f ? 'true':'false');});
-    try{localStorage.setItem('rbf',f);}catch(e){}
-  }
-  btns.forEach(function(b){b.addEventListener('click',function(){apply(b.dataset.f);});});
-  var saved='all'; try{saved=localStorage.getItem('rbf')||'all';}catch(e){}
-  apply(saved);
-})();
-</script>
 </body>
 </html>
