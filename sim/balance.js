@@ -68,7 +68,7 @@ export class Balance {
     if (this.prev && dt > 0) { const k = 1 - Math.exp(-dt / 0.05); for (let i = 0; i < 3; i++) this.v[i] += ((c[i] - this.prev[i]) / dt - this.v[i]) * k; }
     this.prev = c;
     const M = m.body_subtreemass[h], Wt = M * gn;
-    const load = [0, 0, 0, 0, 0], pts = [];
+    const load = [0, 0, 0, 0, 0], pts = [], feetPts = [];   // feetPts: the support from his feet alone (for comparison)
     let low = 1e9;
     for (let i = 0; i < d.ncon; i++) {
       const cn = d.contact.get(i), g1 = cn.geom1, g2 = cn.geom2, dist = cn.dist, pos = [cn.pos[0], cn.pos[1], cn.pos[2]], fr = Array.from(cn.frame); cn.delete();
@@ -80,7 +80,7 @@ export class Balance {
       const sg = f2 ? 1 : -1, b = f2 ? b2 : b1;   // the force on geom2 is +f (on geom1 -f)
       const up = sg * U(fw); const k = this.part[b]; if (up > 0) load[k] += up;
       // a support point: anything pressing on the box (a hand on a wall pushes sideways and still holds him up)
-      if (Math.abs(f[0]) > 5) { pts.push(P(pos)); low = Math.min(low, U(pos)); }
+      if (Math.abs(f[0]) > 5) { pts.push(P(pos)); low = Math.min(low, U(pos)); if (k === 0 || k === 1) feetPts.push(P(pos)); }
       if (globalThis.BALDBG && globalThis.BALDBG(d.time)) console.log('BC', d.time.toFixed(3), mj.mj_id2name(m, mj.mjtObj.mjOBJ_BODY.value, b), mj.mj_id2name(m, mj.mjtObj.mjOBJ_BODY.value, f2 ? b1 : b2), 'fn', f[0].toFixed(0), 'up', up.toFixed(0), 'P', P(pos).map(v => (v * 100).toFixed(1)).join(','));
     }
     // the welds (sim/pins.js): a pinned hand or foot is held by a weld instead of (hands: as well as) its contacts.
@@ -94,7 +94,7 @@ export class Balance {
         const fn = f[0] * nrm[0] + f[1] * nrm[1] + f[2] * nrm[2], ft = Math.hypot(f[0] - fn * nrm[0], f[1] - fn * nrm[1], f[2] - fn * nrm[2]);
         const N = Math.max(0, fn) + load[k] / Math.max(1, Object.keys(pins.on).filter(x => (/Foot/.test(x) ? (x[0] === 'L' ? 0 : 1) : 2) === k).length);
         const up = U(f); if (up > 0) load[k] += up; pinUp += up; pinT += Math.hypot(f[3], f[4], f[5]);
-        if (fn > 5) { const p = pins.pos(b); pts.push(P(p)); low = Math.min(low, U(p) - 0.05); }
+        if (fn > 5) { const p = pins.pos(b); pts.push(P(p)); low = Math.min(low, U(p) - 0.05); if (k !== 2) feetPts.push(P(p)); }
         held += Math.max(0, -fn) + Math.max(0, ft - 0.8 * N); heldT += Math.max(0, Math.hypot(f[3], f[4], f[5]) - 0.1 * N);
         if (globalThis.BALDBG && globalThis.BALDBG(d.time)) console.log('PIN', n, 'fn', fn.toFixed(0), 'ft', ft.toFixed(0), 'N', N.toFixed(0), 'T', Math.hypot(f[3], f[4], f[5]).toFixed(0));
       } }
@@ -103,7 +103,7 @@ export class Balance {
     if (globalThis.BALDBG && globalThis.BALDBG(d.time)) { let mm = 0; const cc = [0, 0, 0]; for (let b = 0; b < m.nbody; b++) if (W.isFig[b]) { mm += m.body_mass[b]; for (let k = 0; k < 3; k++) cc[k] += m.body_mass[b] * d.xipos[3 * b + k]; } console.log('MANUAL', P(cc.map(v => v / mm)).map(v => (v * 100).toFixed(1)).join(','), mm.toFixed(1), M.toFixed(1), 'hipsId', h, 'qfrc_app root', Array.from(d.qfrc_applied.slice(0, 6)).map(v => v.toFixed(0)).join(','), 'xfrc', Array.from(d.xfrc_applied).reduce((a, v) => a + Math.abs(v), 0).toFixed(0)); }
     if (globalThis.BALDBG && globalThis.BALDBG(d.time)) console.log('BCOM', P(c).map(v => (v * 100).toFixed(1)).join(','), 'hull', JSON.stringify(H.map(p => p.map(v => +(v * 100).toFixed(1)))));
     const r = {
-      margin: pts.length ? margin(H, x) : -1, cpMargin: pts.length ? margin(H, cp) : -1,
+      margin: pts.length ? margin(H, x) : -1, cpMargin: pts.length ? margin(H, cp) : -1, cpMarginFeet: feetPts.length ? margin(hull(feetPts), cp) : -1,
       L: load[0] / Wt, R: load[1] / Wt, hands: load[2] / Wt, knees: load[3] / Wt, rest: load[4] / Wt,
       speed: Math.hypot(...vh), n: pts.length, pins: pinUp / Wt, pinTorque: pinT, held: held / Wt, heldTorque: heldT,
       // for drawing: the outline and the two points, as world points at the lowest contact's height

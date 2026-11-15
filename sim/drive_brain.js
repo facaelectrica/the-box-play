@@ -10,8 +10,8 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=41';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=41';
+import { Pins } from './pins.js?v=42';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=42';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 function hullPts(P) {
   const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
@@ -603,6 +603,15 @@ export class BrainDrive {
     // is on the floor: lowered until the sole (ankle 4.6 cm, toes 0) touches, the foot coming down to it over 0.2 s
     const onFloor = (dd, n) => { const b = W.bodyId[n], t = W.bodyId[n.replace('Foot', 'ToeBase')], pA = P3(dd, b);
       if (globalThis.NOFLOORSPOT) return pA; const dr = Math.max(0, Math.min(ht(pA) - 0.046, ht(P3(dd, t)) + 0.003)); return pA.map((v, k) => v - dr * up[k]); };
+    // (V38; user 12:23 snapshot "he got up with his hands like this ... a human always uses the palm against the floor,
+    // never the back") a hand held on the floor during a get-up is held palm down: the hand turned (keeping which way
+    // its fingers point along the floor) so its palm (hand -z) faces the floor, wrist 2.2 cm over it, over 0.2 s
+    const palmDown = n => { const b = W.bodyId[n], q0 = Q(d, b), pA = P3(d, b);
+      const pn = qmu(qmu(q0, [0, 0, 0, -1]), [q0[0], -q0[1], -q0[2], -q0[3]]).slice(1), tg = up.map(v => -v), c = dot(pn, tg), ax = [pn[1] * tg[2] - pn[2] * tg[1], pn[2] * tg[0] - pn[0] * tg[2], pn[0] * tg[1] - pn[1] * tg[0]];
+      const sn = Math.hypot(...ax), ang = Math.atan2(sn, c);
+      let q1 = q0; if (sn > 1e-6) { const h = ang / 2, k = Math.sin(h) / sn; q1 = qmu([Math.cos(h), ax[0] * k, ax[1] * k, ax[2] * k], q0); }
+      else if (c < 0) q1 = qmu([0, ...(Math.abs(tg[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0])], q0);
+      const dr = ht(pA) - 0.024; return { p: pA.map((v, k) => v - dr * up[k]), q: q1, q0, t: 0, from: pA, hand: true }; };
     const want = {};
     for (const n of ['LeftFoot', 'RightFoot', 'LeftHand', 'RightHand']) {
       const recDown = isDown(G, n), b = W.bodyId[n];
@@ -620,10 +629,15 @@ export class BrainDrive {
         else if (L[n] && !L[n].step && !L[n].from && !recDown && hr > ht(L[n].p) + 0.09) { delete L[n]; continue; } }
       // (V35) a foot landing: its spot is where the recording's foot lands, but his own foot may be 5-15 cm from it; it
       // gets there over 0.2 s (it snapped there in one frame, and his hips dropped with it)
-      if (!L[n] && recDown && (/Foot/.test(n) || isDown(d, n))) L[n] = /Foot/.test(n) ? { p: onFloor(G, n), q: Q(G, b), t: 0, from: globalThis.NOLAND ? null : P3(d, b) } : { p: P3(d, b), q: Q(d, b), t: 0 };
+      if (!L[n] && recDown && (/Foot/.test(n) || isDown(d, n))) L[n] = /Foot/.test(n) ? { p: onFloor(G, n), q: Q(G, b), t: 0, from: globalThis.NOLAND ? null : P3(d, b) } : globalThis.NOPALM ? { p: P3(d, b), q: Q(d, b), t: 0 } : palmDown(n);
       if (L[n]) { L[n].t += 1 / 30; want[n] = L[n];
         if (L[n].from) { const e0 = Math.min(1, L[n].t / 0.2), e = e0 * e0 * (3 - 2 * e0), F = L[n].from;
-          if (e0 >= 1) L[n].from = null; else want[n] = { ...L[n], p: F.map((v, k) => v + (L[n].p[k] - v) * e), landing: true }; } }
+          if (e0 >= 1) L[n].from = null; else { const w = { ...L[n], p: F.map((v, k) => v + (L[n].p[k] - v) * e), landing: true };
+            if (L[n].q0) { let a = L[n].q0, bq = L[n].q; if (a[0] * bq[0] + a[1] * bq[1] + a[2] * bq[2] + a[3] * bq[3] < 0) bq = bq.map(v => -v); const qq = a.map((v, k) => v + (bq[k] - v) * e), qn = Math.hypot(...qq); w.q = qq.map(v => v / qn); }
+            want[n] = w; } } }
+      // (V38) a held hand lets go when the recording lifts that hand clearly (it was held to the end of the get-up: his
+      // arm stretched straight and his wrist bent back while he rose)
+      if (L[n] && L[n].hand && !globalThis.NOPALM && !isDown(G, n) && ht(P3(G, b)) > ht(L[n].p) + 0.08) { delete L[n]; delete want[n]; }
     }
     // (V32) his feet stay where they were planted, so as he comes up his stance can differ from the recorded person's
     // (who then stands and walks on from theirs): nearly up (hips over 75 cm), a foot more than 6 cm from where the
@@ -690,6 +704,38 @@ export class BrainDrive {
       for (let c = 0; c < C.N; c++) { const qa = C.dof + 1 + c; d.qpos[qa] = D.qpos[qa]; }
     }
     this.stats.locks = (this.stats.locks || 0) + Object.keys(want).length;
+  }
+  // (V38) a figure body that is part of an arm: its push out of a wall is kept for that arm (the deepest per side)
+  armWallSide(b, dir, dist) {
+    if (globalThis.NOARMWALL || this.armBody) return false;
+    const nm = this.W.bodyNames[this.W.bodyNames.findIndex(n => this.W.bodyId[n] === b)] || '';
+    const mt = /^(Left|Right)(Arm|ForeArm|Hand)/.exec(nm); if (!mt) return false;
+    const A = this.armPush || (this.armPush = {}), cur = A[mt[1]];
+    if (!cur || -dist > cur.depth) A[mt[1]] = { depth: -dist, v: dir.map(v => -dist * v) };
+    return true;
+  }
+  // (V38) each arm in a wall is moved out by its own joints (hand to where it would be out of the wall), not his body
+  armsOutOfWalls() {
+    const W = this.W, m = W.m, mj = W.mj, d = W.d;
+    for (let round = 0; round < 2; round++) {
+      const A = this.armPush || {}; if (!Object.keys(A).length) return;
+      if (!this.ikG) this.ikG = new mj.MjData(m);
+      if (!this.jpG) { this.jpG = new mj.DoubleBuffer(3 * m.nv); this.jrG = new mj.DoubleBuffer(3 * m.nv); }
+      const D = this.ikG; D.qpos.set(d.qpos); mj.mj_kinematics(m, D);
+      const want = {};
+      for (const sd in A) { const b = W.bodyId[sd + 'Hand'], v = A[sd].v;
+        want[sd + 'Hand'] = { p: [0, 1, 2].map(k => D.xpos[3 * b + k] + v[k] * 1.2), q: [D.xquat[4 * b], D.xquat[4 * b + 1], D.xquat[4 * b + 2], D.xquat[4 * b + 3]] }; }
+      const chain = n => ({ dof: ARMS[n.startsWith('Left') ? 'Left' : 'Right'].dof, N: 12, LW: ARM_W });
+      const lu = this.lockUp; this.lockUp = null; this.limbIK(D, want, chain, 0.05, 6); this.lockUp = lu;
+      for (const n in want) { const C = chain(n); for (let c = 0; c < C.N; c++) { const qa = C.dof + 1 + c; d.qpos[qa] = D.qpos[qa]; } }
+      mj.mj_forward(m, d);
+      // what is still in a wall
+      this.armPush = {};
+      for (let i = 0; i < d.ncon; i++) { const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
+        if (dist > -0.005) continue; const f1 = W.isFig[m.geom_bodyid[g1]], f2 = W.isFig[m.geom_bodyid[g2]]; if (f1 === f2) continue;
+        this.armWallSide(m.geom_bodyid[f1 ? g1 : g2], f2 ? n : n.map(v => -v), dist); }
+      if (globalThis.GLCLS) this.armLeft = Object.values(this.armPush).reduce((a, x) => Math.max(a, x.depth), 0);
+    }
   }
   // (V36) his legs reach their planted spots again after the walls pass moved his body (only the legs, feet held)
   reachFeet() {
@@ -843,12 +889,18 @@ export class BrainDrive {
       d.qvel.fill(0); W.mj.mj_forward(m, d);
       // the blend from his fallen pose and his planted legs can still put a limb into a wall or the floor: his whole
       // body moves out of it (the recording itself is kept out by kin.keepLimbsIn)
+      // (V38, rulebook "arms of the recording vs walls: walls; the arm is put on the wall, it doesn't move his body") an
+      // arm in a wall no longer moves his whole body: in the 1.1 m box the recording's spread arms were in both side walls
+      // at once and the passes threw him 6-9 cm left and right each frame, his planted feet with him
+      this.armPush = {};
       for (let it = 0; it < 3; it++) {
         const push = [0, 0, 0]; let any = false;
         for (let i = 0; i < d.ncon; i++) {
           const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
           if (dist > -0.005) continue; const f1 = W.isFig[m.geom_bodyid[g1]], f2 = W.isFig[m.geom_bodyid[g2]]; if (f1 === f2) continue;
-          const dir = f2 ? n : n.map(v => -v); for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
+          const dir = f2 ? n : n.map(v => -v);
+          if (this.armWallSide(m.geom_bodyid[f1 ? g1 : g2], dir, dist)) continue;
+          for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
         }
         if (!any) break;
         for (let k = 0; k < 3; k++) d.qpos[k] += push[k]; W.mj.mj_forward(m, d);
@@ -864,7 +916,10 @@ export class BrainDrive {
         for (let i = 0; i < d.ncon; i++) {
           const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
           if (dist > -0.005) continue; const f1 = W.isFig[m.geom_bodyid[g1]], f2 = W.isFig[m.geom_bodyid[g2]]; if (f1 === f2) continue;
-          const dir = f2 ? n : n.map(v => -v); for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
+          if (globalThis.GLDBG === 3) console.error('WP', d.time.toFixed(2), it, W.mj.mj_id2name(m, 1, m.geom_bodyid[f1 ? g1 : g2]), W.mj.mj_id2name(m, 1, m.geom_bodyid[f1 ? g2 : g1]), (dist * 100).toFixed(1));
+          const dir = f2 ? n : n.map(v => -v);
+          if (this.armWallSide(m.geom_bodyid[f1 ? g1 : g2], dir, dist)) continue;
+          for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
         }
         if (!any) break;
         for (let k = 0; k < 3; k++) d.qpos[k] += push[k]; W.mj.mj_forward(m, d); if (globalThis.GLCLS) this.glWall = (this.glWall || 0) + Math.hypot(...push);
@@ -875,6 +930,19 @@ export class BrainDrive {
       // (V36) his body moved out of a wall, his planted feet did not: his legs reach them again (the walls pass dragged
       // planted feet with the body - most of what was left of the sliding in the glass falls and the narrow box)
       if (wallMoved && globalThis.GL_WALLKEEP && this.gLocks && this.glChain) this.reachFeet();   // (V37: off)
+      if (!globalThis.NOARMWALL) { this.armsOutOfWalls();
+        // an arm its own joints can't get out of a wall (the box turned narrow, both arms in the walls): rule 1 wins, his
+        // body moves out as before
+        if (Object.values(this.armPush || {}).some(x => x.depth > 0.03)) { this.armBody = true;
+          for (let it = 0; it < 3; it++) { const push = [0, 0, 0]; let any = false;
+            for (let i = 0; i < d.ncon; i++) { const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
+              if (dist > -0.005) continue; const f1 = W.isFig[m.geom_bodyid[g1]], f2 = W.isFig[m.geom_bodyid[g2]]; if (f1 === f2) continue;
+              const dir = f2 ? n : n.map(v => -v); for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } } }
+            if (!any) break;
+            for (let k = 0; k < 3; k++) d.qpos[k] += push[k]; W.mj.mj_forward(m, d); if (globalThis.GLCLS) this.glWall = (this.glWall || 0) + Math.hypot(...push);
+            if (K.anchor) { const a0 = K.toLocal([0, 0, 0]), c0 = K.toLocal(push); K.anchor.x += c0[0] - a0[0]; K.anchor.y += c0[1] - a0[1]; }
+            if (this.gLocks) for (const nn in this.gLocks) { const P = this.gLocks[nn].p; for (let k = 0; k < 3; k++) P[k] += push[k]; } }
+          this.armBody = false; } }
       if (globalThis.SLDBG && this._sl) { const b = W.bodyId.LeftFoot, S = this._sl, P = this._slP; if (P) { const f = v => (v * 100).toFixed(1); console.log('SL', S.t.toFixed(3), 'x', S.x.toFixed(1), 'clip', f(S.clipF[0] - P.clipF[0]), f(S.clipF[1] - P.clipF[1]), 'anc', f(S.anc[0] - P.anc[0]), f(S.anc[1] - P.anc[1]), ((S.anc[2] - P.anc[2]) * 57.3).toFixed(1), 'ghost', f(S.ghost[0] - P.ghost[0]), f(S.ghost[1] - P.ghost[1]), 'preLock', f(S.preLock[0] - P.preLock[0]), f(S.preLock[1] - P.preLock[1]), 'final', f(d.xpos[3 * b] - P.final[0]), f(d.xpos[3 * b + 1] - P.final[1])); } S.final = [d.xpos[3 * b], d.xpos[3 * b + 1]]; this._slP = S; }
       d.time += dt;
       if (this.pins) this.pins.reset();

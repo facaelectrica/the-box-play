@@ -700,7 +700,7 @@ export class Kin {
     this.upPrev = up;
     this.upRate = (this.upRate || 0) + (rate - (this.upRate || 0)) * (1 - Math.exp(-dt / 0.15));   // smoothed: sensor noise is not "the phone turning"
     const tilt = Math.acos(clamp(up[2], -1, 1));
-    const room = !W.open && (this.G.name === 'floor' || this.G.name === 'ceil') && this.state === 'stand';
+    const room = !W.open && (this.G.name === 'floor' || this.G.name === 'ceil') && (this.state === 'stand' || (this.state === 'react' && !globalThis.NOREACTBRACE));
     const want = room && this.t - (this.resetT || 0) > 2 && (tilt > BR.tilt || this.upRate > BR.rate);   // not in the first 2 s (the phone settling at the start made him brace)
     this.calmT = want ? 0 : (this.calmT || 0) + dt;
     // keep holding only after a real brace (a tiny brace weight from a stray frame used to keep itself going: arms out at the start)
@@ -726,6 +726,12 @@ export class Kin {
         const t = (sg * lim - sh[ax]) / dir[ax]; if (t > 0 && (!best || t < best.t)) best = { t, ax, sg, lim };
       }
       if (!best || best.t > BR.maxReach) { delete this.hands[side]; continue; }
+      // (V41; user 13:00 snapshot: "falling to one side and raising his arm to support himself on the other side ... he
+      // would prefer to put his arms towards the direction that is falling") a palm can only push: a hand on the wall
+      // gravity pulls him away from pushes him further over. Only walls on the downhill side (or level with him, both
+      // sides when he can hold on both) get a hand; a hand already on an uphill wall comes off
+      { const pullW = gl[best.ax] * best.sg;   // gravity toward that wall, m/s2 (negative: uphill)
+        if (!globalThis.UPHILLHAND && tilt > 0.1 && pullW < -0.6) { delete this.hands[side]; continue; } }
       // (user 22:51) that wall is right beside his shoulder and the floor tips him toward it: no hand (the arm would
       // fold awkwardly against his side), he leans his shoulder on it, relaxed, that arm hanging; decided only while
       // that hand isn't already holding the wall
