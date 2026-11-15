@@ -89,21 +89,35 @@ export class Debris {
   step(dt, skip) {
     if (!this.list.length) return;
     const W = this.W, g = W.m.opt.gravity, planes = W.faces().map(f => ({ n: f.n, p: f.p, name: f.name }));
-    const obs = this.obstacles(skip), n = Math.max(1, Math.ceil(dt / (1 / 300))), h = dt / n;
+    const obs = this.obstacles(skip), n = Math.min(6, Math.max(1, Math.ceil(dt / (1 / 200)))), h = dt / n;
+    // his body's box (pieces far from it skip the body checks)
+    const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+    for (const o of obs) for (const q of [o.a, o.b]) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], q[k] - o.r); hi[k] = Math.max(hi[k], q[k] + o.r); }
+    this.box = { lo, hi };
+    // (user 11:04: no freezes) pieces lying still sleep: no work until the phone turns or his body comes near
+    const gp = this.gPrev, gl = Math.hypot(g[0], g[1], g[2]) || 1, turned = !gp || (g[0] * gp[0] + g[1] * gp[1] + g[2] * gp[2]) / (gl * (Math.hypot(gp[0], gp[1], gp[2]) || 1)) < 0.99996;
+    if (turned) this.gPrev = [g[0], g[1], g[2]];
+    for (const P of this.list) if (P.sleep) {
+      if (turned) { P.sleep = false; P.stillT = 0; continue; }
+      for (const o of obs) { const ab = sub(o.b, o.a), L2 = dot(ab, ab), u = L2 > 1e-12 ? Math.max(0, Math.min(1, dot(sub(P.x, o.a), ab) / L2)) : 0; if (len(sub(P.x, add(o.a, ab, u))) < P.bound + o.r + 0.05) { P.sleep = false; P.stillT = 0; break; } }
+    }
+    const awake = this.list.filter(P => !P.sleep);
+    if (!awake.length) return;
     for (let it = 0; it < n; it++) {
-      for (const P of this.list) {
+      for (const P of awake) {
         P.v = add(P.v, g, h);
         P.R = q2m(P.q); P.Iinv = mmul(mmul(P.R, P.IinvB), mT(P.R));
         P.on = false; P.held = false;
       }
-      for (const P of this.list) this.collide(P, planes, obs, h);
-      // pieces against each other (bounding spheres first)
-      for (let i = 0; i < this.list.length; i++) for (let j = i + 1; j < this.list.length; j++) this.pair(this.list[i], this.list[j]);
-      for (const P of this.list) {
+      for (const P of awake) this.collide(P, planes, obs, h);
+      // pieces against each other (bounding spheres first; little shards don't bother each other)
+      for (const A of awake) for (const B of this.list) { if (A === B || (A.kind === 'shard' && B.kind === 'shard') || (!B.sleep && B.id < A.id)) continue; this.pair(A, B); }
+      for (const P of awake) {
         // resting ON something that holds it up against gravity (floor, a slope its friction can hold) and nearly still:
         // it stays put (no creeping from the contact pushes). Against a wall or a steep slope it keeps sliding/falling
         // (user 10:34: "they seem to end up glued on the surface")
-        if (P.held && len(P.v) < 0.04 && len(P.w) < 0.4) { P.v = [0, 0, 0]; P.w = [0, 0, 0]; continue; }
+        if (P.held && len(P.v) < 0.04 && len(P.w) < 0.4) { P.v = [0, 0, 0]; P.w = [0, 0, 0]; P.stillT = (P.stillT || 0) + h; if (P.stillT > 0.4) P.sleep = true; continue; }
+        P.stillT = 0;
         const damp = P.on ? 1 - Math.min(0.5, 6 * h) : 1 - 0.05 * h;
         P.v = P.v.map(v => v * (P.on ? 1 - Math.min(0.3, 0.8 * h) : 1)); P.w = P.w.map(v => v * damp);
         P.x = add(P.x, P.v, h);
@@ -136,8 +150,10 @@ export class Debris {
         P.x = add(P.x, pl.n, -dd * 0.6); P.on = true;
         if (dot(pl.n, up) > 0.88) P.held = true;   // within the friction cone (0.55 -> 29 deg)
         if (hit > 0.6 && P.clinkT <= 0) { P.clinkT = 0.07; this.events.push({ type: 'clink', v: hit, m: P.m }); }
+        if (P.kind === 'chunk' && s.b !== undefined && hit > 1.5) this.events.push({ type: 'phit', P, b: s.b, v: hit, p: add(c, pl.n, -s.r), n: pl.n.slice(), wall: pl.name });
       }
       if (P.age !== undefined && P.age < 0.06) continue;   // just broken off: let it clear his body first
+      const B = this.box; if (c[0] < B.lo[0] - s.r || c[0] > B.hi[0] + s.r || c[1] < B.lo[1] - s.r || c[1] > B.hi[1] + s.r || c[2] < B.lo[2] - s.r || c[2] > B.hi[2] + s.r) continue;
       for (const o of obs) {
         const ab = sub(o.b, o.a), L2 = dot(ab, ab), u = L2 > 1e-12 ? Math.max(0, Math.min(1, dot(sub(c, o.a), ab) / L2)) : 0, q = add(o.a, ab, u);
         const dv = sub(c, q), dl = len(dv), pen = s.r + o.r - dl; if (pen <= 0 || dl < 1e-6) continue;
@@ -148,6 +164,7 @@ export class Debris {
   }
   pair(A, B) {
     if (len(sub(A.x, B.x)) > A.bound + B.bound) return;
+    if (B.sleep) { B.sleep = false; B.stillT = 0; B.R = q2m(B.q); B.Iinv = mmul(mmul(B.R, B.IinvB), mT(B.R)); }
     for (const sa of A.s) {
       const ca = add(A.x, mv(A.R, sa.c));
       for (const sb of B.s) {
@@ -244,7 +261,7 @@ export class Cracks {
       const key = b * 1024 + wall;
       if (!now.has(key)) now.set(key, { b, wall, p, n: nOut });
     }
-    if (!skip && !this.quiet && !this.dead) {
+    if (!skip && !this.quiet) {   // (user 11:07) also once he has stopped: bounced around, he keeps cracking and breaking
       for (const [key, c] of now) {
         const last = this.touch.get(key);
         if (last !== undefined && this.t - last < CRACK.away + dt * 1.5) continue;   // still (or just) touching
@@ -267,7 +284,7 @@ export class Cracks {
           if (f) { const d0 = dot(sub(c.p, f.p), f.n), q = add(c.p, f.n, -d0); hit.wall = { name: wn, n: f.n.slice(), off: sub(q, f.p) }; } }
         P.level++; P.hits.push(hit);
         if (P.level >= CRACK.hits) { this.stats.breaks++; ev.push({ type: 'break', piece, hit, ...this.breakOff(piece, c.n, vIn) }); }
-        else { this.stats.cracks++; ev.push({ type: 'crack', piece, hit, level: P.level, chips: this.chips(c.p, c.n, v, 2 + Math.round(2 * s) + P.level) }); }
+        else { this.stats.cracks++; ev.push({ type: 'crack', piece, hit, level: P.level, chips: this.chips(c.p, c.n, v, 1 + (Math.random() < 0.5 ? 1 : 0) + (P.level >= 2 ? 1 : 0)) }); }
       }
     }
     for (const [key] of now) this.touch.set(key, this.t);
@@ -275,19 +292,21 @@ export class Cracks {
     // the pieces fly on
     for (const P of this.debris.list) P.age = (P.age || 0) + dt;
     this.debris.step(dt, this.broken);
-    for (const e of this.debris.events) ev.push(e); this.debris.events.length = 0;
+    for (const e of this.debris.events.splice(0)) { if (e.type === 'phit') { const r = this.pieceHit(e); if (r) ev.push(r); } else ev.push(e); }
     this.events = ev;
     return ev;
   }
   // (user 10:43: "when it cracks, you could have little pieces that come off each time") chips off the shell and the
   // wood under it, thrown off the spot that hit
-  chips(p, nOut, vPart, n) {
+  chips(p, nOut, vPart, n) { return this.frags(add(p, nOut, 0.012), nOut, vPart.map(x => x * 0.15), n, 0.003, 0.016); }
+  // fragments thrown from p: sizes from rMin to rMax, mostly small (a few big ones)
+  frags(p, nOut, vBase, n, rMin, rMax) {
     const out = [], R0 = Math.random;
     for (let i = 0; i < n; i++) {
-      const r = 0.003 + 0.004 * R0(), ms = 700 * (4 / 3) * Math.PI * r * r * r, I = 0.4 * ms * r * r;
+      const r = rMin + (rMax - rMin) * Math.pow(R0(), 2.2), ms = 700 * (4 / 3) * Math.PI * r * r * r, I = 0.4 * ms * r * r;
       const dir = [R0() - 0.5, R0() - 0.5, R0() - 0.5], dl = len(dir) || 1;
-      const v = add(add(vPart.map(x => x * 0.15), nOut, 0.8 + 1.8 * R0()), dir, (0.4 + 1.2 * R0()) / dl);
-      out.push(this.debris.add({ kind: 'shard', m: ms, x: add(add(p, nOut, 0.015), dir, 0.01 / dl), q: qnorm([R0(), R0(), R0(), R0()]), v, w: [R0() * 40 - 20, R0() * 40 - 20, R0() * 40 - 20], IinvB: [1 / I, 0, 0, 0, 1 / I, 0, 0, 0, 1 / I], s: [{ c: [0, 0, 0], r }], bound: r, size: r, age: 0, seed: (R0() * 1e9) | 0, wood: R0() < 0.5 }));
+      const v = add(add(vBase, nOut, 0.8 + 1.8 * R0()), dir, (0.4 + 1.2 * R0()) / dl);
+      out.push(this.debris.add({ kind: 'shard', m: ms, x: add(p, dir, (0.01 + r) / dl), q: qnorm([R0(), R0(), R0(), R0()]), v, w: [R0() * 40 - 20, R0() * 40 - 20, R0() * 40 - 20], IinvB: [1 / I, 0, 0, 0, 1 / I, 0, 0, 0, 1 / I], s: [{ c: [0, 0, 0], r }], bound: r, size: r, age: 0, seed: (R0() * 1e9) | 0, wood: R0() < 0.5 }));
     }
     return out;
   }
@@ -297,33 +316,9 @@ export class Cracks {
     const root = W.bodyId[BREAK_ROOT[piece] || piece];
     const bodies = this.subtree(root).filter(b => !this.broken.has(b));
     const killed = bodies.some(b => DEAD.has(this.nameOf[b])) || DEAD.has(piece);
-    // the piece: mass, centre, turning inertia, collision spheres, speed - from his body right now
-    let M = 0, com = [0, 0, 0];
-    for (const b of bodies) { const mb = this.orig.mass[b]; M += mb; com = add(com, [d.xipos[3 * b], d.xipos[3 * b + 1], d.xipos[3 * b + 2]], mb); }
-    com = com.map(v => v / M);
-    const Rr = Array.from(d.xmat.subarray(9 * root, 9 * root + 9)), Rt = mT(Rr);
-    let Iw = [0, 0, 0, 0, 0, 0, 0, 0, 0];
-    for (const b of bodies) {
-      const Ri = Array.from(d.ximat.subarray(9 * b, 9 * b + 9)), I = this.orig.inertia.subarray(3 * b, 3 * b + 3), mb = this.orig.mass[b];
-      const Ib = mmul(mmul(Ri, [I[0], 0, 0, 0, I[1], 0, 0, 0, I[2]]), mT(Ri)), r = sub([d.xipos[3 * b], d.xipos[3 * b + 1], d.xipos[3 * b + 2]], com), r2 = dot(r, r);
-      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) Iw[3 * i + j] += Ib[3 * i + j] + mb * ((i === j ? r2 : 0) - r[i] * r[j]);
-    }
-    const IB = mmul(mmul(Rt, Iw), Rr);
-    for (let i = 0; i < 3; i++) IB[4 * i] += 1e-5;
-    const spheres = [];
-    for (const b of bodies) for (const g of this.geomsOf[b]) {
-      const t = m.geom_type[g], p = [d.geom_xpos[3 * g], d.geom_xpos[3 * g + 1], d.geom_xpos[3 * g + 2]], R = d.geom_xmat.subarray(9 * g, 9 * g + 9), s = m.geom_size.subarray(3 * g, 3 * g + 3);
-      const put = (c, r) => spheres.push({ c: mtv(Rr, sub(c, com)), r });
-      if (t === 2) put(p, s[0]);
-      else if (t === 3) { const ax = [R[2], R[5], R[8]], k = Math.max(1, Math.ceil(2 * s[1] / s[0])); for (let i = 0; i <= k; i++) put(add(p, ax, -s[1] + 2 * s[1] * i / k), s[0]); }
-      else if (t === 6) {
-        const r = Math.min(s[0], s[1], s[2]), cnt = [0, 1, 2].map(i => Math.max(1, Math.ceil((s[i] - r) / r) + 1));
-        for (let i = 0; i < cnt[0]; i++) for (let j = 0; j < cnt[1]; j++) for (let k = 0; k < cnt[2]; k++) {
-          const o = [i, j, k].map((u, a) => cnt[a] > 1 ? -(s[a] - r) + 2 * (s[a] - r) * u / (cnt[a] - 1) : 0);
-          put(add(p, mv(R, o)), r);
-        }
-      }
-    }
+    // the piece: mass, centre, turning inertia, collision spheres - from his body right now
+    const pose = b => ({ x: [d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]], R: Array.from(d.xmat.subarray(9 * b, 9 * b + 9)) });
+    const chunk = this.buildChunk(bodies, root, pose), com = chunk.x, Rr = q2m(chunk.q);
     // its motion: the root's centre and turn between the last two frames
     let v = [0, 0, 0], w = [0, 0, 0];
     const H = this.hist;
@@ -342,18 +337,12 @@ export class Cracks {
     const joint = [d.xpos[3 * root], d.xpos[3 * root + 1], d.xpos[3 * root + 2]];
     const away = sub(com, joint), al = len(away) || 1;
     v = add(add(v, nWall, 0.6 + 0.08 * vIn), away, 0.5 / al);
-    const bound = Math.max(...spheres.map(s => len(s.c) + s.r));
-    const chunk = this.debris.add({ kind: 'chunk', bodies, root, m: M, x: com, q: m2q(Rr), v, w, IinvB: minv(IB), s: spheres, bound, comL: mtv(Rr, sub(com, joint)), age: 0,
-      rel: bodies.map(b => { const Rb = Array.from(d.xmat.subarray(9 * b, 9 * b + 9)); return { b, p: mtv(Rr, sub([d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]], com)), q: m2q(mmul(Rt, Rb)) }; }) });
-    // shards from the break
-    const shards = [], nS = 5 + Math.round(Math.random() * 4), R0 = Math.random;
+    chunk.v = v; chunk.w = w; this.debris.add(chunk);
+    // a few fragments from the break, small to big (user 11:07: "less, with more size variation")
     const brk = len(sub(joint, com)) < 0.02 ? com : joint;
-    for (let i = 0; i < nS; i++) {
-      const r = 0.006 + 0.008 * R0(), ms = 2600 * (4 / 3) * Math.PI * r * r * r * 0.5, I = 0.4 * ms * r * r;
-      const dir = [R0() - 0.5, R0() - 0.5, R0() - 0.5], dl = len(dir) || 1;
-      const sv = add(add(v, nWall, 0.8 + R0() * 1.4), dir, (0.6 + 1.6 * R0()) / dl);
-      shards.push(this.debris.add({ kind: 'shard', m: ms, x: add(brk, dir, 0.03 / dl), q: qnorm([R0(), R0(), R0(), R0()]), v: sv, w: [R0() * 30 - 15, R0() * 30 - 15, R0() * 30 - 15], IinvB: [1 / I, 0, 0, 0, 1 / I, 0, 0, 0, 1 / I], s: [{ c: [0, 0, 0], r }], bound: r, size: r, age: 0, seed: (R0() * 1e9) | 0, wood: R0() < 0.5 }));
-    }
+    const shards = this.frags(brk, nWall, v, 2 + Math.round(Math.random() * 2), 0.005, 0.03);
+    // the part that broke starts over: hit again, it cracks again, and its 3rd crack breaks it further (user 11:07)
+    this.part(piece).level = 0;
     for (const b of bodies) this.broken.add(b);
     this.chunks.push(chunk);
     // a leg gone: get-ups can't be the recording played on his body any more (it would stand him on the missing leg):
@@ -363,6 +352,73 @@ export class Cracks {
     this.preStep();
     mj.mj_forward(m, d);
     return { chunk, shards, bodies, dead: killed };
+  }
+  // a rigid piece made of these bodies at these poses (b -> { x, R } in the world): mass, centre, turning inertia, collision
+  // spheres (from the body file's own shapes), and where each body sits in it (for drawing)
+  buildChunk(bodies, root, pose) {
+    const m = this.W.m;
+    let M = 0, com = [0, 0, 0]; const P = {};
+    for (const b of bodies) { const ps = pose(b), ip = add(ps.x, mv(ps.R, [m.body_ipos[3 * b], m.body_ipos[3 * b + 1], m.body_ipos[3 * b + 2]])); P[b] = { ...ps, ip }; const mb = this.orig.mass[b]; M += mb; com = add(com, ip, mb); }
+    com = com.map(v => v / M);
+    const Rr = P[root].R, Rt = mT(Rr);
+    const Iw = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    for (const b of bodies) {
+      const Ri = mmul(P[b].R, q2m([m.body_iquat[4 * b], m.body_iquat[4 * b + 1], m.body_iquat[4 * b + 2], m.body_iquat[4 * b + 3]])), I = this.orig.inertia.subarray(3 * b, 3 * b + 3), mb = this.orig.mass[b];
+      const Ib = mmul(mmul(Ri, [I[0], 0, 0, 0, I[1], 0, 0, 0, I[2]]), mT(Ri)), r = sub(P[b].ip, com), r2 = dot(r, r);
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) Iw[3 * i + j] += Ib[3 * i + j] + mb * ((i === j ? r2 : 0) - r[i] * r[j]);
+    }
+    const IB = mmul(mmul(Rt, Iw), Rr); for (let i = 0; i < 3; i++) IB[4 * i] += 1e-5;
+    const spheres = [];
+    for (const b of bodies) for (const g of this.geomsOf[b]) {
+      const t = m.geom_type[g], s = m.geom_size.subarray(3 * g, 3 * g + 3);
+      const p = add(P[b].x, mv(P[b].R, [m.geom_pos[3 * g], m.geom_pos[3 * g + 1], m.geom_pos[3 * g + 2]])), R = mmul(P[b].R, q2m([m.geom_quat[4 * g], m.geom_quat[4 * g + 1], m.geom_quat[4 * g + 2], m.geom_quat[4 * g + 3]]));
+      const put = (c, r) => spheres.push({ c: mtv(Rr, sub(c, com)), r, b });
+      if (t === 2) put(p, s[0]);
+      else if (t === 3) { const ax = [R[2], R[5], R[8]], k = Math.max(1, Math.ceil(2 * s[1] / s[0])); for (let i = 0; i <= k; i++) put(add(p, ax, -s[1] + 2 * s[1] * i / k), s[0]); }
+      else if (t === 6) {
+        const r = Math.min(s[0], s[1], s[2]), cnt = [0, 1, 2].map(i => Math.max(1, Math.ceil((s[i] - r) / r) + 1));
+        for (let i = 0; i < cnt[0]; i++) for (let j = 0; j < cnt[1]; j++) for (let k = 0; k < cnt[2]; k++) {
+          const o = [i, j, k].map((u, a) => cnt[a] > 1 ? -(s[a] - r) + 2 * (s[a] - r) * u / (cnt[a] - 1) : 0);
+          put(add(p, mv(R, o)), r);
+        }
+      }
+    }
+    const bound = Math.max(...spheres.map(q => len(q.c) + q.r));
+    return { kind: 'chunk', bodies, root, m: M, x: com, q: m2q(Rr), v: [0, 0, 0], w: [0, 0, 0], IinvB: minv(IB), s: spheres, bound, comL: mtv(Rr, sub(com, P[root].x)), age: 0,
+      rel: bodies.map(b => ({ b, p: mtv(Rr, sub(P[b].x, com)), q: m2q(mmul(Rt, P[b].R)) })) };
+  }
+  // a broken-off piece hitting the box hard: it cracks where it hit like his body does, and the 3rd crack on a part
+  // splits the piece there (an arm at the elbow, then the hand...); a single part shatters into a few fragments
+  pieceHit(e) {
+    const P = e.P, W = this.W; if (!this.debris.list.includes(P)) return null;
+    const name = this.nameOf[e.b], piece = pieceOf(name), pb = W.bodyId[piece], k = CRACK.kind[piece.replace(/^(Left|Right)/, '')] || 1;
+    if (!P.bodies.includes(pb) || e.v < CRACK.minV * k || this.t - (this.lastHit[piece] || -9) < CRACK.cool) return null;
+    this.lastHit[piece] = this.t;
+    const rel = P.rel.find(r => r.b === pb), bp = this.chunkBodyPose(P, rel), Rb = q2m(bp.q);
+    const Pt = this.part(piece), s = Math.min(1, (e.v - CRACK.minV * k) / (2.5 * k));
+    const hit = { body: pb, l: mtv(Rb, sub(e.p, bp.p)), n: mtv(Rb, e.n.map(v => -v)), v: e.v, s, seed: (Math.random() * 1e9) | 0, level: Pt.level + 1, chunk: P };
+    const f = W.faces().find(q => q.name === e.wall); if (f) { const d0 = dot(sub(e.p, f.p), f.n), q = add(e.p, f.n, -d0); hit.wall = { name: e.wall, n: f.n.slice(), off: sub(q, f.p) }; }
+    Pt.level++; Pt.hits.push(hit);
+    const vp = add(P.v, cross(P.w, sub(e.p, P.x)));
+    if (Pt.level < CRACK.hits) { this.stats.cracks++; return { type: 'crack', piece, hit, level: Pt.level, chips: this.chips(e.p, e.n, vp, 1 + (Math.random() < 0.5 ? 1 : 0)) }; }
+    this.stats.breaks++; Pt.level = 0;
+    const R = q2m(P.q), pose = b => { const r = P.rel.find(q => q.b === b), bpz = this.chunkBodyPose(P, r); return { x: bpz.p, R: q2m(bpz.q) }; };
+    const inP = b => P.bodies.includes(b), groupsOf = [];
+    if (pb !== P.root) { const sub1 = this.subtree(pb).filter(inP); groupsOf.push(sub1, P.bodies.filter(b => !sub1.includes(b))); }
+    else { for (const c of this.children[pb]) { const st = this.subtree(c).filter(inP); if (st.length) groupsOf.push(st); } if (groupsOf.length) groupsOf.unshift([pb]); }
+    this.debris.list.splice(this.debris.list.indexOf(P), 1);
+    if (!groupsOf.length) {   // a single part: it shatters
+      const frs = this.frags(P.x, e.n, P.v, 3 + Math.round(Math.random() * 2), 0.008, 0.035);
+      return { type: 'shatter', piece, hit, P, shards: frs };
+    }
+    const parts = groupsOf.map(bs => {
+      const top = bs.find(b => !bs.includes(this.W.m.body_parentid[b])), C = this.buildChunk(bs, top, pose);
+      const kick = sub(C.x, P.x), kl = len(kick) || 1;
+      C.v = add(add(P.v, cross(P.w, sub(C.x, P.x))), kick, 0.4 / kl); C.w = P.w.slice(); C.age = 0;
+      return this.debris.add(C);
+    });
+    const frs = this.frags(e.p, e.n, P.v, 1 + Math.round(Math.random() * 2), 0.005, 0.025);
+    return { type: 'split', piece, hit, P, parts, shards: frs };
   }
   // (tests) break a part now
   forceBreak(piece) {
@@ -419,14 +475,29 @@ export class CrackView {
     this.grooveMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 });
     this.marks = [];
   }
+  // heavy drawing work waits for the next frames (a few ms per frame), so a hit never stalls a frame
+  later(fn) { (this.jobs || (this.jobs = [])).push(fn); }
+  runJobs(ms = 5) { const J = this.jobs; if (!J || !J.length) return; const t0 = performance.now(); do { try { J.shift()(); } catch (e) { console.warn('crack job', e); } } while (J.length && performance.now() - t0 < ms); }
+  // the first crack, wall mark and piece would each make the phone prepare a new shader mid-game (a visible hitch): draw
+  // one tiny copy of each while the page starts, so they are ready
+  prewarm(at) {
+    const T = this.T, g = new T.Group(); g.position.set(...at); g.scale.setScalar(0.001);
+    const tri = new T.BufferGeometry(); tri.setAttribute('position', new T.Float32BufferAttribute([0, 0, 0, 1, 0, 0, 0, 1, 0], 3)); tri.setAttribute('normal', new T.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3)); tri.setAttribute('color', new T.Float32BufferAttribute([1, 1, 1, 1, 1, 1, 1, 1, 1], 3));
+    g.add(new T.Mesh(tri, this.grooveMat));
+    for (const m of [this.inner, this.shell]) { const me = new T.Mesh(new T.IcosahedronGeometry(1, 0), m); me.castShadow = true; me.receiveShadow = true; g.add(me); }
+    this.markMats = [0, 1, 2, 3].map(k => this.markMat(0.4 + 0.2 * k, 1000 + k * 77));
+    for (const mt of this.markMats) { const mm = new T.Mesh(new T.PlaneGeometry(1, 1), mt); mm.receiveShadow = true; g.add(mm); }   // (also sends their textures to the graphics chip now)
+    g.traverse(o => { o.frustumCulled = false; });
+    this.root.add(g); this.warm = { g, n: 0 };
+  }
   reset(all = true) {
-    if (all) { for (const m of this.marks) { this.root.remove(m); m.geometry.dispose(); m.material.map.dispose(); m.material.normalMap.dispose(); m.material.dispose(); } this.marks.length = 0; }
+    if (all) { for (const m of this.marks) this.root.remove(m); this.marks.length = 0; }
     for (const m of this.crackMeshes) { if (m.parent) m.parent.remove(m); m.geometry.dispose(); }
     this.crackMeshes.length = 0;
     for (const [, o] of this.debris) { this.root.remove(o); const i = this.movers.indexOf(o); if (i >= 0) this.movers.splice(i, 1); }
     this.debris.clear();
     for (const g of this.groups()) if (g) g.visible = true;
-    this.cache.clear();
+    if (all && this.jobs) this.jobs = this.jobs.filter(f => f.keep);   // (the parts' surface lists stay queued)
   }
   // the part's shell meshes and a line (or point) inside it that rays start from
   info(g) {
@@ -440,43 +511,46 @@ export class CrackView {
     let k = 0; if (dims[1] > dims[k]) k = 1; if (dims[2] > dims[k]) k = 2;
     const sorted = dims.slice().sort((a, b) => b - a), axis = new T.Vector3(); axis.setComponent(k, 1);
     const half = sorted[0] > 1.5 * sorted[1] ? 0.5 * (dims[k] - sorted[1]) : 0;   // long parts: a segment; round ones: the centre
-    c = { meshes, a: ctr.clone().addScaledVector(axis, -half), b: ctr.clone().addScaledVector(axis, half), size: sorted[1] };
+    // (user 11:04: no freezes) the shell's surface as points with normals in the part's own frame, in a 1 cm grid: a
+    // crack walks over the surface by snapping to the nearest point's tangent plane (constant time per step; casting
+    // rays at every triangle cost up to half a second per crack)
+    const vp = [], vn = [], v = new T.Vector3(), nv = new T.Vector3(), NM = new T.Matrix3();
+    for (const me of meshes) {
+      M.multiplyMatrices(inv, me.matrixWorld); NM.getNormalMatrix(M); const P = me.geometry.attributes.position, N = me.geometry.attributes.normal; if (!N) continue;
+      for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(M); nv.fromBufferAttribute(N, i).applyMatrix3(NM).normalize(); vp.push(v.x, v.y, v.z); vn.push(nv.x, nv.y, nv.z); }
+    }
+    const grid = new Map(), CS = 0.01, key = (x, y, z) => (Math.floor(x / CS) + 512) * 1048576 + (Math.floor(y / CS) + 512) * 1024 + (Math.floor(z / CS) + 512);
+    for (let i = 0; i < vp.length / 3; i++) { const k = key(vp[3 * i], vp[3 * i + 1], vp[3 * i + 2]); let a = grid.get(k); if (!a) grid.set(k, a = []); a.push(i); }
+    c = { meshes, a: ctr.clone().addScaledVector(axis, -half), b: ctr.clone().addScaledVector(axis, half), size: sorted[1], vp: new Float32Array(vp), vn: new Float32Array(vn), grid, CS };
     this.cache.set(g, c); return c;
   }
-  // a point near the part's surface -> the surface point straight out from the inner line, and its normal (part frame)
-  project(g, I, p, prevN) {
-    return this.radial(g, I, p, prevN) || this.inward(g, I, p, prevN);
+  // a point near the part's surface -> the nearest surface point (on the tangent plane of the nearest shell point)
+  snap(I, p, maxD) {
+    const CS = I.CS, cx = Math.floor(p.x / CS), cy = Math.floor(p.y / CS), cz = Math.floor(p.z / CS), rr = Math.ceil(maxD / CS);
+    let best = maxD * maxD, bi = -1;
+    for (let r = 0; r <= rr && bi < 0; r++) {   // grow the search ring until something is found
+      for (let dx = -r; dx <= r; dx++) for (let dy = -r; dy <= r; dy++) for (let dz = -r; dz <= r; dz++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== r) continue;
+        const a = I.grid.get((cx + dx + 512) * 1048576 + (cy + dy + 512) * 1024 + (cz + dz + 512)); if (!a) continue;
+        for (const i of a) { const ex = I.vp[3 * i] - p.x, ey = I.vp[3 * i + 1] - p.y, ez = I.vp[3 * i + 2] - p.z, d2 = ex * ex + ey * ey + ez * ez; if (d2 < best) { best = d2; bi = i; } }
+      }
+      if (bi >= 0 && r === 0) { r++; for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) {   // the neighbours too: the nearest may be across a cell edge
+        const a = I.grid.get((cx + dx + 512) * 1048576 + (cy + dy + 512) * 1024 + (cz + dz + 512)); if (!a) continue;
+        for (const i of a) { const ex = I.vp[3 * i] - p.x, ey = I.vp[3 * i + 1] - p.y, ez = I.vp[3 * i + 2] - p.z, d2 = ex * ex + ey * ey + ez * ez; if (d2 < best) { best = d2; bi = i; } } } }
+    }
+    if (bi < 0) return null;
+    const T = this.T, n = new T.Vector3(I.vn[3 * bi], I.vn[3 * bi + 1], I.vn[3 * bi + 2]), v = new T.Vector3(I.vp[3 * bi], I.vp[3 * bi + 1], I.vp[3 * bi + 2]);
+    { const ab = I.b.clone().sub(I.a), L2 = ab.lengthSq(), u = L2 > 1e-10 ? Math.max(0, Math.min(1, v.clone().sub(I.a).dot(ab) / L2)) : 0; if (v.clone().sub(I.a.clone().addScaledVector(ab, u)).dot(n) < 0) n.negate(); }   // outward
+    return { p: p.clone().addScaledVector(n, -p.clone().sub(v).dot(n)), n };
   }
-  // from outside, straight in along the normal (where the part's shell is open, e.g. the ends of a body segment)
-  inward(g, I, p, n) {
-    const T = this.T, ow = p.clone().addScaledVector(n, 0.12).applyMatrix4(g.matrixWorld), dw = n.clone().negate().transformDirection(g.matrixWorld);
-    this.ray.set(ow, dw); this.ray.far = 10;
-    const hits = this.ray.intersectObjects(I.meshes, false); if (!hits.length) return null;
-    const h = hits[0], inv = this._inv || (this._inv = new T.Matrix4()); inv.copy(g.matrixWorld).invert();
-    const pt = h.point.clone().applyMatrix4(inv), nn = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld).transformDirection(inv) : n.clone();
-    if (nn.dot(n) < 0) nn.negate();
-    return { p: pt, n: nn.normalize() };
-  }
-  radial(g, I, p, prevN) {
-    const T = this.T, ab = I.b.clone().sub(I.a), L2 = ab.lengthSq();
-    const u = L2 > 1e-10 ? Math.max(0, Math.min(1, p.clone().sub(I.a).dot(ab) / L2)) : 0, o = I.a.clone().addScaledVector(ab, u);
-    const dir = p.clone().sub(o); if (dir.lengthSq() < 1e-10) dir.copy(prevN); dir.normalize();
-    const ow = o.clone().applyMatrix4(g.matrixWorld), dw = dir.clone().transformDirection(g.matrixWorld);
-    this.ray.set(ow, dw); this.ray.far = 10;
-    const hits = this.ray.intersectObjects(I.meshes, false); if (!hits.length) return null;
-    const h = hits[hits.length - 1], inv = this._inv || (this._inv = new T.Matrix4());
-    inv.copy(g.matrixWorld).invert();
-    const pt = h.point.clone().applyMatrix4(inv);
-    const n = h.face ? h.face.normal.clone().transformDirection(h.object.matrixWorld).transformDirection(inv) : dir.clone();
-    if (n.dot(dir) < 0) n.negate();
-    return { p: pt, n: n.normalize() };
-  }
+  project(g, I, p, prevN) { return this.snap(I, p, 0.02); }
   // draw one crack where hit landed (seeded, so a swapped figure gets the same crack)
-  addCrack(hit) {
+  addCrack(hit, target = null) {   // target: the drawn copy of that part on a broken-off piece
     const T = this.T, gs = this.groups(); let g = gs[hit.body]; if (!g) return;
     this.root.updateMatrixWorld(true);
     let I = this.info(g), l = new T.Vector3(...hit.l), n0 = new T.Vector3(...hit.n).normalize();
     if (!I.meshes.length) {
+      if (target) return;
       // a part drawn as part of its neighbour (e.g. the middle of the spine): the crack goes on the nearest drawn part
       const pw = l.clone().applyMatrix4(g.matrixWorld), nw = n0.clone().transformDirection(g.matrixWorld); let best = 1e9, bg = null;
       for (const o of gs) {
@@ -490,10 +564,10 @@ export class CrackView {
       g = bg; I = this.info(g); l = pw.applyMatrix4(inv); n0 = nw.transformDirection(inv);
     }
     const R = rng(hit.seed), lv = hit.level, s = hit.s;
-    const start = this.inward(g, I, l, n0) || this.radial(g, I, l, n0); if (!start) return;
+    const start = this.snap(I, l, 0.06); if (!start) return;
     // sizes: visible on a phone (1 cm is ~3 px), grows with the part's damage and the hit
     const S = Math.min(1, Math.max(0.55, I.size / 0.12));
-    const Lmain = (0.05 + 0.035 * (lv - 1) + 0.03 * s) * S, W0 = (0.0036 + 0.0010 * (lv - 1)) * S, step = 0.005 * S;
+    const Lmain = (0.05 + 0.035 * (lv - 1) + 0.03 * s) * S, W0 = (0.0036 + 0.0010 * (lv - 1)) * S, step = 0.0065 * S;
     const lines = [];
     const walk = (p0, n0, dir, L, w0, depth) => {
       // a crack runs fairly straight: a heading that only drifts a little, each step zig-zagging around it
@@ -524,7 +598,7 @@ export class CrackView {
       chip.push(q ? q : { p: start.p.clone().addScaledVector(dir, rc), n: start.n.clone() });
     }
     const mesh = this.groove(lines, start, chip);
-    if (mesh) { g.add(mesh); this.crackMeshes.push(mesh); }
+    if (mesh) { (target || g).add(mesh); this.crackMeshes.push(mesh); }
   }
   // (user 10:43: "is there a way to get some depth to the cracks ... maybe with some normals") each crack is a small
   // V-shaped groove: two walls tilted toward each other, lit by the box's lights like the rest of him (one wall catches
@@ -574,7 +648,20 @@ export class CrackView {
   // Drawn as a decal with a colour map and a normal map made from a height map, so it takes the light like a real dent.
   wallMark(w, s, seed) {
     if (!w || w.name === 'glass') return;
-    const T = this.T, R = rng(seed), N = 128, H = new Float32Array(N * N), A = new Float32Array(N * N), C = new Float32Array(N * N * 3);
+    const T = this.T, V = this.markMats || (this.markMats = [0, 1, 2, 3].map(k => this.markMat(0.4 + 0.2 * k, 1000 + k * 77)));
+    const R = rng(seed), mat = V[Math.floor(R() * V.length)], size = 0.2 + 0.1 * s;
+    const mesh = new T.Mesh(this.markGeo || (this.markGeo = new T.PlaneGeometry(1, 1)), mat);
+    mesh.scale.set(size * (R() < 0.5 ? -1 : 1), size * (R() < 0.5 ? -1 : 1), 1);   // mirrored either way: the grain stays along
+    mesh.renderOrder = 1; mesh.receiveShadow = true;
+    // the decal's up = the wood's grain: up the walls; along the floor/ceiling boards (x)
+    const n = new T.Vector3(...w.n), up = Math.abs(n.z) > 0.7 ? new T.Vector3(1, 0, 0) : new T.Vector3(0, 0, 1), rt = up.clone().cross(n).normalize(); up.copy(n).cross(rt).normalize();
+    mesh.quaternion.setFromRotationMatrix(new T.Matrix4().makeBasis(rt, up, n));
+    mesh.userData.mark = { name: w.name, off: w.off };
+    this.root.add(mesh); this.marks.push(mesh);
+  }
+  // one dent's look (colour + normal map from a height map); 4 are made while the page starts (no work during play)
+  markMat(s, seed) {
+    const T = this.T, R = rng(seed), N = 96, H = new Float32Array(N * N), A = new Float32Array(N * N), C = new Float32Array(N * N * 3);
     const mix = (k, c, a, h) => { const i3 = 3 * k; const t = Math.max(A[k], a); C[i3] = C[i3] * (1 - a) + c[0] * a; C[i3 + 1] = C[i3 + 1] * (1 - a) + c[1] * a; C[i3 + 2] = C[i3 + 2] * (1 - a) + c[2] * a; A[k] = t; H[k] += h; };
     const DENT = [0.30, 0.13, 0.04], PIT = [0.10, 0.04, 0.015], FIB = [0.98, 0.84, 0.60], CRK = [0.08, 0.035, 0.012];
     const r0 = 0.15 + 0.06 * s, wob = [0, 1, 2, 3].map(() => [R() * 6.28, 0.15 + 0.25 * R()]);
@@ -582,14 +669,15 @@ export class CrackView {
     const strokes = [];
     for (let i = 0; i < 12; i++) { const ang = (R() < 0.75 ? (R() < 0.5 ? 0 : Math.PI) : R() * 6.28) + (R() - 0.5) * 0.7; strokes.push({ ang, len: 0.25 + 0.25 * R() + 0.1 * s, w: 0.025 + 0.035 * R(), c: FIB, h: 0.35, a: 1 }); }
     for (let i = 0; i < 5 + Math.round(3 * s); i++) { const ang = (R() < 0.8 ? (R() < 0.5 ? 0 : Math.PI) : R() * 6.28) + (R() - 0.5) * 0.5; strokes.push({ ang, len: 0.45 + 0.3 * R() + 0.15 * s, w: 0.012 + 0.01 * R(), c: CRK, h: -0.9, a: 1, jag: R() * 9 }); }
+    for (const st of strokes) { st.ux = Math.sin(st.ang); st.uy = Math.cos(st.ang); }
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const k = y * N + x, u = (x + 0.5) / N * 2 - 1, v = (y + 0.5) / N * 2 - 1, r = Math.hypot(u, v), th = Math.atan2(u, v);
       // the dent: the wood pressed in and darkened around the hit
       const dr = 0.5 + 0.1 * s; if (r < dr) { const f = 1 - r / dr; mix(k, DENT, 0.55 * f * f, -0.5 * f * f); }
       for (const st of strokes) {
-        let dth = th - st.ang; dth = Math.atan2(Math.sin(dth), Math.cos(dth));
-        const along = r * Math.cos(dth), across = r * Math.sin(dth) + (st.jag ? 0.012 * Math.sin(along * 40 + st.jag) : 0);
-        if (along < 0 || along > st.len) continue;
+        if (r > st.len + 0.05) continue;
+        const along = u * st.ux + v * st.uy; if (along < 0 || along > st.len) continue;
+        const across = u * st.uy - v * st.ux + (st.jag ? 0.012 * Math.sin(along * 40 + st.jag) : 0);
         const wd = st.w * (1 - along / st.len) + 0.002; if (Math.abs(across) > wd) continue;
         const e = 1 - Math.abs(across) / wd; mix(k, st.c, Math.min(1, e * 2) * st.a, st.h * e);
       }
@@ -610,14 +698,7 @@ export class CrackView {
     cx.putImageData(im, 0, 0);
     const map = new T.CanvasTexture(cv); map.colorSpace = T.SRGBColorSpace;
     const nmap = new T.DataTexture(nd, N, N, T.RGBAFormat); nmap.needsUpdate = true;
-    const mat = new T.MeshStandardMaterial({ map, normalMap: nmap, normalScale: new T.Vector2(1.6, 1.6), transparent: true, depthWrite: false, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
-    const size = 0.2 + 0.1 * s, mesh = new T.Mesh(new T.PlaneGeometry(size, size), mat);
-    mesh.renderOrder = 1; mesh.receiveShadow = true;
-    // the decal's up = the wood's grain: up the walls; along the floor/ceiling boards (x)
-    const n = new T.Vector3(...w.n), up = Math.abs(n.z) > 0.7 ? new T.Vector3(1, 0, 0) : new T.Vector3(0, 0, 1), rt = up.clone().cross(n).normalize(); up.copy(n).cross(rt).normalize();
-    mesh.quaternion.setFromRotationMatrix(new T.Matrix4().makeBasis(rt, up, n));
-    mesh.userData.mark = { name: w.name, off: w.off };
-    this.root.add(mesh); this.marks.push(mesh);
+    return new T.MeshStandardMaterial({ map, normalMap: nmap, normalScale: new T.Vector2(1.6, 1.6), transparent: true, depthWrite: false, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 });
   }
   // the broken-off pieces: copies of the parts (with their cracks), and the shards
   addDebris(P) {
@@ -631,10 +712,7 @@ export class CrackView {
         c.position.set(...r.p); c.quaternion.set(r.q[1], r.q[2], r.q[3], r.q[0]);
         c.userData.body = r.b; o.add(c);
       }
-      // the broken face: a rough disc of unglazed ceramic where it came off
-      const jl = P.comL.map(v => -v), cap = new T.Mesh(new T.IcosahedronGeometry(0.028, 1), this.inner);
-      { const pa = cap.geometry.attributes.position, R = rng(P.id * 7919 + 13); for (let i = 0; i < pa.count; i++) pa.setXYZ(i, pa.getX(i) * (0.8 + 0.4 * R()), pa.getY(i) * (0.8 + 0.4 * R()), pa.getZ(i) * (0.35 + 0.3 * R())); cap.geometry.computeVertexNormals(); }
-      cap.position.set(...jl); cap.castShadow = true; o.add(cap);
+      o.add(this.cap(P));   // the broken face: raw wood where it came off
     } else {
       const geo = new T.IcosahedronGeometry(P.size * 1.4, 0), pa = geo.attributes.position, R = rng(P.seed);
       for (let i = 0; i < pa.count; i++) pa.setXYZ(i, pa.getX(i) * (0.6 + 0.8 * R()), pa.getY(i) * (0.5 + 0.7 * R()), pa.getZ(i) * (0.3 + 0.4 * R()));
@@ -644,15 +722,38 @@ export class CrackView {
     o.userData.P = P; this.root.add(o); this.movers.push(o); this.debris.set(P, o);
     return o;
   }
+  // the drawn copy of body b on a broken-off piece
+  chunkPart(P, b) { const o = this.debris.get(P); return o ? o.children.find(c => c.userData.body === b) || null : null; }
+  removeDebris(P) { const o = this.debris.get(P); if (!o) return; this.root.remove(o); const i = this.movers.indexOf(o); if (i >= 0) this.movers.splice(i, 1); this.debris.delete(P); }
+  // a piece split in two (or more): its drawn parts move to the new pieces, each with a raw-wood face where it broke
+  split(e) {
+    const T = this.T, o = this.debris.get(e.P); if (!o) { for (const Q of e.parts) this.addDebris(Q); return; }
+    for (const Q of e.parts) {
+      const n = new T.Group();
+      for (const r of Q.rel) { const c = o.children.find(k => k.userData.body === r.b); if (!c) continue; c.position.set(...r.p); c.quaternion.set(r.q[1], r.q[2], r.q[3], r.q[0]); n.add(c); }
+      n.add(this.cap(Q)); n.userData.P = Q; this.root.add(n); this.movers.push(n); this.debris.set(Q, n);
+      n.position.set(...Q.x); n.quaternion.set(Q.q[1], Q.q[2], Q.q[3], Q.q[0]);
+    }
+    this.removeDebris(e.P);
+  }
+  cap(P) {
+    const T = this.T, cap = new T.Mesh(new T.IcosahedronGeometry(0.026, 1), this.inner), pa = cap.geometry.attributes.position, R = rng(P.id * 7919 + 13);
+    for (let i = 0; i < pa.count; i++) pa.setXYZ(i, pa.getX(i) * (0.8 + 0.4 * R()), pa.getY(i) * (0.8 + 0.4 * R()), pa.getZ(i) * (0.35 + 0.3 * R()));
+    cap.geometry.computeVertexNormals(); cap.position.set(...P.comL.map(v => -v)); cap.castShadow = true; return cap;
+  }
   // after the figure is rebuilt (another figure picked): cracks and pieces again from the stored hits
   rebuild(C) {
     const keep = [...this.debris.keys()];
-    this.reset(false);
+    this.reset(false); this.cache.clear();
+    // each part's triangles, ready before the first hit (a part per frame)
+    for (const g of this.groups()) if (g) { const f = () => this.info(g); f.keep = true; this.later(f); }
     for (const k in C.parts) for (const h of C.parts[k].hits) this.addCrack(h);
     for (const P of keep) this.addDebris(P);
   }
   sync(C) {
     const gs = this.groups();
+    if (this.warm && ++this.warm.n > 3) { this.root.remove(this.warm.g); this.warm = null; }
+    this.runJobs();
     if (this.marks.length) { const F = {}; for (const f of C.W.faces()) F[f.name] = f; for (const m of this.marks) { const f = F[m.userData.mark.name]; m.visible = !!f; if (f) m.position.set(f.p[0] + m.userData.mark.off[0] + f.n[0] * 0.0006, f.p[1] + m.userData.mark.off[1] + f.n[1] * 0.0006, f.p[2] + m.userData.mark.off[2] + f.n[2] * 0.0006); } }
     for (const P of C.debris.removed.splice(0)) { const o = this.debris.get(P); if (o) { this.root.remove(o); const i = this.movers.indexOf(o); if (i >= 0) this.movers.splice(i, 1); this.debris.delete(P); } }
     for (const b of C.broken) if (gs[b]) gs[b].visible = false;
@@ -740,7 +841,7 @@ export class CrackSound {
     this.creak(t, s, 0.09);
     const t1 = t + 0.08;
     this.thump(t1, s * 1.1); this.knock(t1, s, 0.85); this.snap(t1, s * 1.25); this.snap(t1 + 0.035, s * 0.8);
-    this.tear(t1 + 0.01, s * 1.1, 40, 0.45);
+    this.tear(t1 + 0.01, s * 1.1, 26, 0.45);
     this.burst(t1 + 0.01, 0.32, 'bandpass', 1100, 0.6, 0.45 * s);   // the crunch
   }
   clink(v, m) {   // a piece landing: a small wooden knock (bigger piece = lower, louder)

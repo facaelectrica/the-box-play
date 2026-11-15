@@ -111,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V35</div><div id="brainver"></div>
+<div id="ver">V36</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -250,13 +250,13 @@ import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=35';
-import { Springs, humanCap } from './sim/springs.js?v=35';
-import { Balance } from './sim/balance.js?v=35';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=35';
-import { addPins } from './sim/pins.js?v=35';
-import { rigHand, poseHand } from './sim/fingers.js?v=35';
-import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=35';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=36';
+import { Springs, humanCap } from './sim/springs.js?v=36';
+import { Balance } from './sim/balance.js?v=36';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=36';
+import { addPins } from './sim/pins.js?v=36';
+import { rigHand, poseHand } from './sim/fingers.js?v=36';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=36';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -582,7 +582,7 @@ const figP = loadFig(FIG);
 let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
-const KINV = 35;
+const KINV = 36;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(u + '?v=' + KINV, 'Recordings'));   // ?v: phones keep old copies
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -598,7 +598,7 @@ let control = null;
 let kin = null, springs = null;
 try { kin = new Kin(G, mj, await libP); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
-try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=35', 'Body')))); } catch (e) { console.warn('joint limits', e); }
+try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=36', 'Body')))); } catch (e) { console.warn('joint limits', e); }
 if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupCap: 0 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
 // round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
@@ -1245,19 +1245,31 @@ function sfxUpdate(dt) {
 
 // ================= cracking mode: what happens after each frame's physics =================
 function crackFrame(dt) {
+  const t0 = performance.now();
   const ev = crack.update(dt, !crack.dead && kin && kin.state === 'getup' && drive && drive.getupBy === 'kin');
   if (!crackView) return;
   if (ev.length && actx && SET.sound && !crackSnd) crackSnd = new CrackSound(actx);
   const snd = actx && SET.sound ? crackSnd : null;
   for (const e of ev) {
-    if (e.type === 'crack') { crackView.addCrack(e.hit); for (const P of e.chips || []) crackView.addDebris(P); crackView.wallMark(e.hit.wall, e.hit.s, e.hit.seed); if (snd) snd.crack(e.hit.s, e.level); }
+    // (user 11:04: no freeze when it cracks or breaks) the pieces appear at once; drawing the crack and the dent waits
+    // for the next frames (a few ms each)
+    if (e.type === 'crack') {
+      for (const P of e.chips || []) crackView.addDebris(P);
+      crackView.later(() => { const tg = e.hit.chunk ? crackView.chunkPart(e.hit.chunk, e.hit.body) : null; if (!e.hit.chunk || tg) crackView.addCrack(e.hit, tg); });
+      crackView.later(() => crackView.wallMark(e.hit.wall, e.hit.s, e.hit.seed)); if (snd) snd.crack(e.hit.s, e.level);
+    } else if (e.type === 'split' || e.type === 'shatter') {   // a broken-off piece breaks further (user 11:07)
+      if (e.type === 'split') crackView.split(e); else crackView.removeDebris(e.P);
+      for (const P of e.shards) crackView.addDebris(P);
+      crackView.later(() => crackView.wallMark(e.hit.wall, Math.min(1, e.hit.s + 0.3), e.hit.seed)); if (snd) snd.shatter(e.hit.s);
+    }
     else if (e.type === 'break') {
-      crackView.addCrack(e.hit); crackView.addDebris(e.chunk); for (const P of e.shards) crackView.addDebris(P); crackView.wallMark(e.hit.wall, Math.min(1, e.hit.s + 0.3), e.hit.seed);
+      crackView.addDebris(e.chunk); for (const P of e.shards) crackView.addDebris(P); crackView.later(() => { const tg = crackView.chunkPart(e.chunk, e.hit.body); if (tg) crackView.addCrack(e.hit, tg); }); crackView.later(() => crackView.wallMark(e.hit.wall, Math.min(1, e.hit.s + 0.3), e.hit.seed));
       if (snd) snd.shatter(e.hit.s);
       note(e.dead ? 'His ' + partName(e.piece) + ' broke. He has stopped. Double-tap for a new one.' : 'His ' + partName(e.piece) + ' broke off.', 2600);
     } else if (e.type === 'clink' && snd) snd.clink(e.v, e.m);
   }
   crackView.sync(crack);
+  const ms = performance.now() - t0; crackFrame.max = Math.max(crackFrame.max || 0, ms); if (ms > 8) crackFrame.slow = (crackFrame.slow || 0) + 1;
   // the skinned trunk (skinTorso) draws the hips/belly/chest/neck: a broken-off piece of it is drawn by its debris copy
   if (torso && (crack.broken.size || crack.torsoHid)) { crack.torsoHid = crack.broken.size > 0; for (const sk of torso.meshes) sk.visible = !crack.broken.has(W.bodyId[sk.userData.torsoPiece]); }
 }
@@ -1738,7 +1750,7 @@ function showState() {
   const t = crack && crack.dead ? 'broken' : kin.state === 'stand' ? 'standing' : kin.state === 'react' ? 'recovering' : kin.state === 'fall' ? 'falling' : 'getting up';
   if (t !== stateShown) { stateShown = t; try { document.getElementById('brainver').textContent = t; } catch (_) {} }
 }
-window.__kin = () => kin; window.__crack = () => crack;
+window.__kin = () => kin; window.__crack = () => crack; window.__crackMs = () => ({ max: crackFrame.max || 0, slow: crackFrame.slow || 0 });
 // ================= start =================
 $('go').onclick = async () => {
   goFull();
@@ -1764,7 +1776,7 @@ LOAD.state('Building the room', 'build');
 await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
 buildOptions();
 buildBox();
-if (crack) crackView = new CrackView(THREE, figRoot, () => bodyGroup, o => o.material === SHELL && !o.userData.joint && !o.userData.crack, movers, SHELL);
+if (crack) { crackView = new CrackView(THREE, figRoot, () => bodyGroup, o => o.material === SHELL && !o.userData.joint && !o.userData.crack, movers, SHELL); crackView.prewarm([0, W.box.D / 2, 0]); }
 buildFigure();
 standUp();
 applyQuality();
