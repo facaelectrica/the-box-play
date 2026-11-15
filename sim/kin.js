@@ -577,6 +577,7 @@ export class Kin {
       if (this.armOverride && (this.braceW || 0) > 0) { const w = this.braceW * this.braceW * (3 - 2 * this.braceW); for (const [qa, v] of this.armOverride) d.qpos[qa] += (v - d.qpos[qa]) * w; }
       this.localPose(d.qpos, this.cur);
     } else {
+      if (this.state === 'getup') this.keepLimbsIn(this.tmp);
       this.keepInBox(this.tmp);
       this.cur.set(this.tmp); this.writeWorld(this.cur);
     }
@@ -607,6 +608,32 @@ export class Kin {
     const a = this.toLocal([0, 0, 0]), c = this.toLocal(push), dx = c[0] - a[0], dy = c[1] - a[1];   // along the ground only
     pl[0] += dx; pl[1] += dy; this.anchor.x += dx; this.anchor.y += dy;
     this.headShift = (this.headShift || 0) + Math.hypot(dx, dy);
+  }
+  // (Version 25) get-ups are played as recorded, and the recordings were made in a room: an arm, a knee or the head
+  // swings 10-50 cm into a wall of the box. Any part of him that would go into a side wall moves the whole recording
+  // away from that wall (along the ground), as far as it went in, a few rounds; the floor and ceiling are left alone.
+  keepLimbsIn(pl) {
+    const W = this.W; if (W.open || !W.box) return;
+    const d = W.d, m = W.m, mj = this.mj, up = qv(qc(this.G.q), [0, 0, 1]);
+    for (let it = 0; it < 3; it++) {
+      this.writeWorld(pl); mj.mj_forward(m, d);
+      let push = [0, 0, 0], any = false, lift = 0;
+      for (let i = 0; i < d.ncon; i++) {
+        const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, dist = c.dist, n = [c.frame[0], c.frame[1], c.frame[2]]; c.delete();
+        if (dist > -0.003) continue;
+        const f1 = W.isFig[m.geom_bodyid[g1]], f2 = W.isFig[m.geom_bodyid[g2]]; if (f1 === f2) continue;
+        const dir = f2 ? n : n.map(v => -v);                       // out of the wall, into the room
+        const du = dir[0] * up[0] + dir[1] * up[1] + dir[2] * up[2];
+        if (du > 0.7) { lift = Math.max(lift, -dist); continue; }   // the floor: the whole recording comes up out of it
+        if (du < -0.7) continue;   // the ceiling (kneeling handles a low room)
+        for (let k = 0; k < 3; k++) { const e = -dist * dir[k]; if (Math.abs(e) > Math.abs(push[k])) { push[k] = e; any = true; } }
+      }
+      if (lift > 0.01) pl[2] += lift - 0.005;
+      if (!any && !(lift > 0.01)) break;
+      if (!any) continue;
+      const a = this.toLocal([0, 0, 0]), cc = this.toLocal([push[0], push[1], push[2]]), dx = (cc[0] - a[0]) * 1.1, dy = (cc[1] - a[1]) * 1.1;
+      pl[0] += dx; pl[1] += dy; if (this.anchor) { this.anchor.x += dx; this.anchor.y += dy; }
+    }
   }
   keepInBox(pl) {
     if (this.W.open || this.G.name !== 'floor' && this.G.name !== 'ceil') return;
@@ -881,9 +908,13 @@ export class Kin {
     // along "up", set by the physics layer), it slows down, to a quarter speed at 33 cm behind; and it isn't over
     // until his hips are within 15 cm of standing (or 4 s past its end: then he is down, and falls again)
     const lag = this.getupLag || 0;
-    this.anim.speed = clamp(1 - (lag - 0.08) / 0.33, 0.25, 1);
+    // (Version 25: the recording stood up while he still lay on his side, 9-13 s into a steep fall: at a quarter speed
+    // it kept going, and his joints chased a standing pose on the floor) it waits for him: full speed within 6 cm,
+    // stopped at 20 cm behind (LAGK env for tests)
+    this.anim.speed = clamp(1 - (lag - 0.06) / (globalThis.LAGK || 0.14), globalThis.LAGMIN ?? 0, 1);
     // his hand isn't on the floor where the recording's is: the recording slows right down until it is (he pushes
     // himself up with it, not with nothing)
+    if (this.getupLeanWait) this.anim.speed = Math.min(this.anim.speed, 0.1);   // his weight still behind his feet (drive_brain getupLean)
     if (this.getupHandWait) { this.getupHandT = (this.getupHandT || 0) + dt; if (this.getupHandT < 2.5) this.anim.speed = Math.min(this.anim.speed, 0.15); } else this.getupHandT = 0;
     // not enough room above him to stand: the recording waits at the moment its head would come within 25 cm of the
     // opposite wall (on his knees, or sitting up) until the room is there (the phone turned back)
@@ -892,7 +923,7 @@ export class Kin {
     if (this.kneeling) { this.anim.speed = 0; this.getupHold = 0; if (this.last !== 'kneeling: no room to stand') this.event('kneeling: no room to stand'); return; }
     // stuck: his hips more than 40 cm behind the recording for 3 s -> give this get-up up now (and start a new one
     // from the pose he is really in), instead of creeping on at a quarter speed and waiting 4 s at its end
-    this.getupStuck = lag > 0.4 ? (this.getupStuck || 0) + dt : 0;
+    this.getupStuck = lag > (globalThis.STUCKL || 0.2) ? (this.getupStuck || 0) + dt : 0;
     // (snapshot 22:52: "unable to turn and get up ... just stays shaking") stuck 3 s: give up this get-up, and don't
     // pick the same recording again for 20 s (it was picked because it looked closest - and it will again)
     if (this.getupStuck > 3) { this.getupStuck = 0; this.getupHold = 0; (this.failedGetups = this.failedGetups || new Map()).set(this.anim.clip, this.t); return this.startFall('the get-up failed'); }

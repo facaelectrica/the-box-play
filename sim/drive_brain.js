@@ -10,9 +10,26 @@
 import { qmul, qrot } from './brain.js';
 
 const NB = 23;
-import { Pins } from './pins.js?v=24';
-import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=24';
+import { Pins } from './pins.js?v=25';
+import { ARMS, ARM_W, LEGS, solve6 } from './kin.js?v=25';
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+function hullPts(P) {
+  const p = P.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return p;
+  const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+  for (const q of p) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (const q of p.reverse()) { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+function outsidePt(H, x) {   // how far x is outside the outline H (0 inside), and the direction out
+  let inside = H.length >= 3, best = 1e9, dir = [0, 0];
+  for (let i = 0; i < H.length; i++) {
+    const a = H[i], b = H[(i + 1) % H.length], e = [b[0] - a[0], b[1] - a[1]], L2 = e[0] * e[0] + e[1] * e[1] || 1e-12;
+    if (H.length >= 3 && e[0] * (x[1] - a[1]) - e[1] * (x[0] - a[0]) < 0) inside = false;
+    const t = clamp(((x[0] - a[0]) * e[0] + (x[1] - a[1]) * e[1]) / L2, 0, 1), c = [a[0] + e[0] * t, a[1] + e[1] * t];
+    const dd = Math.hypot(x[0] - c[0], x[1] - c[1]); if (dd < best) { best = dd; dir = [x[0] - c[0], x[1] - c[1]]; }
+  }
+  return inside ? { d: 0, dir: [0, 0] } : { d: best, dir };
+}
 export class BrainDrive {
   // springs (sim/springs.js), optional: the network was never taught to get up from the floor (it gives up past
   // 0.5 m), so during a get-up the springs and their help carry him through the get-up recording instead
@@ -20,10 +37,10 @@ export class BrainDrive {
     this.W = W; this.kin = kin; this.brain = brain; this.G = kin.W; this.springs = springs;
     kin.ext = W;   // the engine's falls follow this body
     this.ref = { pos: new Float64Array(NB * 3), rot: new Float64Array(NB * 4), vel: new Float64Array(NB * 3), ang: new Float64Array(NB * 3) };
-    this.prevRef = null; this.lostT = 0; this.sup = null; this.stats = {}; this.getupBy = 'springs';
+    this.prevRef = null; this.lostT = 0; this.sup = null; this.stats = {}; this.getupBy = 'kin';
     // supporting hands and feet pinned in place (needs the welds addPins puts in the body file)
     const P = new Pins(W, kin); if (P.ok) this.pins = P;
-    if (springs) springs.armHook = tg => { this.getupArms(tg); this.getupLegs(tg); };
+    if (springs) springs.armHook = tg => { this.getupArms(tg); if (!this.getupRise(tg)) this.getupLegs(tg); this.getupLean(tg); };
   }
   reset() {
     const W = this.W, d = W.d, g = this.G.d;
@@ -302,6 +319,10 @@ export class BrainDrive {
     const D = this.ikD || (this.ikD = new mj.MjData(m));
     if (!this.jp2) { this.jp2 = new mj.DoubleBuffer(3 * nv); this.jr2 = new mj.DoubleBuffer(3 * nv); this.jp3 = new mj.DoubleBuffer(3 * nv); this.jr3 = new mj.DoubleBuffer(3 * nv); }
     D.qpos.set(W.d.qpos);
+    // where his hips face (the body's -y), along the ground: for the elbow-back wish below
+    let fw = null;
+    { const hb = W.bodyId.Hips, X = W.d.xmat; let f = [-X[9 * hb + 1], -X[9 * hb + 4], -X[9 * hb + 7]]; const fu = f[0] * up[0] + f[1] * up[1] + f[2] * up[2];
+      f = f.map((v, i) => v - fu * up[i]); const fl = Math.hypot(...f); if (fl > 0.3) fw = f.map(v => v / fl); }
     // (user 21:40: "the shoulders are doing rotations that are not possible") start from the most similar arm pose a
     // real person made (armdb: ~30k poses from the BONES library: wrist and palm direction seen from the chest), then
     // refine; the solver alone found palms flat through upper-arm twists of 120-145 deg
@@ -345,6 +366,13 @@ export class BrainDrive {
         const JE = this.jp3.GetView(), ew = 0.5, rowE = [];
         for (let c = 0; c < N; c++) rowE.push((up[0] * JE[A.dof + c] + up[1] * JE[nv + A.dof + c] + up[2] * JE[2 * nv + A.dof + c]) * ew);
         if (elbow) { J.push(rowE); e.push(Math.max(-0.1, Math.min(0.1, (-0.18 - ez))) * ew); }
+        // (snapshot 23:14: "the right arm elbow is too forward ... The elbow not only should be down, but also facing
+        // closer to the back") an 8th wish: the elbow at least 4 cm behind the shoulder (along where his hips face), like
+        // a person pushing on a wall beside him - one-sided, it only pulls an elbow that has come forward
+        if (elbow && fw && !globalThis.NOELBACK) {
+          const ef = (D.xpos[3 * eb] - D.xpos[3 * sb]) * fw[0] + (D.xpos[3 * eb + 1] - D.xpos[3 * sb + 1]) * fw[1] + (D.xpos[3 * eb + 2] - D.xpos[3 * sb + 2]) * fw[2];
+          if (ef > -0.04) { const rowF = []; for (let c = 0; c < N; c++) rowF.push((fw[0] * JE[A.dof + c] + fw[1] * JE[nv + A.dof + c] + fw[2] * JE[2 * nv + A.dof + c]) * ew); J.push(rowF); e.push(Math.max(-0.1, -0.04 - ef) * ew); }
+        }
         const R = J.length, M = []; for (let i = 0; i < R; i++) { M.push([]); for (let j = 0; j < R; j++) { let s = 0; for (let c = 0; c < N; c++) s += J[i][c] * ARM_W[c] * J[j][c]; M[i].push(s + (i === j ? 0.003 : 0)); } }
         const y = solve6(M, e);
         for (let c = 0; c < N; c++) {
@@ -411,7 +439,8 @@ export class BrainDrive {
       const rel = P3(G, fb).map((v, i) => v - gH[i]), rn = dot(rel, up), hor = rel.map((v, i) => v - rn * up[i]);
       let L = Math.hypot(...hor), dir = L > 1e-3 ? hor.map(v => v / L) : null;
       if (!dir) continue;
-      L = clamp(L, 0.35, 0.6);
+      // (Version 25: at 35-60 cm his weight sat 38 cm behind his feet and he could not rise) close to the hips, knees up
+      L = clamp(L, 0.22, 0.4);
       // (the recording's foot sideways from the hips is kept: hip width, not crossed under him)
       tgt[side] = under.map((v, i) => v + dir[i] * L + up[i] * 0.05);
       sides.push(side);
@@ -442,13 +471,94 @@ export class BrainDrive {
         // within the joints' ranges, hip twist and spread kept small, knee 25-120 deg
         for (let c = 0; c < N; c++) { const jid = m.dof_jntid[Lg.dof + c], qa = Lg.dof + 1 + c; D.qpos[qa] = clamp(D.qpos[qa], m.jnt_range[2 * jid], m.jnt_range[2 * jid + 1]); }
         D.qpos[Lg.dof + 3] = clamp(D.qpos[Lg.dof + 3], -0.35, 0.35); D.qpos[Lg.dof + 2] = clamp(D.qpos[Lg.dof + 2], -0.5, 0.5);
-        D.qpos[Lg.dof + 4] = clamp(D.qpos[Lg.dof + 4], 0.45, 2.1);
+        D.qpos[Lg.dof + 4] = clamp(D.qpos[Lg.dof + 4], 0.45, 2.4);
       }
     }
     // eased in over the first 0.3 s of each planting (no snap)
     this.legW = Math.min(1, (this.legW || 0) + 1 / 30 / 0.3);
     W.act.forEach((a, j) => { const sd = sides.find(s => a.name.startsWith(s + 'Leg_') || a.name.startsWith(s + 'Shin_') || a.name.startsWith(s + 'Foot_')); if (sd) tg[j] += (D.qpos[a.qadr] - tg[j]) * this.legW; });
     this.legPlant = { sides, tgt };
+  }
+  // (Version 25; render of a steep-fall get-up: once the recording's hips passed 55 cm, its leg angles took over while
+  // his hips were still at 20 cm - knees splayed out, a leg out sideways, a frog squat for 3 s) rising with both feet
+  // flat on the floor: his own legs, solved on a copy of HIS body whose hips are put up to 7 cm higher (toward the
+  // recording's height), with each foot kept where it stands, flat, knees forward (hip twist and spread small). The
+  // legs extend toward that and, feet on the floor, push him up - standing up from a squat. Returns true when it ran.
+  getupRise(tg) {
+    const K = this.kin, W = this.W, m = W.m, mj = W.mj, nv = m.nv, d = W.d, G = this.G.d; if (this.noGetupRise) return false;
+    const o = K.toWorld([0, 0, 0]), u1 = K.toWorld([0, 0, 1]), up = [u1[0] - o[0], u1[1] - o[1], u1[2] - o[2]];
+    const P3 = (dd, b) => [dd.xpos[3 * b], dd.xpos[3 * b + 1], dd.xpos[3 * b + 2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const ht = p => dot(p.map((v, i) => v - o[i]), up), hb = W.bodyId.Hips;
+    const gz = ht(P3(G, hb)), mz = ht(P3(d, hb));
+    const feet = {};
+    for (const sd of ['Left', 'Right']) { const a = P3(d, W.bodyId[sd + 'Foot']), t = P3(d, W.bodyId[sd + 'ToeBase']); if (globalThis.RISEDBG) console.log('RISE', d.time.toFixed(2), sd, ht(a).toFixed(3), ht(t).toFixed(3), 'gz', gz.toFixed(2), 'mz', mz.toFixed(2), 'lean', (this.leanB || 0).toFixed(2)); if (ht(a) > 0.11 || ht(t) > 0.07) { this.riseW = 0; return false; } feet[sd] = a; }
+    if (gz < mz + 0.03 || mz > 0.93) { this.riseW = 0; return false; }
+    // his weight over his feet first (getupLean): while it's well behind, he leans, the rise waits
+    if ((this.leanB || 0) > 0.06) { this.riseW = 0; return false; }
+    const D = this.ikL || (this.ikL = new mj.MjData(m));
+    if (!this.jpL) { this.jpL = new mj.DoubleBuffer(3 * nv); this.jrL = new mj.DoubleBuffer(3 * nv); }
+    D.qpos.set(d.qpos);
+    const dz = Math.min(0.07, gz - mz); for (let i = 0; i < 3; i++) D.qpos[i] += up[i] * dz;
+    const LW = [1, 0.6, 0.2, 1, 0, 0, 1, 0.6, 0.2], rw = 0.3, sides = ['Left', 'Right'];
+    for (let it = 0; it < 12; it++) {
+      mj.mj_kinematics(m, D);
+      for (const side of sides) {
+        const Lg = LEGS[side], b = W.bodyId[Lg.foot], T = feet[side];
+        const R = D.xmat.slice(9 * b, 9 * b + 9), fz = [R[2], R[5], R[8]];
+        const cx = [fz[1] * up[2] - fz[2] * up[1], fz[2] * up[0] - fz[0] * up[2], fz[0] * up[1] - fz[1] * up[0]];
+        const e = [T[0] - D.xpos[3 * b], T[1] - D.xpos[3 * b + 1], T[2] - D.xpos[3 * b + 2], cx[0] * rw, cx[1] * rw, cx[2] * rw];
+        mj.mj_jacBody(m, D, this.jpL, this.jrL, b);
+        const JP = this.jpL.GetView(), JR = this.jrL.GetView(), N = 9, J = [];
+        for (let r = 0; r < 6; r++) { const row = []; for (let c = 0; c < N; c++) row.push(r < 3 ? JP[r * nv + Lg.dof + c] : JR[(r - 3) * nv + Lg.dof + c] * rw); J.push(row); }
+        const M = []; for (let i = 0; i < 6; i++) { M.push([]); for (let j = 0; j < 6; j++) { let s2 = 0; for (let c = 0; c < N; c++) s2 += J[i][c] * LW[c] * J[j][c]; M[i].push(s2 + (i === j ? 0.003 : 0)); } }
+        const y = solve6(M, e);
+        for (let c = 0; c < N; c++) { let s2 = 0; for (let i = 0; i < 6; i++) s2 += J[i][c] * y[i]; D.qpos[Lg.dof + 1 + c] += clamp(LW[c] * s2, -0.2, 0.2); }
+        for (let c = 0; c < N; c++) { const jid = m.dof_jntid[Lg.dof + c], qa = Lg.dof + 1 + c; D.qpos[qa] = clamp(D.qpos[qa], m.jnt_range[2 * jid], m.jnt_range[2 * jid + 1]); }
+        D.qpos[Lg.dof + 3] = clamp(D.qpos[Lg.dof + 3], -0.25, 0.25); D.qpos[Lg.dof + 2] = clamp(D.qpos[Lg.dof + 2], -0.35, 0.35);
+      }
+    }
+    this.riseW = Math.min(1, (this.riseW || 0) + 1 / 30 / 0.25);
+    W.act.forEach((a, j) => { if (/^(Left|Right)(Leg|Shin|Foot)_/.test(a.name)) tg[j] += (D.qpos[a.qadr] - tg[j]) * this.riseW; });
+    this.legPlant = { sides, tgt: feet, rise: dz };
+    return true;
+  }
+  // (Version 25; user 23:17: "a real person would actually bend their legs and then use them to raise themselves up")
+  // rising off the floor, his weight has to be over his feet first: sat against a wall (back-into-wall test) he stayed
+  // braced in a wall-sit for 6 s while the recording stood up. While the recording rises and both his feet are down,
+  // if his centre of mass is behind the middle of his feet (along the way his feet point), he bends forward at the
+  // hips and trunk (more the further behind, up to ~45 deg), and the recording waits for him (kin.getupLeanWait).
+  getupLean(tg) {
+    const K = this.kin, W = this.W, d = W.d, G = this.G.d; K.getupLeanWait = false; if (this.noGetupLean) return;
+    const o = K.toWorld([0, 0, 0]), u1 = K.toWorld([0, 0, 1]), up = [u1[0] - o[0], u1[1] - o[1], u1[2] - o[2]];
+    const P3 = (dd, b) => [dd.xpos[3 * b], dd.xpos[3 * b + 1], dd.xpos[3 * b + 2]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const ht = p => dot(p.map((v, i) => v - o[i]), up), hb = W.bodyId.Hips;
+    const gz = ht(P3(G, hb)), mz = ht(P3(d, hb));
+    if (!(gz > mz + 0.04 || (gz > 0.4 && mz < 0.75))) { this.leanW = Math.max(0, (this.leanW || 0) - 1 / 30 / 0.5); }
+    else {
+      const A = [], F = [];
+      for (const sd of ['Left', 'Right']) { const a = P3(d, W.bodyId[sd + 'Foot']), t = P3(d, W.bodyId[sd + 'ToeBase']); if (ht(a) > 0.16) { this.leanB = 0; K.getupLeanWait = false; this.leanW = Math.max(0, (this.leanW || 0) - 1 / 30 / 0.5); return; } A.push(a); F.push(t.map((v, i) => v - a[i])); }
+      // the soles' outline (heel to the ball of the foot, foot width) and his centre of mass, seen along gravity; how
+      // far outside it toward his back (his chest's back, flattened)
+      const flat = p => { const r = p.map((v, i) => v - o[i]), h = dot(r, up); return r.map((v, i) => v - h * up[i]); };
+      const ex = Math.abs(up[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0], e1 = flat(o.map((v, i) => v + ex[i])), l1 = Math.hypot(...e1), a1 = e1.map(v => v / l1);
+      const a2 = [up[1] * a1[2] - up[2] * a1[1], up[2] * a1[0] - up[0] * a1[2], up[0] * a1[1] - up[1] * a1[0]], to2 = p => { const q = flat(p); return [dot(q, a1), dot(q, a2)]; };
+      const Pp = [];
+      A.forEach((a, k) => { const t = a.map((v, i) => v + F[k][i]), A2 = to2(a), T2 = to2(t); let u = [T2[0] - A2[0], T2[1] - A2[1]]; const L = Math.hypot(...u) || 1; u = u.map(v => v / L); const n = [-u[1], u[0]];
+        for (const [al, sg] of [[-0.05, 1], [-0.05, -1], [L + 0.03, 1], [L + 0.03, -1]]) Pp.push([A2[0] + u[0] * al + n[0] * 0.04 * sg, A2[1] + u[1] * al + n[1] * 0.04 * sg]); });
+      const H = hullPts(Pp), c = to2([d.subtree_com[3 * hb], d.subtree_com[3 * hb + 1], d.subtree_com[3 * hb + 2]]), out = outsidePt(H, c);
+      const cb = W.bodyId.Chest, R9 = d.xmat.slice(9 * cb, 9 * cb + 9), back = to2(o.map((v, i) => v + [R9[1], R9[4], R9[7]][i]));   // chest's +y = his back
+      const bl = Math.hypot(...back) || 1, behind = out.d > 0 ? out.d * Math.max(0, (out.dir[0] * back[0] + out.dir[1] * back[1]) / (Math.hypot(...out.dir) * bl || 1)) : -0.01;
+      this.leanB = behind;
+      const want = clamp((behind + 0.02) / 0.2, 0, 1);
+      this.leanW = (this.leanW || 0) + (want - (this.leanW || 0)) * (1 - Math.exp(-1 / 30 / 0.25));
+      K.getupLeanWait = behind > 0.05;
+    }
+    const w = this.leanW || 0; if (w <= 0.01) return;
+    // hip flexion = Leg_x negative; trunk forward = Spine/Chest _x positive
+    W.act.forEach((a, j) => {
+      if (/^(Left|Right)Leg_x$/.test(a.name)) tg[j] = Math.min(tg[j], tg[j] - 0.55 * w);
+      else if (/^(Spine1|Spine2|Chest)_x$/.test(a.name)) tg[j] = Math.max(tg[j], tg[j] + 0.12 * w);
+    });
   }
   physArms() {
     const K = this.kin, W = this.W, m = W.m, mj = W.mj, nv = m.nv;
@@ -485,7 +595,9 @@ export class BrainDrive {
       for (const side of sides) { const b = W.bodyId[ARMS[side].hand], H = K.hands[side];
         S.pos += Math.hypot(H.p[0] - d.xpos[3 * b], H.p[1] - d.xpos[3 * b + 1], H.p[2] - d.xpos[3 * b + 2]) * 100;
         const pn = qr([d.xquat[4 * b], d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3]], [0, 0, -1]), o = H.wall ? H.wall.out : [0, 0, 0];
-        { const eb = W.bodyId[side + 'ForeArm'], sb = W.bodyId[side + 'Arm']; S.elb = (S.elb || 0) + ((d.xpos[3 * eb] - d.xpos[3 * sb]) * up[0] + (d.xpos[3 * eb + 1] - d.xpos[3 * sb + 1]) * up[1] + (d.xpos[3 * eb + 2] - d.xpos[3 * sb + 2]) * up[2]) * 100; }
+        { const eb = W.bodyId[side + 'ForeArm'], sb = W.bodyId[side + 'Arm']; S.elb = (S.elb || 0) + ((d.xpos[3 * eb] - d.xpos[3 * sb]) * up[0] + (d.xpos[3 * eb + 1] - d.xpos[3 * sb + 1]) * up[1] + (d.xpos[3 * eb + 2] - d.xpos[3 * sb + 2]) * up[2]) * 100;
+          const hb = W.bodyId.Hips, X = d.xmat; let f = [-X[9 * hb + 1], -X[9 * hb + 4], -X[9 * hb + 7]]; const fu = f[0] * up[0] + f[1] * up[1] + f[2] * up[2]; f = f.map((v, i) => v - fu * up[i]); const fl = Math.hypot(...f) || 1;
+          const efw = ((d.xpos[3 * eb] - d.xpos[3 * sb]) * f[0] + (d.xpos[3 * eb + 1] - d.xpos[3 * sb + 1]) * f[1] + (d.xpos[3 * eb + 2] - d.xpos[3 * sb + 2]) * f[2]) / fl * 100; S.ef = (S.ef || 0) + efw; S.efMax = Math.max(S.efMax ?? -99, efw); }
         S.tw = Math.max(S.tw || 0, Math.abs(d.qpos[ARMS[side].dof + 4]) * 57.3); S.twSum = (S.twSum || 0) + Math.abs(d.qpos[ARMS[side].dof + 4]) * 57.3;
         S.ang += Math.acos(Math.max(-1, Math.min(1, -(pn[0] * o[0] + pn[1] * o[1] + pn[2] * o[2])))) * 57.3; S.n++; } }
     if (globalThis.ARMDBG) { mj.mj_kinematics(m, D); const d = W.d; for (const side of sides) { const b = W.bodyId[ARMS[side].hand], H = K.hands[side], sh = W.bodyId[side + 'Arm'];
@@ -508,7 +620,7 @@ export class BrainDrive {
   }
   height(dd, b) { return this.kin.toLocal([dd.xpos[3 * b], dd.xpos[3 * b + 1], dd.xpos[3 * b + 2]])[2]; }
   async update(dt, fingerPush) {
-    const W = this.W, d = W.d, K = this.kin, B = this.brain, PH = 1 / 480;
+    const W = this.W, d = W.d, m = W.m, K = this.kin, B = this.brain, PH = 1 / 480;
     if (this.pins && !this.noPins) this.pins.update(dt);
     else if (this.pins) this.pins.reset();
     if (this.springs && K.state === 'getup' && this.getupBy === 'brain') {
@@ -525,6 +637,28 @@ export class BrainDrive {
         W.step(B.control);
       }
       this.stats.help = hs / Math.max(1, n); this.stats.err = B.err || 0; return;
+    }
+    // (Version 25; user 23:32: "They need to be able to naturally get up") get-ups are the real person's recording
+    // played on his body, as games do: entered at the moment of the recording that looks most like him lying there,
+    // blended from his fallen pose over 0.4 s (the recordings engine also eases in), his whole body following it; the
+    // physics and the balance network take over again once he stands (the recording's last pose, still). Driving his
+    // physical body through the recordings with muscles failed 3 times in 4 (stuck in a squat, a wall-sit, a frog), and
+    // made poses no person makes (his trunk held up on one hand).
+    if (K.state === 'getup' && this.getupBy === 'kin') {
+      if (this.mode !== 'getup') { this.mode = 'getup'; this.kinFrom = Float64Array.from(d.qpos); this.kinT = 0; d.xfrc_applied.fill(0); d.qfrc_applied.fill(0); if (this.springs) this.springs.restoreStrength(); }
+      this.kinT += dt;
+      const g = this.G.d.qpos, F = this.kinFrom, a0 = Math.min(1, this.kinT / 0.4), a = a0 * a0 * (3 - 2 * a0);
+      for (let i = 0; i < 3; i++) d.qpos[i] = F[i] + (g[i] - F[i]) * a;
+      let q0 = [F[3], F[4], F[5], F[6]], q1 = [g[3], g[4], g[5], g[6]]; if (q0[0] * q1[0] + q0[1] * q1[1] + q0[2] * q1[2] + q0[3] * q1[3] < 0) q1 = q1.map(v => -v);
+      const qq = q0.map((v, i) => v + (q1[i] - v) * a), qn = Math.hypot(...qq) || 1; for (let i = 0; i < 4; i++) d.qpos[3 + i] = qq[i] / qn;
+      for (let i = 7; i < m.nq; i++) { let e = g[i] - F[i]; e = Math.atan2(Math.sin(e), Math.cos(e)); d.qpos[i] = F[i] + e * a; }
+      W.mj.mj_kinematics(m, d);
+      // his legs: feet planted flat while he sits, toes tucked under while he kneels (getupLegs; user 23:03, 23:22)
+      if (!this.noKinLegs) { const tg = W.act.map(ac => d.qpos[ac.qadr]); this.getupLegs(tg); W.act.forEach((ac, j) => { if (/^(Left|Right)(Leg|Shin|Foot|ToeBase)_/.test(ac.name)) d.qpos[ac.qadr] = tg[j]; }); }
+      d.qvel.fill(0); W.mj.mj_forward(m, d); d.time += dt;
+      if (this.pins) this.pins.reset();
+      K.getupLag = 0; K.getupHandWait = false; K.getupLeanWait = false;
+      this.stats.err = 0; this.stats.help = 0; return;
     }
     if (this.springs && K.state === 'getup') {
       if (this.mode !== 'getup') { this.mode = 'getup'; const S = this.springs; S.mode = 'follow'; S.helpK = 0; S.gPrev = null; S.lostT = 0; S.setGains(S.stiff, Math.sqrt(S.stiff)); }
