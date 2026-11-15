@@ -6,7 +6,8 @@
 //
 // Three pieces, kept apart so the physics can run headless in the tests:
 //  - Cracks: reads MuJoCo's contacts after each frame. A part arriving on a wall/floor/ceiling faster than CRACK.minV
-//    (speed of the touching point into the surface, just before it touched) cracks there; the CRACK.hits-th crack
+//    (speed of the touching point into the surface, just before it touched) cracks there, as deep as the speed says;
+//    when a part's damage adds up to CRACK.breakAt
 //    breaks the part off. A broken part and everything hanging from it (forearm -> hand) leave his physical body: no
 //    collisions, almost no weight, no muscle; the brain still drives the rest of him. Losing the head (or the neck or
 //    trunk above the hips, which carry it) = he stops: the rest of him goes limp, holding a little of his last pose.
@@ -17,11 +18,18 @@
 // Nothing here changes physics.js, the body file or training. The shell is drawn as glazed porcelain/ceramic.
 
 export const CRACK = {
-  minV: 2.4,          // m/s into the surface for a crack (footsteps ~0.3-1, catching a fall on the hands ~1-2)
-  hits: 3,            // the 3rd cracking hit breaks the part off
+  // (user 12:22: "the speed at which he hits a surface should define how much damage it does ... a small distance and
+  // not much velocity, it should not break") damage per hit = (speed into the surface - minV) / per, at most maxHit;
+  // nothing below minV; a part breaks when its damage adds up to breakAt. Speed = the physics' own velocity of the
+  // touching point just before it touched (not position jumps: the recordings move him around kinematically).
+  minV: 2.8,          // m/s: below this a hit does no damage (footsteps ~0.3-1, a fall from standing ~2-3, the phone flipped ~5)
+  per: 2.5,           // m/s above minV for one unit of damage
+  maxHit: 1.5,        // the most one hit can do
+  breakAt: 2.5,       // units of damage that break a part
+  hits: 3,            // (kept for the tests' forced breaks)
   cool: 0.6,          // s: one impact (bounces, several walls in a corner) counts once per part
   away: 0.08,         // s: a part must have been off that surface this long for a new touch to count
-  kind: { Foot: 1.25, Hand: 1.1 },   // feet and hands meet surfaces on purpose: a bit more needed
+  kind: { Foot: 1.5, Hand: 1.5 },   // feet and hands meet surfaces on purpose (support, catching himself): much more needed
   mass: 0.03,         // what's left of a broken part's weight in his physics (its invisible stub)
 };
 const BREAK_ROOT = { Hips: 'Spine1' };   // the hips break = the upper body comes off them
@@ -230,8 +238,8 @@ export class Cracks {
   // turn the mode on/off (off = everything as new)
   setOn(on) { this.on = !!on; if (!on) this.reset(); }
   snapshot() {
-    const d = this.W.d;
-    return { t: this.t, x: Float64Array.from(d.xpos), R: Float64Array.from(d.xmat) };
+    const d = this.W.d, r = this.W.m.body_rootid[this.W.bodyId.Hips];
+    return { t: this.t, x: Float64Array.from(d.xpos), R: Float64Array.from(d.xmat), cv: Float64Array.from(d.cvel), c0: [d.subtree_com[3 * r], d.subtree_com[3 * r + 1], d.subtree_com[3 * r + 2]] };
   }
   // the speed of a point fixed in body b (local l) between the last two frames
   pointVel(b, l) {
@@ -239,11 +247,14 @@ export class Cracks {
     const A = H[H.length - 1], B = H[H.length - 2], dt = A.t - B.t; if (dt <= 1e-4) return null;
     const pa = add([A.x[3 * b], A.x[3 * b + 1], A.x[3 * b + 2]], mv(A.R.subarray(9 * b, 9 * b + 9), l));
     const pb = add([B.x[3 * b], B.x[3 * b + 1], B.x[3 * b + 2]], mv(B.R.subarray(9 * b, 9 * b + 9), l));
-    const v = sub(pa, pb).map(x => x / dt);
-    return len(v) > 30 ? null : v;   // a teleport (reset, get-up blend), not a motion
+    // the physics' own velocity of that point at the end of the last frame (com-based: [turn; move] about the root's centre)
+    const cv = A.cv.subarray(6 * b, 6 * b + 6), w = [cv[0], cv[1], cv[2]], v = add([cv[3], cv[4], cv[5]], cross(w, sub(pa, A.c0)));
+    void pb;
+    return len(v) > 30 ? null : v;
   }
   // after each frame's physics. skip = he is being placed by a recording (kinematic get-up): no hits then.
-  update(dt, skip = false) {
+  // support: he is on his feet (standing / recovering): feet on the ground and hands bracing do no damage then
+  update(dt, skip = false, support = false) {
     const W = this.W, m = W.m, d = W.d;
     this.t += dt; this.quiet = Math.max(0, this.quiet - dt);
     if (!this.on) { this.hist.length = 0; return []; }
@@ -268,23 +279,25 @@ export class Cracks {
         const b = c.b, R = d.xmat.subarray(9 * b, 9 * b + 9), x = [d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]];
         const l = mtv(R, sub(c.p, x)), v = this.pointVel(b, l); if (!v) continue;
         const vIn = -dot(v, c.n);
-        const name = this.nameOf[b], piece = pieceOf(name), k = CRACK.kind[piece.replace(/^(Left|Right)/, '')] || 1;
+        const name = this.nameOf[b], piece = pieceOf(name), kind = piece.replace(/^(Left|Right)/, ''), k = CRACK.kind[kind] || 1;
         if (vIn > 1.0) this.stats.hits.push({ t: +this.t.toFixed(2), part: name, v: +vIn.toFixed(2) });
-        if (vIn < CRACK.minV * k) continue;
+        // (user 12:22-12:24) feet and hands doing their job - standing, stepping, bracing on the walls - never get hurt
+        if (support && (kind === 'Foot' || kind === 'Hand')) continue;
+        const dmg = Math.min(CRACK.maxHit, (vIn - CRACK.minV * k) / CRACK.per); if (dmg < 0.05) continue;
         if (this.t - (this.lastHit[piece] || -9) < CRACK.cool) continue;
         this.lastHit[piece] = this.t;
         const pb = W.bodyId[piece];
         if (this.broken.has(pb)) continue;
         // where on the part: the touching point and the surface's outward normal, in the part's own frame
         const Rp = d.xmat.subarray(9 * pb, 9 * pb + 9), xp = [d.xpos[3 * pb], d.xpos[3 * pb + 1], d.xpos[3 * pb + 2]];
-        const P = this.part(piece), s = Math.min(1, (vIn - CRACK.minV * k) / (2.5 * k));
-        const hit = { body: pb, l: mtv(Rp, sub(c.p, xp)), n: mtv(Rp, c.n.map(v => -v)), v: vIn, s, seed: (Math.random() * 1e9) | 0, level: P.level + 1 };
+        const P = this.part(piece), s = Math.min(1, dmg / CRACK.maxHit);
+        const hit = { body: pb, l: mtv(Rp, sub(c.p, xp)), n: mtv(Rp, c.n.map(v => -v)), v: vIn, s, dmg, seed: (Math.random() * 1e9) | 0, level: P.level + 1 };
         // where on the box: the wall's name and the spot on its face (relative to the face's centre, so it follows the box)
         { const wn = this.wallName[c.wall], f = wn && W.faces().find(q => q.name === wn);
           if (f) { const d0 = dot(sub(c.p, f.p), f.n), q = add(c.p, f.n, -d0); hit.wall = { name: wn, n: f.n.slice(), off: sub(q, f.p) }; } }
-        P.level++; P.hits.push(hit);
-        if (P.level >= CRACK.hits) { this.stats.breaks++; ev.push({ type: 'break', piece, hit, ...this.breakOff(piece, c.n, vIn) }); }
-        else { this.stats.cracks++; ev.push({ type: 'crack', piece, hit, level: P.level, chips: this.chips(c.p, c.n, v, 1 + (Math.random() < 0.5 ? 1 : 0) + (P.level >= 2 ? 1 : 0)) }); }
+        P.level++; P.dmg = (P.dmg || 0) + dmg; P.hits.push(hit);
+        if (P.dmg >= CRACK.breakAt) { this.stats.breaks++; ev.push({ type: 'break', piece, hit, ...this.breakOff(piece, c.n, vIn) }); }
+        else { this.stats.cracks++; ev.push({ type: 'crack', piece, hit, level: P.level, chips: this.chips(c.p, c.n, v, Math.max(1, Math.round(dmg * 2))) }); }
       }
     }
     for (const [key] of now) this.touch.set(key, this.t);
@@ -342,7 +355,7 @@ export class Cracks {
     const brk = len(sub(joint, com)) < 0.02 ? com : joint;
     const shards = this.frags(brk, nWall, v, 2 + Math.round(Math.random() * 2), 0.005, 0.03);
     // the part that broke starts over: hit again, it cracks again, and its 3rd crack breaks it further (user 11:07)
-    this.part(piece).level = 0;
+    this.part(piece).level = 0; this.part(piece).dmg = 0;
     for (const b of bodies) this.broken.add(b);
     this.chunks.push(chunk);
     // a leg gone: get-ups can't be the recording played on his body any more (it would stand him on the missing leg):
@@ -392,16 +405,17 @@ export class Cracks {
   pieceHit(e) {
     const P = e.P, W = this.W; if (!this.debris.list.includes(P)) return null;
     const name = this.nameOf[e.b], piece = pieceOf(name), pb = W.bodyId[piece], k = CRACK.kind[piece.replace(/^(Left|Right)/, '')] || 1;
-    if (!P.bodies.includes(pb) || e.v < CRACK.minV * k || this.t - (this.lastHit[piece] || -9) < CRACK.cool) return null;
+    const dmg = Math.min(CRACK.maxHit, (e.v - CRACK.minV * k) / CRACK.per);
+    if (!P.bodies.includes(pb) || dmg < 0.05 || this.t - (this.lastHit[piece] || -9) < CRACK.cool) return null;
     this.lastHit[piece] = this.t;
     const rel = P.rel.find(r => r.b === pb), bp = this.chunkBodyPose(P, rel), Rb = q2m(bp.q);
-    const Pt = this.part(piece), s = Math.min(1, (e.v - CRACK.minV * k) / (2.5 * k));
-    const hit = { body: pb, l: mtv(Rb, sub(e.p, bp.p)), n: mtv(Rb, e.n.map(v => -v)), v: e.v, s, seed: (Math.random() * 1e9) | 0, level: Pt.level + 1, chunk: P };
+    const Pt = this.part(piece), s = Math.min(1, dmg / CRACK.maxHit);
+    const hit = { body: pb, l: mtv(Rb, sub(e.p, bp.p)), n: mtv(Rb, e.n.map(v => -v)), v: e.v, s, dmg, seed: (Math.random() * 1e9) | 0, level: Pt.level + 1, chunk: P };
     const f = W.faces().find(q => q.name === e.wall); if (f) { const d0 = dot(sub(e.p, f.p), f.n), q = add(e.p, f.n, -d0); hit.wall = { name: e.wall, n: f.n.slice(), off: sub(q, f.p) }; }
-    Pt.level++; Pt.hits.push(hit);
+    Pt.level++; Pt.dmg = (Pt.dmg || 0) + dmg; Pt.hits.push(hit);
     const vp = add(P.v, cross(P.w, sub(e.p, P.x)));
-    if (Pt.level < CRACK.hits) { this.stats.cracks++; return { type: 'crack', piece, hit, level: Pt.level, chips: this.chips(e.p, e.n, vp, 1 + (Math.random() < 0.5 ? 1 : 0)) }; }
-    this.stats.breaks++; Pt.level = 0;
+    if (Pt.dmg < CRACK.breakAt) { this.stats.cracks++; return { type: 'crack', piece, hit, level: Pt.level, chips: this.chips(e.p, e.n, vp, 1 + (Math.random() < 0.5 ? 1 : 0)) }; }
+    this.stats.breaks++; Pt.level = 0; Pt.dmg = 0;
     const R = q2m(P.q), pose = b => { const r = P.rel.find(q => q.b === b), bpz = this.chunkBodyPose(P, r); return { x: bpz.p, R: q2m(bpz.q) }; };
     const inP = b => P.bodies.includes(b), groupsOf = [];
     if (pb !== P.root) { const sub1 = this.subtree(pb).filter(inP); groupsOf.push(sub1, P.bodies.filter(b => !sub1.includes(b))); }
@@ -422,7 +436,7 @@ export class Cracks {
   }
   // (tests) break a part now
   forceBreak(piece) {
-    const W = this.W, d = W.d, b = W.bodyId[piece], P = this.part(piece); P.level = CRACK.hits;
+    const W = this.W, d = W.d, b = W.bodyId[piece], P = this.part(piece); P.level = CRACK.hits; P.dmg = CRACK.breakAt;
     const hit = { body: b, l: [0, 0, 0.05], n: [0, 0, 1], v: 3, s: 0.3, seed: 7, level: CRACK.hits };
     const e = { type: 'break', piece, hit, ...this.breakOff(piece, [0, 0, 1], 3) }; this.pending.push(e); return e;
   }
