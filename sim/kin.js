@@ -857,6 +857,9 @@ export class Kin {
     // until his hips are within 15 cm of standing (or 4 s past its end: then he is down, and falls again)
     const lag = this.getupLag || 0;
     this.anim.speed = clamp(1 - (lag - 0.08) / 0.33, 0.25, 1);
+    // his hand isn't on the floor where the recording's is: the recording slows right down until it is (he pushes
+    // himself up with it, not with nothing)
+    if (this.getupHandWait) { this.getupHandT = (this.getupHandT || 0) + dt; if (this.getupHandT < 1.5) this.anim.speed = Math.min(this.anim.speed, 0.15); } else this.getupHandT = 0;
     // not enough room above him to stand: the recording waits at the moment its head would come within 25 cm of the
     // opposite wall (on his knees, or sitting up) until the room is there (the phone turned back)
     const nx = Math.min(this.anim.clip.n - 1, Math.floor(this.anim.x) + 2), headZ = this.anim.clip.body(nx, 6)[2];

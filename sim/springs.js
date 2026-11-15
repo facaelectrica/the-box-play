@@ -56,7 +56,7 @@ export class Springs {
     this.vsign = opt.vsign ?? -1;
     this.getupMode = opt.getupMode ?? 'contacts';   // get-ups: 'contacts' = his limbs on the floor push (internal), 'hips' = the old outside hips spring
     this.getupTurn = opt.getupTurn ?? 3;
-    this.getupCap = opt.getupCap ?? 0.2;           // outside help left in a get-up: only straight up, at most this x his weight
+    this.getupCap = opt.getupCap ?? 0;             // outside help in a get-up (user 20:59: "he often just springs up, like if gravity didn't exist"): none
     this.vturn = opt.vturn ?? 1;
     this.virtual = opt.virtual ?? 1;                      // the hips pull is made by the standing legs' muscles (legPush), not from outside
     this.feetHelp = opt.feetHelp ?? 0;
@@ -195,6 +195,17 @@ export class Springs {
     d.qfrc_applied.fill(0);
     if (n) { this.stats.help = helpSum / n; }
     // how far his hips are behind the recording's, along up (the get-up waits for him: kin.updateGetup)
+    // (user 20:59: "he must use his legs and arms to help him get up") where the recording has a hand on the floor
+    // and his hand isn't there (hand or forearm touching the box), the recording waits for it (kin.updateGetup)
+    if (K.state === 'getup') {
+      if (!this.handB) this.handB = { Left: [W.bodyId.LeftHand, W.bodyId.LeftForeArm], Right: [W.bodyId.RightHand, W.bodyId.RightForeArm] };
+      const touch = { Left: false, Right: false };
+      for (let i = 0; i < d.ncon; i++) { const c = d.contact.get(i), b1 = m.geom_bodyid[c.geom1], b2 = m.geom_bodyid[c.geom2], dist = c.dist; c.delete();
+        if (dist > 0.01 || W.isFig[b1] === W.isFig[b2]) continue; const b = W.isFig[b1] ? b1 : b2;
+        for (const sd of ['Left', 'Right']) if (this.handB[sd].includes(b)) touch[sd] = true; }
+      const cl = K.anim.clip, x = K.anim.x;
+      K.getupHandWait = (cl.contact(x, 2) > 0.5 && !touch.Left) || (cl.contact(x, 3) > 0.5 && !touch.Right);
+    } else K.getupHandWait = false;
     if (K.state === 'getup') {   // behind = hips or head lower than the recording's (head: he can rise hips-first, folded)
       const me = K.toLocal([d.qpos[0], d.qpos[1], d.qpos[2]]), gh = K.toLocal([gr.p[0], gr.p[1], gr.p[2]]);
       const hb = this.head, mh = K.toLocal([d.xpos[3 * hb], d.xpos[3 * hb + 1], d.xpos[3 * hb + 2]]), gd = this.G.d, ghh = K.toLocal([gd.xpos[3 * hb], gd.xpos[3 * hb + 1], gd.xpos[3 * hb + 2]]);
@@ -279,13 +290,14 @@ export class Springs {
     const W = this.W, m = W.m, d = W.d, nv = m.nv, mj = W.mj;
     if (!this.jp) { this.jp = new mj.DoubleBuffer(3 * nv); this.jr = new mj.DoubleBuffer(3 * nv); }
     if (!this.effort) { this.effort = new Float64Array(nv).fill(300); W.act.forEach(a => { this.effort[a.dof] = a.effort; }); this.isWall = g => !W.isFig[m.geom_bodyid[g]]; }
+    if (!this.noPush) this.noPush = new Set(['Head', 'Neck1', 'Neck2'].map(n => W.bodyId[n]).filter(b => b != null));
     const pts = new Map();
     for (let i = 0; i < d.ncon; i++) {
       const c = d.contact.get(i), g1 = c.geom1, g2 = c.geom2, pos = [c.pos[0], c.pos[1], c.pos[2]], dist = c.dist; c.delete();
       if (dist > 0.005) continue;
       let b = -1;
       if (this.isWall(g1) && !this.isWall(g2)) b = m.geom_bodyid[g2]; else if (this.isWall(g2) && !this.isWall(g1)) b = m.geom_bodyid[g1];
-      if (b < 0) continue;
+      if (b < 0 || this.noPush.has(b)) continue;   // he pushes himself up with his limbs, never his head
       const e = pts.get(b) || { p: [0, 0, 0], n: 0 }; for (let k = 0; k < 3; k++) e.p[k] += pos[k]; e.n++; pts.set(b, e);
     }
     if (!pts.size) return 0;
