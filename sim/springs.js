@@ -46,6 +46,16 @@ function outside(H, x) {
   return inside ? { d: 0, dir: [0, 0] } : { d: best, dir };
 }
 
+// a strong adult's peak joint torques (N m; isometric, from strength studies), by joint: x = bending forward/back
+export const HUMAN_NM = [
+  [/^(Spine1|Spine2|Chest)_x/, 250], [/^(Spine1|Spine2|Chest)_y/, 150], [/^(Spine1|Spine2|Chest)_z/, 80],
+  [/^(Neck1|Neck2|Head)_/, 40],
+  [/Shoulder_/, 100], [/ForeArm_/, 80], [/Arm_/, 100], [/Hand_/, 25],
+  [/Leg_x/, 250], [/Leg_y/, 150], [/Leg_z/, 80],
+  [/Shin_/, 250], [/Foot_x/, 150], [/Foot_/, 60], [/ToeBase_/, 30],
+];
+export function humanCap(name) { for (const [re, v] of HUMAN_NM) if (re.test(name)) return v; return 100; }
+
 function mjFwdCom(W) { /* subtree_com is filled by the last physics step's forward pass */ }
 
 export class Springs {
@@ -56,6 +66,7 @@ export class Springs {
     this.vsign = opt.vsign ?? -1;
     this.getupMode = opt.getupMode ?? 'contacts';   // get-ups: 'contacts' = his limbs on the floor push (internal), 'hips' = the old outside hips spring
     this.getupTurn = opt.getupTurn ?? 3;
+    this.human = opt.human ?? 1;                    // joints at a person's strength (humanStrength)
     this.getupCap = opt.getupCap ?? 0;             // outside help in a get-up (user 20:59: "he often just springs up, like if gravity didn't exist"): none
     this.vturn = opt.vturn ?? 1;
     this.virtual = opt.virtual ?? 1;                      // the hips pull is made by the standing legs' muscles (legPush), not from outside
@@ -191,6 +202,7 @@ export class Springs {
       // only while the recording moves that foot (lifted or sliding) or his foot is more than 3 cm from it. Counted with
       // the hidden support.
       if (this.feetHelp && (H > 0 || K.state === 'getup')) this.footSprings(H > 0 ? H : this.help);
+      if (this.human) this.humanStrength();
       W.step(ctl);
     }
     d.qfrc_applied.fill(0);
@@ -371,6 +383,23 @@ export class Springs {
       for (let i = 0; i < 3; i++) { const f = clamp(h * (k * (gp[i] - p[i]) + c * (gv[i] - v[i])), -0.6 * M * 9.81, 0.6 * M * 9.81); x[6 * b + i] += f; sum += Math.abs(f); }
     }
     this.stats.foot = sum;
+  }
+  // (user 23:06: "He cannot lift the weight of his body with one hand like this ... are you doing any cheating?") a
+  // person's strength at each joint: the servo AND the extra torques written here (holding limbs up, pushing on the
+  // floor) together stay within it. The body file's servos are 150 N m (arms) / 300 N m (the rest), and the extra
+  // torques could add as much again: up to 300 N m at an elbow (a strong man: ~80) - he held his trunk up on one hand.
+  humanStrength() {
+    const W = this.W, m = W.m, d = W.d;
+    if (!this.hcap) this.hcap = W.act.map(a => humanCap(a.name)); this.hcapOn = true;
+    W.act.forEach((a, i) => {
+      const H = this.hcap[i], dof = a.dof, ap = clamp(d.qfrc_applied[dof], -H, H);
+      d.qfrc_applied[dof] = ap;
+      m.actuator_forcerange[2 * i] = -H - ap; m.actuator_forcerange[2 * i + 1] = H - ap;
+    });
+  }
+  restoreStrength() {
+    const W = this.W, m = W.m; if (!this.hcapOn) return; this.hcapOn = false;
+    W.act.forEach((a, i) => { m.actuator_forcerange[2 * i] = -a.effort; m.actuator_forcerange[2 * i + 1] = a.effort; });
   }
   headHeight(dd) { const b = this.head, K = this.kin; return K.toLocal([dd.xpos[3 * b], dd.xpos[3 * b + 1], dd.xpos[3 * b + 2]])[2]; }
 }

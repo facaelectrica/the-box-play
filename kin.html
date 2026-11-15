@@ -46,6 +46,11 @@
   #snap::before{content:"";position:absolute;left:7px;top:10px;width:16px;height:11px;border:2px solid rgba(255,235,205,.95);border-radius:3px}
   #snap::after{content:"";position:absolute;left:12px;top:13px;width:6px;height:6px;border:2px solid rgba(255,235,205,.95);border-radius:50%}
   #pose::after{content:"";position:absolute;left:10px;top:13px;width:9px;height:8px;border-left:2px solid rgba(255,235,205,.95);border-bottom:2px solid rgba(255,235,205,.95);transform:skewX(-12deg)}
+  #bal{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(320px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #bal::before{content:"";position:absolute;left:8px;top:20px;width:14px;height:2px;background:rgba(255,235,205,.95)}
+  #bal::after{content:"";position:absolute;left:12px;top:9px;width:6px;height:6px;border-radius:50%;background:rgba(255,235,205,.95)}
+  #bal.on{background:rgba(60,140,70,.7)}
+  #balTxt{display:none;position:fixed;left:calc(10px + env(safe-area-inset-left));bottom:calc(64px + env(safe-area-inset-bottom));z-index:6;font:12px/1.35 -apple-system,system-ui,sans-serif;color:rgba(255,235,205,.95);background:rgba(28,18,10,.55);padding:5px 8px;border-radius:8px;pointer-events:none;white-space:pre}
   #tilt{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(188px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #tilt::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:16px;margin:-8px 0 0 -5px;border:2px solid rgba(255,235,205,.9);border-radius:3px;box-sizing:border-box}
   #tilt.on{background:#ffd400;border-color:#ffd400}#tilt.on::after{border-color:#111;transform:rotate(-25deg)}
@@ -83,7 +88,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">Version 23</div><div id="brainver"></div>
+<div id="ver">Version 24</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -183,6 +188,8 @@ window.BOXLOAD = (() => {
 <button id="dbg" aria-label="Wireframe and skeleton views"></button>
 <button id="pose" aria-label="Test poses (look mode)"></button>
 <button id="snap" aria-label="Save a snapshot for Claude (paused)"></button>
+<button id="bal" aria-label="Balance view: where his weight is vs what holds him up, and how hard his muscles work"></button>
+<div id="balTxt"></div>
 <button id="tilt" class="on" aria-label="Phone tilt moves the box (off: gravity stays straight down)"></button>
 <div id="note"></div>
 <div id="hud">
@@ -217,11 +224,12 @@ import loadMujoco from '@mujoco/mujoco';
 import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Kin, loadKinLibrary } from './sim/kin.js?v=23';
-import { Springs } from './sim/springs.js?v=23';
-import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=23';
-import { addPins } from './sim/pins.js?v=23';
-import { rigHand, poseHand } from './sim/fingers.js?v=23';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=24';
+import { Springs, humanCap } from './sim/springs.js?v=24';
+import { Balance } from './sim/balance.js?v=24';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=24';
+import { addPins } from './sim/pins.js?v=24';
+import { rigHand, poseHand } from './sim/fingers.js?v=24';
 import * as ort from 'onnxruntime-web';
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
@@ -542,7 +550,7 @@ const figP = loadFig(FIG);
 let brain = null;
 const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
 try { document.getElementById('brainver').textContent = ''; } catch (_) {}
-const KINV = 23;
+const KINV = 24;
 const libP = loadKinLibrary('body/clips/', u => LOAD.take(u + '?v=' + KINV, 'Recordings'));   // ?v: phones keep old copies
 libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
@@ -558,7 +566,7 @@ let control = null;
 let kin = null, springs = null;
 try { kin = new Kin(G, mj, await libP); LOAD.state('Recordings', 'ready'); }
 catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
-try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=23', 'Body')))); } catch (e) { console.warn('joint limits', e); }
+try { applyHumanLimits(W, JSON.parse(new TextDecoder().decode(await LOAD.take('body/clips/kin/limits.json?v=24', 'Body')))); } catch (e) { console.warn('joint limits', e); }
 if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupCap: 0 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
 // round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
 // The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
@@ -686,6 +694,39 @@ function poseHands(dt) {
     poseHand(handRig[side], P.s, P.c);
   }
 }
+// ================= balance view (user 23:09: "Do you have ways of measuring that where the weight distribution goes along
+// the legs and he's stable?"; 23:17: "keeping your body stiff like this ... is a lot of energy"): sim/balance.js measures
+// his real body each frame. The button shows it on the floor under him: the outline of what holds him up (feet, hands,
+// knees... pressing on the box), his centre of mass seen straight down (dot) and his capture point (ring: where his
+// weight is heading); green = inside (he can stay), red = outside (he must step, grab or fall). Bottom left: the numbers.
+let bal = null, balOn = false, balG = null;
+function balanceView(dt) {
+  if (!W || !bal) return;
+  const r = bal.update(dt, drive && drive.pins);
+  if (!balOn) return;
+  if (!balG) {
+    balG = new THREE.Group(); figRoot.add(balG);
+    const mk = c => new THREE.MeshBasicMaterial({ color: c, depthTest: false, transparent: true, opacity: 0.9 });
+    balG.userData.line = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x66dd77, depthTest: false }));
+    balG.userData.com = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 8), mk(0x66dd77));
+    balG.userData.cp = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.006, 6, 20), mk(0x66dd77));
+    for (const k of ['line', 'com', 'cp']) { balG.userData[k].renderOrder = 10; balG.add(balG.userData[k]); }
+  }
+  const D = r.draw(), U = balG.userData, col = r.cpMargin >= 0 ? 0x66dd77 : r.margin >= 0 ? 0xf0c040 : 0xee5544;
+  U.line.geometry.setFromPoints(D.hull.map(p => new THREE.Vector3(p[0], p[1], p[2] + 0.003)));
+  U.com.position.set(...D.com); U.cp.position.set(...D.cp);
+  const g = W.m.opt.gravity, n = new THREE.Vector3(-g[0], -g[1], -g[2]).normalize(); U.cp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+  U.line.material.color.setHex(col); U.com.material.color.setHex(r.margin >= 0 ? 0x66dd77 : 0xee5544); U.cp.material.color.setHex(col);
+  const pc = v => (v * 100).toFixed(0) + '%';
+  $('balTxt').textContent = `weight ${r.margin >= 0 ? (r.margin * 100).toFixed(0) + ' cm inside' : (-r.margin * 100).toFixed(0) + ' cm OUTSIDE'} what holds him up` +
+    `\nheading ${r.cpMargin >= 0 ? 'inside (he can stay)' : 'OUTSIDE (step, grab or fall)'}` +
+    `\ncarried by: left foot ${pc(r.L)}, right foot ${pc(r.R)}, hands ${pc(r.hands)}, knees ${pc(r.knees)}, rest ${pc(r.rest)}` +
+    (r.held > 0.05 ? `\nheld by a weld more than a real touch could: ${pc(r.held)}` : '') +
+    (r.eff !== undefined ? `\nmuscles: ${pc(r.eff)} of a person's strength on average, hardest ${r.effJ} ${pc(r.effMax)}` : '');
+}
+$('bal').onclick = e => { e.stopPropagation(); balOn = !balOn; $('bal').classList.toggle('on', balOn); $('balTxt').style.display = balOn ? 'block' : 'none'; if (balG) balG.visible = balOn; };
+for (const ev of ['pointerdown', 'pointerup']) $('bal').addEventListener(ev, e => e.stopPropagation());
+
 function syncFigure() {
   const d = W.d;
   poseHands(1 / 60);
@@ -1337,6 +1378,7 @@ function makeSnap() {
     events: K ? K.log.slice(-15) : [], pins: drive && drive.pins ? Object.keys(drive.pins.on) : [],
     qpos: r(d.qpos), qvel: r(d.qvel), ghostQpos: G && G !== W ? r(G.d.qpos) : null,
     camera: { yaw: +look.yaw.toFixed(3), pitch: +look.pitch.toFixed(3), dist: +look.dist.toFixed(3), target: [look.tgt.x, look.tgt.y, look.tgt.z].map(v => +v.toFixed(3)), box: !!look.box },
+    balance: bal && bal.last ? Object.fromEntries(Object.entries(bal.last).filter(([k, v]) => typeof v !== 'function').map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(4) : v])) : null,
     hist };
 }
 $('snap').onclick = async e => {
@@ -1443,6 +1485,8 @@ async function frame(now) {
       const g = W.m.opt.gravity; G.setGravity([g[0], g[1], g[2]]);
       kin.update(dt);
       if (drive) await drive.update(dt, fingerPush); else springs.update(dt, fingerPush);
+      if (!bal && W) bal = new Balance(W, { cap: humanCap });
+      balanceView(dt);
     } else {
       kin.update(dt);
       if (kin.state !== 'fall') x.fill(0);

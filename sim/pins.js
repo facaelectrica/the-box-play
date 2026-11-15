@@ -155,6 +155,11 @@ export class Pins {
         P.t += dt;
         if (P.to && P.k < 1) { P.k = Math.min(1, P.k + dt / 0.12); const u = P.k * P.k * (3 - 2 * P.k);
           P.p = [0, 1, 2].map(i => P.from.p[i] + (P.to.p[i] - P.from.p[i]) * u); P.q = qslerp(P.from.q, P.to.q, u); this.setPose(n, P.p, P.q); continue; }
+        // (snapshot 23:20: "Left arm is doing an impossible bend. The arm would be broken") the hand stays put while
+        // his body turns around it during the get-up: once the arm is forced against its stops (wrist bent to 77 deg,
+        // upper arm twisted 92 deg), the hand lets go and is placed again
+        P.awk = this.armStops(s) ? (P.awk || 0) + dt : 0;
+        if (P.awk > 0.12) { this.release(n, 'floor hand awkward'); this.cool[n] = 0.5; continue; }
         const f = this.force(n), fo = dot(f, G.up), ft = Math.hypot(...[0, 1, 2].map(i => f[i] - fo * G.up[i]));
         P.pull = fo < -30 ? P.pull + dt : 0;
         P.slip = ft > 0.8 * Math.max(0, fo) + 25 ? P.slip + dt : 0;
@@ -166,7 +171,7 @@ export class Pins {
       const p = this.pos(b), gap = dot([p[0] - G.o[0], p[1] - G.o[1], p[2] - G.o[2]], G.up);
       if (gap > PALM + 0.07) continue;
       const q0 = this.quat(b), pz = qrot(q0, [0, 0, -1]), down = G.up.map(v => -v);
-      if (dot(pz, down) < Math.cos(35 / 57.3)) continue;
+      if (dot(pz, down) < Math.cos(35 / 57.3) || this.armStops(s)) continue;
       const r = qbetween(pz, down), tq = r ? qnorm(qmul(r, q0)) : q0, tp = [0, 1, 2].map(i => p[i] - (gap - PALM) * G.up[i]);
       this.pin(n, p.slice(), q0, { out: G.up.slice(), ground: true, from: { p: p.slice(), q: q0 }, to: { p: tp, q: tq }, k: 0 });
       this.setHandContact(s, false);
@@ -232,6 +237,19 @@ export class Pins {
   }
   // the hand at p is behind his shoulder (more than 5 cm, along the chest's forward), or that shoulder's three hinges
   // are within 4 deg of a stop
+  // that arm forced against its stops: the wrist within 8 deg of a stop, or two of the shoulder/elbow hinges within 6 deg
+  armStops(side) {
+    const W = this.W, m = W.m, d = W.d;
+    if (!this.armAll) this.armAll = {};
+    if (!this.armAll[side]) this.armAll[side] = ['Arm_x', 'Arm_y', 'Arm_z', 'ForeArm_z', 'Hand_x', 'Hand_y'].map(a => ({ a, j: W.mj.mj_name2id(m, W.mj.mjtObj.mjOBJ_JOINT.value, side + a) })).filter(e => e.j >= 0);
+    let n = 0;
+    for (const { a, j } of this.armAll[side]) {
+      if (!m.jnt_limited[j]) continue;
+      const v = d.qpos[m.jnt_qposadr[j]], lo = m.jnt_range[2 * j], hi = m.jnt_range[2 * j + 1], e = a.startsWith('Hand') ? 0.14 : 0.1;
+      if (v < lo + e || v > hi - e) { if (a.startsWith('Hand')) return true; n++; }
+    }
+    return n >= 2;
+  }
   awkward(side, p) {
     const W = this.W, m = W.m, d = W.d, ch = this.W.bodyId.Chest, sh = this.pos(this.id[side + 'Arm']);
     const q = this.quat(ch), fwd = qrot(q, [0, -1, 0]);

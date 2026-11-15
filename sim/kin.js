@@ -120,7 +120,7 @@ function poseAdd(p, o, out) {
 }
 
 // the legs: hinge dofs (qpos address = dof + 1) and how freely the IK may use each (knee twist/side bend stiff)
-const LEGS = {
+export const LEGS = {
   Left: { foot: 'LeftFoot', dof: 60, k: 0 }, Right: { foot: 'RightFoot', dof: 48, k: 1 },
 };
 const LEG_W = [1, 1, 0.5, /* knee: bend, side, twist */ 1, 0.04, 0.04, /* ankle */ 1, 1, 0.4];
