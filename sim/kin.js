@@ -125,12 +125,12 @@ const LEGS = {
 };
 const LEG_W = [1, 1, 0.5, /* knee: bend, side, twist */ 1, 0.04, 0.04, /* ankle */ 1, 1, 0.4];
 // the arms for bracing on the walls: collarbone (a little), shoulder, elbow (ForeArm_z bends it; x/y barely)
-const ARMS = { Right: { hand: 'RightHand', dof: 24, sign: -1 }, Left: { hand: 'LeftHand', dof: 36, sign: 1 } };
-const ARM_W = [0, 0, 0, 1, 1, 1, 0.05, 0.05, 1, 0.6, 0.6, 0.6];   // collarbone (not moved: user 18:48 "how can the shoulder be coming out of its joint?"), shoulder, elbow, wrist
+export const ARMS = { Right: { hand: 'RightHand', dof: 24, sign: -1 }, Left: { hand: 'LeftHand', dof: 36, sign: 1 } };
+export const ARM_W = [0, 0, 0, 1, 1, 1, 0.05, 0.05, 1, 0.6, 0.6, 0.6];   // collarbone (not moved: user 18:48 "how can the shoulder be coming out of its joint?"), shoulder, elbow, wrist
 // bracing (tunable): start when the floor tilts more than `tilt` rad or turns faster than `rate` rad/s; reach in `reach`
 // s, keep `hold` s after it calms, let go in `release` s; palm centre `fwd` m forward of and `down` m under the
 // shoulder, `gap` m off the wood; wrist `palm` m behind the palm centre; walls within `maxReach` m of the shoulder
-const BR = { tilt: 0.1, rate: 0.26, reach: 0.6, hold: 1.5, release: 0.9, fwd: 0.12, down: 0.22, gap: -0.015, palm: 0.07, maxReach: 0.62, rotW: 0.3, lean: 0.5, base: 1 };
+const BR = { tilt: 0.1, rate: 0.26, reach: 0.6, hold: 1.5, release: 0.9, fwd: 0.05, down: 0.06, gap: -0.015, palm: 0.07, maxReach: 0.62, rotW: 0.3, lean: 0.5, base: 1 };
 export const BRACE = BR;
 // rotation matrix columns (x, y, z axes in the world) -> quaternion w x y z
 function matQ(x, y, z) {
@@ -879,7 +879,7 @@ export class Kin {
 }
 
 // small dense solve (Gaussian elimination with partial pivoting)
-function solve6(A, b) {
+export function solve6(A, b) {
   const n = b.length, M = A.map((r, i) => [...r, b[i]]);
   for (let c = 0; c < n; c++) {
     let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;

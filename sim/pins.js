@@ -19,7 +19,9 @@ const PALM = 0.022;      // wrist origin off the wood with the palm flat on it
 
 export function addPins(xml) {
   if (xml.includes('pin_LeftFoot')) return xml;
-  const w = PARTS.map(b => `<weld name="pin_${b}" body1="${b}" active="false" solref="0.035 1"/>`).join('\n  ');
+  // hands softer than feet: a braced arm gives a little (elbow and shoulder yield); stiff hands and stiff feet together
+  // fought each other through his body (hands carrying 100%+ of his weight, feet slipping)
+  const w = PARTS.map(b => `<weld name="pin_${b}" body1="${b}" active="false" solref="${/Hand/.test(b) ? '0.12 1' : '0.035 1'}"/>`).join('\n  ');
   return xml.replace('</mujoco>', `<equality>\n  ${w}\n</equality>\n</mujoco>`);
 }
 
@@ -135,7 +137,7 @@ export class Pins {
     // ---------- hands (on a wall while he braces). Off for now (version 11): placing the palm with the weld dragged his
     // whole body to the wall (feet sliding 35 cm/s while bracing) and the palm still ended 30+ deg off flat: the arm's
     // own joints have to bring the palm flat first. Feet only until then.
-    if (!this.handsOn) return;
+    if (this.handsOff) return;
     if (this.handOff) for (const s in this.handOff) { this.handOff[s] -= dt; }
     for (const s of SIDES) {
       const n = s + 'Hand', b = this.id[n], H = K.hands && K.hands[s];
@@ -147,16 +149,16 @@ export class Pins {
         if (reach > 0.64) { this.release(n, 'hand reach'); H.pinned = false; continue; }
         P.t += dt;
         if (P.to && P.k < 1) {   // still placing the palm: no letting go for pulling or slipping yet
-          P.k = Math.min(1, P.k + dt / 0.25); const u = P.k * P.k * (3 - 2 * P.k);
+          P.k = Math.min(1, P.k + dt / 0.15); const u = P.k * P.k * (3 - 2 * P.k);
           P.p = [0, 1, 2].map(i => P.from.p[i] + (P.to.p[i] - P.from.p[i]) * u); P.q = qslerp(P.from.q, P.to.q, u);
-          this.setPose(n, P.p, P.q); H.p = P.to.p.slice(); H.q = P.to.q; H.pinned = true; continue;
+          this.setPose(n, P.p, P.q); H.p = P.to.p.slice(); H.pinned = true; continue;
         }
         const f = this.force(n), out = P.out, fo = dot(f, out), ft = Math.hypot(...[0, 1, 2].map(i => f[i] - fo * out[i]));
         P.pull = fo < -30 ? P.pull + dt : 0;                 // holding the hand ON the wall (a palm can't)
         P.slip = ft > 0.7 * Math.max(0, fo) + 20 ? P.slip + dt : 0;
-        const why = P.pull > 0.08 ? 'pull' : P.slip > 0.1 ? 'slip' : null;
+        const why = P.pull > 0.15 ? 'pull' : P.slip > 0.1 ? 'slip' : null;
         if (why) { this.release(n, 'hand ' + why); H.pinned = false; continue; }
-        H.p = P.p.slice(); H.q = P.q; H.pinned = true;      // the recording's arm reaches exactly there
+        H.p = P.p.slice(); H.pinned = true;      // the recording's arm reaches exactly there
         { // how flat the palm really is on the wood, and how far the hand is from where it was put (for the tests)
           const S = this.stats.palm || (this.stats.palm = { n: 0, ang: 0, pos: 0, worst: 0 }), q = this.quat(b), pz = qrot(q, [0, 0, -1]);
           const a = Math.acos(Math.max(-1, Math.min(1, -dot(pz, out)))) * 57.3, pe = Math.hypot(...[0, 1, 2].map(i => this.pos(b)[i] - P.p[i])) * 100;
@@ -167,13 +169,16 @@ export class Pins {
       if (!want || this.cool[n] > 0) continue;
       // touching that wall (hand or forearm contact, or the wrist within 6 cm of it): place the palm flat there
       const out = H.wall.out, p = this.pos(b), gap = dot([p[0] - H.wall.at[0], p[1] - H.wall.at[1], p[2] - H.wall.at[2]], out);
-      if (gap > 0.16) continue;
+      // only once his own arm has brought the hand there: wrist within 5 cm of touching, palm within 25 deg of flat
+      // (version 11 pulled it in from 16 cm: the weld dragged his whole body to the wall)
+      if (gap > PALM + 0.05) continue;
+      const q0 = this.quat(b), pz = qrot(q0, [0, 0, -1]), nin = out.map(v => -v);
+      if (dot(pz, nin) < Math.cos(25 / 57.3)) continue;
       const tp = [0, 1, 2].map(i => p[i] - (gap - PALM) * out[i]);
       const sh = this.pos(this.id[s + 'Arm']); if (Math.hypot(tp[0] - sh[0], tp[1] - sh[1], tp[2] - sh[2]) > 0.62) continue;
-      // the palm's orientation: the recording's (palm on the wall, fingers up, as braceArms set it); he PLACES it there:
-      // from where his hand is, onto the wall, turning the wrist, over a quarter of a second
-      const q0 = this.quat(b);
-      this.pin(n, p.slice(), q0, { out, from: { p: p.slice(), q: q0 }, to: { p: tp, q: H.q.slice() }, k: 0 });
+      // flat: his hand turned the shortest way so the palm faces the wood (fingers keep their way); placed over 0.15 s
+      const r = qbetween(pz, nin), tq = r ? qnorm(qmul(r, q0)) : q0;
+      this.pin(n, p.slice(), q0, { out, from: { p: p.slice(), q: q0 }, to: { p: tp, q: tq }, k: 0 });
       this.setHandContact(s, false);
       H.p = tp.slice(); H.pinned = true;
     }

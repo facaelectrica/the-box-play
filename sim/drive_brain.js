@@ -11,6 +11,7 @@ import { qmul, qrot } from './brain.js';
 
 const NB = 23;
 import { Pins } from './pins.js';
+import { ARMS, ARM_W, solve6 } from './kin.js';
 export class BrainDrive {
   // springs (sim/springs.js), optional: the network was never taught to get up from the floor (it gives up past
   // 0.5 m), so during a get-up the springs and their help carry him through the get-up recording instead
@@ -254,6 +255,69 @@ export class BrainDrive {
     if (this.armW <= 0) return;
     for (const j of this.armJ) { const a = W.act[j]; B.targets[j] += (this.G.d.qpos[a.qadr] - B.targets[j]) * this.armW; }
   }
+  // (user 20:49: "the hands are still not flat against the wall") copying the recording's arm ANGLES puts his hand
+  // where the recording's hand would be only if his trunk is where the recording's is - it rarely is (he leans
+  // differently), so his hands braced in mid-air. Instead: his own arm, from his own shoulders, reaches the wall
+  // target (wrist on the wood, palm flat, fingers up): damped least squares on a scratch copy of his body, 10 rounds,
+  // collarbones left alone; the result becomes the arm muscles' targets.
+  physArms() {
+    const K = this.kin, W = this.W, m = W.m, mj = W.mj, nv = m.nv;
+    if (!(this.armW > 0) || !K.hands) { this.armSmOn = false; return; }
+    const sides = Object.keys(K.hands); if (!sides.length) return;
+    const D = this.ikD || (this.ikD = new mj.MjData(m));
+    if (!this.jp2) { this.jp2 = new mj.DoubleBuffer(3 * nv); this.jr2 = new mj.DoubleBuffer(3 * nv); }
+    D.qpos.set(W.d.qpos);
+    // where each wrist goes: pinned -> where the pin holds it; else the recording's spot, but just touching the wood
+    // (the recording's spot is 1.5 cm INTO the wall, for the recording's own lean: his real hands pressed and shoved him)
+    const pin = this.pins && this.pins.on || {}, tgt = {};
+    for (const side of sides) { const H = K.hands[side], P = pin[side + 'Hand'];
+      tgt[side] = P && P.out ? P.p.map((v, i) => v - P.out[i] * 0.004) : H.wall ? H.p.map((v, i) => v + H.wall.out[i] * 0.037) : H.p; }
+    const rw = 0.35, qm = (a, b) => [a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3], a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2], a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1], a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]];
+    const qr = (q, v) => { const r = qm(qm(q, [0, v[0], v[1], v[2]]), [q[0], -q[1], -q[2], -q[3]]); return [r[1], r[2], r[3]]; };
+    const rv = q => { if (q[0] < 0) q = q.map(v => -v); const s = Math.hypot(q[1], q[2], q[3]); if (s < 1e-9) return [0, 0, 0]; const a = 2 * Math.atan2(s, q[0]); return [q[1] / s * a, q[2] / s * a, q[3] / s * a]; };
+    for (let it = 0; it < 10; it++) {
+      mj.mj_kinematics(m, D); mj.mj_comPos(m, D);
+      for (const side of sides) {
+        const A = ARMS[side], b = W.bodyId[A.hand], H = K.hands[side], T = tgt[side];
+        const cq = [D.xquat[4 * b], D.xquat[4 * b + 1], D.xquat[4 * b + 2], D.xquat[4 * b + 3]];
+        // the palm only has to face the wall (its normal = into the wood); which way the fingers point is left to
+        // the arm (asking for "fingers up" too pinned the left arm against its wrist and elbow limits, 50 cm short)
+        const pn = qr(cq, [0, 0, -1]), nin = H.wall ? H.wall.out.map(v => -v) : qr(H.q, [0, 0, -1]);
+        const cx = [pn[1] * nin[2] - pn[2] * nin[1], pn[2] * nin[0] - pn[0] * nin[2], pn[0] * nin[1] - pn[1] * nin[0]], sn = Math.hypot(...cx), cs = pn[0] * nin[0] + pn[1] * nin[1] + pn[2] * nin[2];
+        const ang = Math.atan2(sn, cs), rot = sn > 1e-9 ? cx.map(v => v / sn * ang) : [0, 0, 0];
+        const e = [T[0] - D.xpos[3 * b], T[1] - D.xpos[3 * b + 1], T[2] - D.xpos[3 * b + 2], ...rot.map(v => v * rw)];
+        mj.mj_jacBody(m, D, this.jp2, this.jr2, b);
+        const JP = this.jp2.GetView(), JR = this.jr2.GetView(), N = ARM_W.length, J = [];
+        for (let r = 0; r < 6; r++) { const row = []; for (let c = 0; c < N; c++) row.push(r < 3 ? JP[r * nv + A.dof + c] : JR[(r - 3) * nv + A.dof + c] * rw); J.push(row); }
+        const M = []; for (let i = 0; i < 6; i++) { M.push([]); for (let j = 0; j < 6; j++) { let s = 0; for (let c = 0; c < N; c++) s += J[i][c] * ARM_W[c] * J[j][c]; M[i].push(s + (i === j ? 0.003 : 0)); } }
+        const y = solve6(M, e);
+        for (let c = 0; c < N; c++) {
+          let s = 0; for (let i = 0; i < 6; i++) s += J[i][c] * y[i];
+          const qa = A.dof + c + 1, jid = m.dof_jntid[A.dof + c];
+          let q = D.qpos[qa] + Math.max(-0.15, Math.min(0.15, ARM_W[c] * s));
+          if (m.jnt_limited[jid]) q = Math.max(m.jnt_range[2 * jid], Math.min(m.jnt_range[2 * jid + 1], q));
+          D.qpos[qa] = q;
+        }
+      }
+    }
+    // how far his real hand is from the wall target right now (tests)
+    { const S = this.stats.arm || (this.stats.arm = { n: 0, pos: 0, ang: 0 }); const d = W.d;
+      for (const side of sides) { const b = W.bodyId[ARMS[side].hand], H = K.hands[side];
+        S.pos += Math.hypot(H.p[0] - d.xpos[3 * b], H.p[1] - d.xpos[3 * b + 1], H.p[2] - d.xpos[3 * b + 2]) * 100;
+        const pn = qr([d.xquat[4 * b], d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3]], [0, 0, -1]), o = H.wall ? H.wall.out : [0, 0, 0];
+        S.ang += Math.acos(Math.max(-1, Math.min(1, -(pn[0] * o[0] + pn[1] * o[1] + pn[2] * o[2])))) * 57.3; S.n++; } }
+    if (globalThis.ARMDBG) { mj.mj_kinematics(m, D); const d = W.d; for (const side of sides) { const b = W.bodyId[ARMS[side].hand], H = K.hands[side], sh = W.bodyId[side + 'Arm'];
+      const ik = Math.hypot(H.p[0] - D.xpos[3 * b], H.p[1] - D.xpos[3 * b + 1], H.p[2] - D.xpos[3 * b + 2]), reach = Math.hypot(H.p[0] - d.xpos[3 * sh], H.p[1] - d.xpos[3 * sh + 1], H.p[2] - d.xpos[3 * sh + 2]);
+      let jt = 0; for (let c = 3; c < 12; c++) jt = Math.max(jt, Math.abs(D.qpos[ARMS[side].dof + c + 1] - d.qpos[ARMS[side].dof + c + 1]));
+      if (side === 'Left' && globalThis.ARMDBG === 2) { const A = ARMS[side]; const lim = []; for (let c = 3; c < 12; c++) { const jid = m.dof_jntid[A.dof + c], q = D.qpos[A.dof + c + 1]; lim.push(W.mj.mj_id2name(m, W.mj.mjtObj.mjOBJ_JOINT.value, jid) + ' ' + (q * 57.3).toFixed(0) + ' [' + (m.jnt_range[2 * jid] * 57.3).toFixed(0) + ',' + (m.jnt_range[2 * jid + 1] * 57.3).toFixed(0) + ']'); } console.log('LIM', lim.join(' | ')); }
+      console.log('ARM', d.time.toFixed(2), side, 'ik resid', (ik * 100).toFixed(0), 'cm reach', (reach * 100).toFixed(0), 'cm  joint gap', (jt * 57.3).toFixed(0), 'deg armW', this.armW.toFixed(2)); } }
+    if (this.noPhysArms) return;
+    // smoothed (0.2 s): his body sways, the solution with it; following it tick by tick shook the arms and, through
+    // them, his whole body (feet slid 26 cm/s on a slow tilt)
+    if (!this.armSm) this.armSm = new Float64Array(m.nq);
+    const k = this.armSmOn ? 1 - Math.exp(-(1 / 30) / 0.2) : 1; this.armSmOn = true;
+    for (const j of this.armJ) { const a = W.act[j], qa = a.qadr; this.armSm[qa] += (D.qpos[qa] - this.armSm[qa]) * k; this.brain.targets[j] += (this.armSm[qa] - this.brain.targets[j]) * this.armW; }
+  }
   armHold() {
     const W = this.W, d = W.d;
     if (!this.armJ) return;
@@ -357,7 +421,7 @@ export class BrainDrive {
       d.xfrc_applied.fill(0);
       if (fingerPush) fingerPush();
       if (B.due()) {
-        if (!falling) { B.readState(); B.down = false; await B.think(this.buildRef(1 / B.hz)); if (B.down) { B.down = false; B.setTone(1); } this.plantLegs(); this.flatFeet(); this.armsToWalls(); }
+        if (!falling) { B.readState(); B.down = false; await B.think(this.buildRef(1 / B.hz)); if (B.down) { B.down = false; B.setTone(1); } this.plantLegs(); this.flatFeet(); this.armsToWalls(); this.physArms(); }
         else {   // falling: hold the shape (see above) instead of the network
           B.tNext = d.time + 1 / B.hz - 1e-9;
           // turning head-down during the fall (the phone flipped while he was still upright): protect the head now
