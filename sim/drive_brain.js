@@ -81,6 +81,20 @@ export class BrainDrive {
   // the hands hitting the wood, its arms bounced around. While he braces, his arm joints (collarbones to wrists)
   // follow the recording's arms directly (their own muscles, NVIDIA's gains), holding the arms' weight; the network
   // keeps everything else. Faded in and out with the brace.
+  // arms up around the head, elbows bent, forearms over it, chin tucked (also switched to mid-fall, see update)
+  headBrace() {
+    const W = this.W, d = W.d, set = (n, v) => { const i = W.act.findIndex(a => a.name === n); if (i >= 0) this.brace[i] = v; };
+    this.hold = W.act.map(a => d.qpos[a.qadr]);   // from where his arms are now
+    set('RightArm_y', 0.9); set('LeftArm_y', -0.9); set('RightArm_z', 0.9); set('LeftArm_z', -0.9);
+    set('RightForeArm_z', 2.2); set('LeftForeArm_z', -2.2); set('RightHand_x', 0.3); set('LeftHand_x', 0.3);
+    set('Neck1_x', 0.35); set('Neck2_x', 0.15); set('Head_x', 0.1);
+    this.headFirst = true; this.headT = this.fallT || 0;
+  }
+  headDownNow() {
+    const W = this.W, d = W.d, hb = W.bodyId.Head, hp = W.bodyId.Hips, g0 = W.m.opt.gravity, gn0 = Math.hypot(g0[0], g0[1], g0[2]) || 9.81;
+    const ux = d.xpos[3 * hb] - d.xpos[3 * hp], uy = d.xpos[3 * hb + 1] - d.xpos[3 * hp + 1], uz = d.xpos[3 * hb + 2] - d.xpos[3 * hp + 2], ul = Math.hypot(ux, uy, uz) || 1;
+    return (ux * g0[0] + uy * g0[1] + uz * g0[2]) / ul / gn0;
+  }
   // (user 18:50: "the most important part is that the feet stay planted ... keep balance and keep the feet planted")
   // a leg whose foot the recording has planted, and whose real foot is on the floor, follows the recording's leg angles
   // (blend plantW): the network alone dragged planted feet 6-7 cm/s on slow tilts while the recording's stayed put
@@ -93,6 +107,50 @@ export class BrainDrive {
       const b = W.bodyId[side + 'Foot'], h = K.toLocal([d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]])[2];
       if (h > 0.14) return;   // his real foot is in the air: the network's step
       for (const j of this.legJ[s]) { const a = W.act[j]; B.targets[j] += (this.G.d.qpos[a.qadr] - B.targets[j]) * k; }
+    });
+  }
+  // (user 18:56: "Humans always plant the base of the feet, especially when they are out of balance. You would never
+  // tiptoe ... he's trying to reach the floor with the foot, and so he tiptoes") a foot near the floor whose recorded
+  // foot is planted gets the ankle angles that put its sole flat: the recording's foot orientation (flat on the floor),
+  // expressed in his real shin's frame; the toes as in the recording. Faded in from 12 cm to 4 cm above the floor.
+  flatFeet() {
+    if (this.noFlat) return;
+    const W = this.W, B = this.brain, K = this.kin, d = W.d, m = W.m, gd = this.G.d;
+    if (!(K.state === 'stand' || K.state === 'react')) return;
+    if (!this.footJ) this.footJ = ['Left', 'Right'].map(side => ({
+      side, foot: W.bodyId[side + 'Foot'], shin: W.bodyId[side + 'Shin'], toe: W.bodyId[side + 'ToeBase'],
+      fj: ['x', 'y', 'z'].map(a => W.act.findIndex(q => q.name === side + 'Foot_' + a)),
+      tj: ['x', 'y', 'z'].map(a => W.act.findIndex(q => q.name === side + 'ToeBase_' + a)) }));
+    const wq = (A, b) => [A[4 * b], A[4 * b + 1], A[4 * b + 2], A[4 * b + 3]];
+    const mul = (a, b) => [a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3], a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2], a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1], a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]];
+    const cj = a => [a[0], -a[1], -a[2], -a[3]];
+    this.flatW = [0, 0];
+    this.footJ.forEach((F, k) => {
+      const L = K.locks && K.locks[F.side]; if (!L || !L.on) return;
+      // how high his real foot is: the lower of ankle-to-floor and toe-to-floor, minus their resting heights
+      const za = K.toLocal([d.xpos[3 * F.foot], d.xpos[3 * F.foot + 1], d.xpos[3 * F.foot + 2]])[2] - 0.08, zt = K.toLocal([d.xpos[3 * F.toe], d.xpos[3 * F.toe + 1], d.xpos[3 * F.toe + 2]])[2] - 0.03;
+      // only when he is ON HIS TOES (heel lifted: ankle more than 6 cm above the toe joint; flat ~5 cm) near the floor:
+      // a flat or rocking foot is his ankle balancing (the network's main tool), and pinning it flat made him fall
+      const heel = (za + 0.08) - (zt + 0.03), tip = Math.max(0, Math.min(1, (heel - 0.06) / 0.03));
+      const h = Math.min(za, zt), w = Math.max(0, Math.min(1, (0.12 - h) / 0.08)) * L.w * tip;
+      if (w <= 0) return;
+      this.flatW[k] = w;
+      // wanted foot orientation in the world = the recording's (flat, planted); hinge rotation = (shin * body_quat)^-1 * wanted
+      // only the tilt of his foot is corrected (its turn on the floor stays his): the sole's "up" axis in the foot's own
+      // frame is taken from the recording's planted foot; his foot is turned the shortest way so that axis points up
+      const gq = wq(gd.xquat, F.foot), pq = wq(d.xquat, F.foot), shin = wq(d.xquat, F.shin), bq = [m.body_quat[4 * F.foot], m.body_quat[4 * F.foot + 1], m.body_quat[4 * F.foot + 2], m.body_quat[4 * F.foot + 3]];
+      const upW = K.toWorld([0, 0, 1]), o = K.toWorld([0, 0, 0]), upG = [upW[0] - o[0], upW[1] - o[1], upW[2] - o[2]];
+      const rot = (q, v) => { const r = mul(mul(q, [0, v[0], v[1], v[2]]), cj(q)); return [r[1], r[2], r[3]]; };
+      const uLoc = rot(cj(gq), upG), cur = rot(pq, uLoc);
+      const dt0 = cur[0] * upG[0] + cur[1] * upG[1] + cur[2] * upG[2], ax = [cur[1] * upG[2] - cur[2] * upG[1], cur[2] * upG[0] - cur[0] * upG[2], cur[0] * upG[1] - cur[1] * upG[0]];
+      let qc0 = [1 + dt0, ax[0], ax[1], ax[2]]; const qn0 = Math.hypot(...qc0) || 1; qc0 = qc0.map(v => v / qn0);
+      const want = mul(qc0, pq);
+      const r = mul(cj(mul(shin, bq)), want);
+      // x then y then z hinges (R = Rx Ry Rz)
+      const [qw, qx, qy, qz] = r, R00 = 1 - 2 * (qy * qy + qz * qz), R01 = 2 * (qx * qy - qw * qz), R02 = 2 * (qx * qz + qw * qy), R12 = 2 * (qy * qz - qw * qx), R22 = 1 - 2 * (qx * qx + qy * qy);
+      const ang = [Math.atan2(-R12, R22), Math.asin(Math.max(-1, Math.min(1, R02))), Math.atan2(-R01, R00)];
+      F.fj.forEach((j, i) => { if (j >= 0) B.targets[j] += (ang[i] - B.targets[j]) * w; });
+      F.tj.forEach(j => { if (j >= 0) B.targets[j] += (gd.qpos[W.act[j].qadr] - B.targets[j]) * w; });
     });
   }
   armsToWalls() {
@@ -155,7 +213,15 @@ export class BrainDrive {
       if (Math.hypot(vf, vl) < 0.15) { const g = W.m.opt.gravity, gl = K.dirLocal([g[0], g[1], g[2]]); dir = Math.atan2(gl[0] * l[0] + gl[1] * l[1], gl[0] * f[0] + gl[1] * f[1]) * 180 / Math.PI; }
       this.fallDir = dir;
       atLeast('RightShin_x', 0.45); atLeast('LeftShin_x', 0.45);
-      if (Math.abs(dir) < 55) {                 // forward
+      // (user 18:59: "if I flip the phone upside down and he's about to bang his head ... he would protect it with his
+      // arms") head first: his hips->head direction points along gravity (the box turned over, or he's tipping
+      // head-down): both arms come up around the head, elbows bent, forearms over it, chin tucked
+      const hb = W.bodyId.Head, hp = W.bodyId.Hips, g0 = W.m.opt.gravity, gn0 = Math.hypot(g0[0], g0[1], g0[2]) || 9.81;
+      const ux = d.xpos[3 * hb] - d.xpos[3 * hp], uy = d.xpos[3 * hb + 1] - d.xpos[3 * hp + 1], uz = d.xpos[3 * hb + 2] - d.xpos[3 * hp + 2], ul = Math.hypot(ux, uy, uz) || 1;
+      const headDown = (ux * g0[0] + uy * g0[1] + uz * g0[2]) / ul / gn0;   // 1 = head straight down
+      this.headFirst = headDown > 0.25;
+      if (this.headFirst) this.headBrace();
+      else if (Math.abs(dir) < 55) {          // forward
         set('RightArm_y', -0.55); set('RightArm_z', 1.0); set('LeftArm_y', 0.55); set('LeftArm_z', -1.0);
         set('RightForeArm_z', 0.35); set('LeftForeArm_z', -0.35); set('Neck1_x', -0.15); set('Head_x', -0.1);
         atLeast('RightLeg_x', -0.3); atLeast('LeftLeg_x', -0.3);
@@ -179,10 +245,12 @@ export class BrainDrive {
       d.xfrc_applied.fill(0);
       if (fingerPush) fingerPush();
       if (B.due()) {
-        if (!falling) { B.readState(); B.down = false; await B.think(this.buildRef(1 / B.hz)); if (B.down) { B.down = false; B.setTone(1); } this.plantLegs(); this.armsToWalls(); }
+        if (!falling) { B.readState(); B.down = false; await B.think(this.buildRef(1 / B.hz)); if (B.down) { B.down = false; B.setTone(1); } this.plantLegs(); this.flatFeet(); this.armsToWalls(); }
         else {   // falling: hold the shape (see above) instead of the network
           B.tNext = d.time + 1 / B.hz - 1e-9;
-          const k = Math.min(1, this.fallT / 0.35);
+          // turning head-down during the fall (the phone flipped while he was still upright): protect the head now
+          if (!this.headFirst && this.fallT < 2.5 && this.headDownNow() > 0.25) this.headBrace();
+          const k = Math.min(1, (this.fallT - (this.headFirst ? this.headT || 0 : 0)) / (this.headFirst ? 0.25 : 0.35));
           W.act.forEach((a, j) => { B.targets[j] = this.hold[j] + (this.brace[j] - this.hold[j]) * k; });
         }
       }
