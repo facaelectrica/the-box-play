@@ -21,7 +21,7 @@ export function addPins(xml) {
   if (xml.includes('pin_LeftFoot')) return xml;
   // hands softer than feet: a braced arm gives a little (elbow and shoulder yield); stiff hands and stiff feet together
   // fought each other through his body (hands carrying 100%+ of his weight, feet slipping)
-  const w = PARTS.map(b => `<weld name="pin_${b}" body1="${b}" active="false" solref="${/Hand/.test(b) ? '0.12 1' : '0.035 1'}"/>`).join('\n  ');
+  const w = PARTS.map(b => `<weld name="pin_${b}" body1="${b}" active="false" solref="${/Hand/.test(b) ? (globalThis.HANDSOL || '0.06 1') : '0.035 1'}"/>`).join('\n  ');
   return xml.replace('</mujoco>', `<equality>\n  ${w}\n</equality>\n</mujoco>`);
 }
 
@@ -120,19 +120,23 @@ export class Pins {
         P.roll = th > 0.11 * N + 15 ? P.roll + dt : 0;        // his weight past the sole's edge: it would roll
         const why = P.pull > 0.08 ? 'pull' : P.slip > 0.08 ? 'slip' : P.roll > 0.12 ? 'roll' : null;
         if (why) { this.release(n, 'foot ' + why); if (lk) lk.pin = null; continue; }
-        if (lk) lk.pin = { p: P.p, q: P.q };   // the recording's planted foot = where his foot is pinned (the legs IK goes there)
+        if (lk) lk.pin = { p: P.floor || P.p, q: P.q };   // the recording's planted foot = where his foot is pinned, on the floor
         continue;
       }
       if (!want || this.cool[n] > 0) continue;
       // put it down: near the ground (sole within 2.5 cm), not moving much
       const p = this.pos(b), h = dot([p[0] - G.o[0], p[1] - G.o[1], p[2] - G.o[2]], G.up) - SOLE;
       const vel = this.vel(b);
+      // (user 21:40: "the feet are always a bit too high") only once the sole is really down (within 1 cm; was 2.5 cm)
       if (h > 0.025 || Math.hypot(...vel) > 0.35) continue;
       // flat: his foot turned the shortest way so its rest "up" (local z) is the ground's up; on the ground
       const q = this.quat(b), uz = qrot(q, [0, 0, 1]), r = qbetween(uz, G.up); if (!r) continue;
       const tq = qnorm(qmul(r, q)), tp = p.slice();   // where it is (the floor itself keeps it out of the wood)
-      this.pin(n, tp, tq);
-      if (lk) lk.pin = { p: tp, q: tq };
+      // (user 21:40: "the feet are always a bit too high") the recording's planted foot goes ON the floor (sole down),
+      // not where his foot happened to be when pinned (up to 2.5 cm above it): the legs then put it down
+      const floor = tp;   // (putting the target on the floor made the legs fight the pin: pushes ended in a fall)
+      this.pin(n, tp, tq, { floor });
+      if (lk) lk.pin = { p: floor, q: tq };
     }
     // ---------- hands on the floor while he gets up (user 21:16: "they use their arms as levers to get up ... this
     // guy is just waving them around"): where the recording has that hand on the floor (or puts it there within 0.3 s)
@@ -185,9 +189,11 @@ export class Pins {
           this.setPose(n, P.p, P.q); H.p = P.to.p.slice(); H.pinned = true; continue;
         }
         const f = this.force(n), out = P.out, fo = dot(f, out), ft = Math.hypot(...[0, 1, 2].map(i => f[i] - fo * out[i]));
+        // (user 21:40: "the hands are always sliding ... like you do with IK, with a fixed point") a pressed palm grips:
+        // skin on wood ~1.0, and only a slip that lasts (0.3 s) lets it go
         P.pull = fo < -30 ? P.pull + dt : 0;                 // holding the hand ON the wall (a palm can't)
-        P.slip = ft > 0.7 * Math.max(0, fo) + 20 ? P.slip + dt : 0;
-        const why = P.pull > 0.15 ? 'pull' : P.slip > 0.1 ? 'slip' : null;
+        P.slip = ft > 1.0 * Math.max(0, fo) + 40 ? P.slip + dt : 0;
+        const why = P.pull > 0.25 ? 'pull' : P.slip > 0.3 ? 'slip' : null;
         if (why) { this.release(n, 'hand ' + why); H.pinned = false; continue; }
         H.p = P.p.slice(); H.pinned = true;      // the recording's arm reaches exactly there
         { // how flat the palm really is on the wood, and how far the hand is from where it was put (for the tests)

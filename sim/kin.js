@@ -126,7 +126,7 @@ const LEGS = {
 const LEG_W = [1, 1, 0.5, /* knee: bend, side, twist */ 1, 0.04, 0.04, /* ankle */ 1, 1, 0.4];
 // the arms for bracing on the walls: collarbone (a little), shoulder, elbow (ForeArm_z bends it; x/y barely)
 export const ARMS = { Right: { hand: 'RightHand', dof: 24, sign: -1 }, Left: { hand: 'LeftHand', dof: 36, sign: 1 } };
-export const ARM_W = [0, 0, 0, 1, 1, 1, 0.05, 0.05, 1, 0.6, 0.6, 0.6];   // collarbone (not moved: user 18:48 "how can the shoulder be coming out of its joint?"), shoulder, elbow, wrist
+export const ARM_W = [0, 0, 0, 1, 1, 1, 0.05, 0.05, 1, 0.6, 0.6, 0.6];   // collarbone (not moved: user 18:48), shoulder, elbow, wrist
 // bracing (tunable): start when the floor tilts more than `tilt` rad or turns faster than `rate` rad/s; reach in `reach`
 // s, keep `hold` s after it calms, let go in `release` s; palm centre `fwd` m forward of and `down` m under the
 // shoulder, `gap` m off the wood; wrist `palm` m behind the palm centre; walls within `maxReach` m of the shoulder
