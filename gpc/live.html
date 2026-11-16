@@ -111,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 6</div><div id="brainver"></div>
+<div id="ver">GPC live 7</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -672,7 +672,7 @@ if (kin && PHYSICAL && BB.dir) try {
   const session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
   const brainNet = new Brain(W, ort, session, meta); brainNet.setStandPose(BRAIN_STAND);
   // --- test page: NVIDIA's GPC prior alone drives him (gpc/live.js) ---
-  const { attachGPC, GpcDrive } = await import(new URL('gpc/live.js?v=6', document.baseURI).href);
+  const { attachGPC, GpcDrive } = await import(new URL('gpc/live.js?v=7', document.baseURI).href);
   const gst = document.createElement('div'); gst.id = 'gpcst'; gst.style.cssText = 'position:fixed;left:12px;right:60px;top:calc(48px + env(safe-area-inset-top));z-index:6;font:700 12px system-ui;color:#111;background:#ffd400;border-radius:8px;padding:5px 8px;pointer-events:none'; document.body.appendChild(gst);
   window.__gpc = await attachGPC(brainNet, ort, t => { gst.textContent = t + (/[?&]strong/.test(location.search) ? ' · full strength' : ' · human strength and joint limits'); });
   drive = new GpcDrive(W, kin, brainNet);
@@ -1617,7 +1617,7 @@ function makeSnap() {
     qpos: r(d.qpos), qvel: r(d.qvel), ghostQpos: G && G !== W ? r(G.d.qpos) : null,
     camera: { yaw: +look.yaw.toFixed(3), pitch: +look.pitch.toFixed(3), dist: +look.dist.toFixed(3), target: [look.tgt.x, look.tgt.y, look.tgt.z].map(v => +v.toFixed(3)), box: !!look.box },
     balance: bal && bal.last ? Object.fromEntries(Object.entries(bal.last).filter(([k, v]) => typeof v !== 'function').map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(4) : v])) : null,
-    hist: hist.map(h => Array.from(h, (v, i) => +v.toFixed(i ? 4 : 3))), errors: ERRS.slice(), wasmMB: +(W.d.qpos.buffer.byteLength / 1048576).toFixed(1) };
+    hist: hist.map(h => Array.from(h, (v, i) => +v.toFixed(i ? 4 : 3))), errors: ERRS.slice(), gpc: window.__gpc && window.__gpc.report ? window.__gpc.report() : null, wasmMB: +(W.d.qpos.buffer.byteLength / 1048576).toFixed(1) };
 }
 $('snap').onclick = async e => {
   e.stopPropagation();

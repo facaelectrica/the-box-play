@@ -10,17 +10,25 @@ export async function attachGPC(brain, ort, say) {
     const m = e.data;
     if (m.load) { st.loaded[m.load] = m.got; const g = Object.values(st.loaded).reduce((a, b) => a + b, 0); say(`NVIDIA brain: downloading ${(g / 1e6).toFixed(0)} of ${(TOTAL / 1e6).toFixed(0)} MB (once; kept by the phone after)`); }
     else if (m.stage) say('NVIDIA brain: starting up…');
-    else if (m.ready) { st.ready = true; say('NVIDIA brain: ready'); }
-    else if (m.codes) { st.codes = m.codes; st.busy = false; st.ms += (m.ms - st.ms) * (st.picks ? 0.2 : 1); st.picks++; }
+    else if (m.ready) { st.ready = true; st.loadS = +((performance.now() - st.t0) / 1000).toFixed(1); say('NVIDIA brain: ready'); }
+    else if (m.codes) { st.codes = m.codes; st.busy = false; st.ms += (m.ms - st.ms) * (st.picks ? 0.2 : 1); st.picks++;
+      const now = performance.now(); st.hist.push([+((now - st.t0) / 1000).toFixed(1), Math.round(m.ms), Math.round(now - st.sent)]); if (st.hist.length > 400) st.hist.splice(0, st.hist.length - 400); st.got = now; }
     else if (m.error) { st.err = m.error; st.busy = false; say('NVIDIA brain failed: ' + m.error.slice(0, 120)); }
   };
+  st.hist = []; st.t0 = performance.now(); st.fpsHist = [];
+  // for snapshots: what the phone was doing (user 23:45: more data instead of screenshots)
+  st.report = () => ({ engine: 'gemv.wasm, 1 core', picks: st.picks, ticks: st.ticks, upS: +((performance.now() - st.t0) / 1000).toFixed(0), loadS: st.loadS, msNow: Math.round(st.ms), picksPerS: st.rate, fps: Math.round(fps),
+    pickAgeMs: st.got ? Math.round(performance.now() - st.got) : null, err: st.err, strong: /[?&]strong/.test(location.search),
+    cores: navigator.hardwareConcurrency, memGB: navigator.deviceMemory, isolated: !!self.crossOriginIsolated, ua: navigator.userAgent, screen: [screen.width, screen.height, devicePixelRatio], hidden: document.hidden,
+    fpsEach5s: st.fpsHist.slice(-120), picksNote: '[seconds since load, ms to compute, ms from asking to having]', picksLast: st.hist.slice(-400) });
+  setInterval(() => { st.fpsHist.push(Math.round(fps)); if (st.fpsHist.length > 240) st.fpsHist.shift(); }, 5000);
   w.postMessage({ init: true, threads });
   const dec = await ort.InferenceSession.create(new Uint8Array(await (await fetch(here + 'live/dec.onnx')).arrayBuffer()), { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
   brain.meta.getup = true;   // never the tracker's "gave up, go limp": this brain keeps control on the floor too
   let last = 0;
   brain.session = { run: async feeds => {
     const o = feeds.obs.data.subarray(0, 343);
-    if (st.ready && !st.busy) { st.busy = true; w.postMessage({ obs: new Float32Array(o) }); }
+    if (st.ready && !st.busy) { st.busy = true; st.sent = performance.now(); w.postMessage({ obs: new Float32Array(o) }); }
     if (!st.codes) return tracker.run(feeds);   // until the first picks arrive he stands with the page's own tracker
     st.ticks++;
     const now = performance.now(); if (now - last > 1000) { st.rate = st.picks - st.since; st.since = st.picks; last = now; say(`${fps.toFixed(0)} fps · NVIDIA brain live · ${st.rate} picks a second · ${st.ms.toFixed(0)} ms each · 1 core`); }
