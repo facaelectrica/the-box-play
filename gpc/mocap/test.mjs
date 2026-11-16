@@ -18,7 +18,7 @@ for (const f of pick) {
   const d = await load(f), sol = makeSolver(S, { smooth: 0 }), frames = []; let prev = null, pk = null, ph = [];
   for (let t = 0; t < d.T; t++) {
     const o = t * 73, out = sol.solve(fakePoints(SP, d.q, o), t / 30); frames.push({ t: t / 30, q: out });
-    { const held = sol.held, Kn = fk(S, out); for (const b of held) if (ph.includes(b)) { slide = Math.max(slide, Math.hypot(Kn.p[b][0] - pk.p[b][0], Kn.p[b][1] - pk.p[b][1]) * 100); heldN++; } pk = Kn; ph = held; }
+    { const c = sol.contacts; c.forEach((k, i) => { const p = pk && pk[i]; if (k.g === 1 && k.pt && p && p.g === 1 && p.pt && p.pt[2] === k.pt[2]) { slide = Math.max(slide, Math.hypot(k.pt[0] - p.pt[0], k.pt[1] - p.pt[1]) * 100); heldN++; } }); pk = c; }
     const A = fk(S, d.q, o), B = fk(S, out), ca = [0, 1, 2].map(k => (A.p[S.id.RightLeg][k] + A.p[S.id.LeftLeg][k]) / 2), cb = [0, 1, 2].map(k => (B.p[S.id.RightLeg][k] + B.p[S.id.LeftLeg][k]) / 2);
     for (let b = 1; b < 23; b++) { const e = Math.hypot(...[0, 1, 2].map(k => (A.p[b][k] - ca[k]) - (B.p[b][k] - cb[k]))) * 100;
       n++; sum += e; per[S.names[b]] = Math.max(per[S.names[b]] || 0, e); if (e > worst) { worst = e; worstAt = f + ' frame ' + t + ' ' + S.names[b]; }
@@ -36,7 +36,7 @@ console.log(`joint position after the round trip (centred between the hip joints
 console.log('worst per joint (cm): ' + Object.entries(per).map(([k, v]) => k + ' ' + v.toFixed(1)).join(', '));
 console.log(`hips travel across the floor, against the library move: worst ${trav.toFixed(1)} cm off (at a point ${travLen.toFixed(0)} cm from the start); hips height worst ${zErr.toFixed(1)} cm off`);
 console.log('bone rotation against the library move, deg (median / 95% / worst): ' + TW.map(nm => { const a = rot[nm].sort((x, y) => x - y); return `${nm} ${a[a.length >> 1].toFixed(0)}/${a[Math.floor(a.length * 0.95)].toFixed(0)}/${a.at(-1).toFixed(0)}`; }).join(', '));
-console.log(`held feet: ${heldN} foot-frames, worst slide in one frame ${slide.toFixed(2)} cm`);
+console.log(`firmly held feet: ${heldN} foot-frames, worst slide of the held point in one frame ${slide.toFixed(2)} cm`);
 console.log(`largest one-frame hinge change: ${(jump * 180 / Math.PI).toFixed(0)} deg; passes through +-180: ${wraps}`);
 console.log(`finished move against the solver's own frames: worst ${big.toFixed(3)} cm`);
 console.log(`.q written and read back: worst difference ${encWorst.toFixed(4)} (cm for position, deg for hinges)`);

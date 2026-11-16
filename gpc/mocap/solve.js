@@ -32,7 +32,7 @@ export function makeSolver(S, opt = {}) {
   // degrees down (measured on the user's camera, Nov 16). This is the default correction; Calibrate measures it per foot.
   const FOOT0 = M.euler(0.46, 0, 0);
   const LEG = V.len(S.off[id.RightShin]) + V.len(S.off[id.RightFoot]);   // his own leg, hip joint to ankle
-  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); footCal = [FOOT0, FOOT0]; filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0] }; root = { xy: [0, 0], lock: [null, null], on: [false, false] }; perf = { leg: null }; }
+  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); footCal = [FOOT0, FOOT0]; filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0] }; root = { xy: [0, 0], lock: [null, null], toe: [false, false], g: null, pt: null }; perf = { leg: null }; }
   reset();
 
   // tracked points -> the game's axes (x to his left, y behind him, z up), steadied
@@ -125,22 +125,30 @@ export function makeSolver(S, opt = {}) {
     const euler = b => { const h = 7 + 3 * (b - 1), e = M.toEuler(M.mul(M.T(Rw[S.parent[b]]), Rw[b]), [q[h], q[h + 1], q[h + 2]]); out[h] = e[0]; out[h + 1] = e[1]; out[h + 2] = e[2]; };
     out[0] = 0; out[1] = 0; out[2] = 0; const K = fk(S, out); let low = 1e9;
     for (let b = 0; b < nb; b++) low = Math.min(low, K.p[b][2] - RAD[b]);
-    SIDE.forEach((d, i) => { const ft = id[d.FT], tb = id[d.TB], h = Math.min(K.p[ft][2] - RAD[ft], K.p[tb][2] - RAD[tb]) - low;
+    // How firmly each foot stands: 1 when its lowest part is within 2.5 cm of the floor, 0 from 5 cm up, with no
+    // stickiness, so a foot is free as soon as it lifts. The held point is the part of the foot on the floor: the
+    // ball of the foot when the heel is up, otherwise the ankle. The ankle can then roll forward over a planted toe.
+    const pv = [null, null], g = [0, 0];
+    SIDE.forEach((d, i) => { const ft = id[d.FT], tb = id[d.TB], zf = K.p[ft][2] - RAD[ft], zt = K.p[tb][2] - RAD[tb], h = Math.min(zf, zt) - low;
       const shinUp = K.p[id[d.SN]][2] - K.p[ft][2] > 0.2;   // the knee well above the ankle: a foot he stands on, not a leg lying on the floor
-      root.on[i] = o.travel && !!tgt[id[d.LG]] && wt[id[d.LG]] > 0.5 && shinUp && (root.on[i] ? h < 0.07 : h < 0.035); if (!root.on[i]) root.lock[i] = null; });
-    let sx = 0, sy = 0, held = 0; SIDE.forEach((d, i) => { const L = root.lock[i]; if (L) { sx += L[0] - K.p[id[d.FT]][0]; sy += L[1] - K.p[id[d.FT]][1]; held++; } });
-    if (held) root.xy = [sx / held, sy / held];
-    SIDE.forEach((d, i) => { if (!root.on[i]) return; const p = K.p[id[d.FT]], at = [root.xy[0] + p[0], root.xy[1] + p[1]], L = root.lock[i];
+      g[i] = o.travel && !!tgt[id[d.LG]] && wt[id[d.LG]] > 0.5 && shinUp ? clamp01((0.05 - h) / 0.025) : 0;
+      const toe = root.toe[i] ? zt < zf + 0.005 : zt < zf - 0.01; if (toe !== root.toe[i]) { root.toe[i] = toe; root.lock[i] = null; }   // the held point changed: hold the new one where it is now
+      pv[i] = toe ? K.p[tb] : K.p[ft]; if (!g[i]) root.lock[i] = null; });
+    let sx = 0, sy = 0, sw = 0; SIDE.forEach((d, i) => { const L = root.lock[i]; if (L) { sx += g[i] * (L[0] - pv[i][0]); sy += g[i] * (L[1] - pv[i][1]); sw += g[i]; } });
+    if (sw > 0) root.xy = [sx / sw, sy / sw];
+    SIDE.forEach((d, i) => { if (!g[i]) return; const at = [root.xy[0] + pv[i][0], root.xy[1] + pv[i][1]], L = root.lock[i];
       if (!L) root.lock[i] = at;   // a foot that has just landed is held where it landed
-      else { const e = Math.hypot(at[0] - L[0], at[1] - L[1]), k = e > 0.25 ? 1 : clamp01((e - 0.06) / 0.15) * 0.3; L[0] += (at[0] - L[0]) * k; L[1] += (at[1] - L[1]) * k; } });   // a foot dragged along the floor takes its spot with it
+      else { const e = Math.hypot(at[0] - L[0], at[1] - L[1]), k = e > 0.2 ? 1 : Math.max(1 - g[i], clamp01((e - 0.03) / 0.1) * 0.4); L[0] += (at[0] - L[0]) * k; L[1] += (at[1] - L[1]) * k; } });   // a lifting or dragged foot takes its spot with it
     out[0] = root.xy[0]; out[1] = root.xy[1]; out[2] = -low;
-    SIDE.forEach((d, i) => { const L = root.lock[i], f0 = mem.fw[d.LG]; if (!L || !f0) return;
-      const lg = id[d.LG], sn = id[d.SN], ft = id[d.FT], H = [root.xy[0] + K.p[lg][0], root.xy[1] + K.p[lg][1], K.p[lg][2] - low], ik = legIK(d, H, [L[0], L[1], K.p[ft][2] - low], f0); if (!ik) return;
+    SIDE.forEach((d, i) => { const L = root.lock[i], f0 = mem.fw[d.LG]; if (!L || !f0 || !g[i]) return;
+      const lg = id[d.LG], sn = id[d.SN], ft = id[d.FT], H = [root.xy[0] + K.p[lg][0], root.xy[1] + K.p[lg][1], K.p[lg][2] - low];
+      const dx = (L[0] - root.xy[0] - pv[i][0]) * g[i], dy = (L[1] - root.xy[1] - pv[i][1]) * g[i], ik = legIK(d, H, [root.xy[0] + K.p[ft][0] + dx, root.xy[1] + K.p[ft][1] + dy, K.p[ft][2] - low], f0); if (!ik) return;
       Rw[lg] = ik[0]; Rw[sn] = ik[1]; euler(lg); euler(sn); euler(ft); });
+    root.g = g; root.pt = SIDE.map((d, i) => { if (!root.lock[i]) return null; const Kf = fk(S, out), p = Kf.p[root.toe[i] ? id[d.TB] : id[d.FT]]; return [p[0], p[1], root.toe[i] ? 1 : 0]; });   // where each held point ended up (for the checks)
     q = out; return out;
   }
   const home = () => { root.xy = [0, 0]; root.lock = [null, null]; };   // the hips back over the origin (a new recording starts here)
-  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get footCal() { return footCal; }, get performerLeg() { return perf.leg; }, get held() { return SIDE.filter((d, i) => root.lock[i]).map(d => id[d.FT]); } };
+  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get footCal() { return footCal; }, get performerLeg() { return perf.leg; }, get held() { return SIDE.filter((d, i) => root.lock[i] && root.g && root.g[i] > 0.5).map(d => id[d.FT]); }, get contacts() { return SIDE.map((d, i) => ({ g: root.g ? root.g[i] : 0, pt: root.pt ? root.pt[i] : null })); } };
 }
 
 // A finished recording: frames taken at the camera's own times -> 30 frames a second, lightly smoothed.
