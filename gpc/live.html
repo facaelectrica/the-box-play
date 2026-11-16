@@ -1919,7 +1919,7 @@ window.__kin = () => kin; window.__crack = () => crack; window.__crackMs = () =>
 // ================= start =================
 $('go').onclick = async () => {
   goFull();
-  try { actx = new (window.AudioContext || window.webkitAudioContext)(); await actx.resume(); } catch (_) { actx = null; }
+  try { actx = new (window.AudioContext || window.webkitAudioContext)(); await Promise.race([actx.resume(), new Promise(r => setTimeout(r, 400))]); } catch (_) { actx = null; }   // (editor) without a real tap, resume() never settles: don't wait for it
   for (const Ev of [window.DeviceOrientationEvent, window.DeviceMotionEvent]) {
     try { if (Ev && typeof Ev.requestPermission === 'function') await Ev.requestPermission(); } catch (_) {}
   }
