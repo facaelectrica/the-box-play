@@ -6,7 +6,7 @@ export async function attachGPC(brain, ort, say) {
   const ask = +(new URLSearchParams(location.search).get('cores') || 0);
   const threads = iso ? Math.max(1, Math.min(ask || 2, cores - 1, 4)) : 1;
   let fps = 0, fN = 0, fT = performance.now(); const raf = () => { fN++; const n = performance.now(); if (n - fT >= 1000) { fps = fN * 1000 / (n - fT); fN = 0; fT = n; } requestAnimationFrame(raf); }; requestAnimationFrame(raf);
-  const w = new Worker(here + 'worker.js', { type: 'module' }), tracker = brain.session, st = { codes: null, busy: false, ms: 0, picks: 0, ticks: 0, sinceT: performance.now(), since: 0, rate: 0, err: null, loaded: {}, ready: false, threads };
+  const w = new Worker(here + 'worker.js?v=5', { type: 'module' }), tracker = brain.session, st = { codes: null, busy: false, ms: 0, picks: 0, ticks: 0, sinceT: performance.now(), since: 0, rate: 0, err: null, loaded: {}, ready: false, threads };
   const TOTAL = 194.3e6;
   w.onmessage = e => {
     const m = e.data;
