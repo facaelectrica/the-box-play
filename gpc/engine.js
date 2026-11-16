@@ -70,10 +70,14 @@ export async function makeEngine({ wasm, wasmMt, helperURL, threads = 1, layers,
     for (let i = 0; i < V; i++) if (PB[i] >= lo) { c += PB[i]; last = i; if (c >= u) return i; } return last;
   }
   // forced: use these picks instead of the dice (tests); onLogits(k, logits) to inspect
-  function decide(obs, forced, onLogits) {
+  // want (40 codes 0..8) + beta: tilt the dice toward the words that lead to a wanted pose (bonus = -beta x squared distance)
+  function decide(obs, forced, onLogits, want, beta) {
     let x = context(obs); const toks = [];
     for (let k = 0; k < 8; k++) {
-      step(x, k); lin('head', x, logits); if (onLogits) onLogits(k, logits);
+      step(x, k); lin('head', x, logits);
+      if (want && beta > 0) { const w0 = want[5 * k], w1 = want[5 * k + 1], w2 = want[5 * k + 2], w3 = want[5 * k + 3], w4 = want[5 * k + 4]; let t = 0;
+        for (let d4 = 0; d4 < 9; d4++) for (let d3 = 0; d3 < 9; d3++) for (let d2 = 0; d2 < 9; d2++) for (let d1 = 0; d1 < 9; d1++) { const base = (d4 - w4) ** 2 + (d3 - w3) ** 2 + (d2 - w2) ** 2 + (d1 - w1) ** 2; for (let d0 = 0; d0 < 9; d0++) logits[t++] -= beta * (base + (d0 - w0) ** 2); } }
+      if (onLogits) onLogits(k, logits);
       const t = forced ? forced[k] : pick(logits); toks.push(t);
       if (k < 7) { const s = ES[t], a = t * D, p = (k + 1) * D; for (let i = 0; i < D; i++) x[i] = E[a + i] * s + pos[p + i]; }
     }
