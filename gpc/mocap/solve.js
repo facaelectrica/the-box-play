@@ -32,7 +32,7 @@ export function makeSolver(S, opt = {}) {
   // degrees down (measured on the user's camera, Nov 16). This is the default correction; Calibrate measures it per foot.
   const FOOT0 = M.euler(0.46, 0, 0);
   const LEG = V.len(S.off[id.RightShin]) + V.len(S.off[id.RightFoot]);   // his own leg, hip joint to ankle
-  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); footCal = [FOOT0, FOOT0]; filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0] }; root = { xy: [0, 0], lock: [null, null], toe: [false, false], g: null, pt: null }; perf = { leg: null }; }
+  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); footCal = [FOOT0, FOOT0]; filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0], foot: [null, null] }; root = { xy: [0, 0], lock: [null, null], toe: [false, false], g: null, pt: null }; perf = { leg: null }; }
   reset();
 
   // tracked points -> the game's axes (x to his left, y behind him, z up), steadied
@@ -69,8 +69,22 @@ export function makeSolver(S, opt = {}) {
   // camera cannot see well (the far arm and leg when he stands sideways) still follows the tracker's guess, slowly.
   const trust = (vis, k) => clamp01((Math.min(...k.map(i => vis[i])) - 0.05) / 0.25);
 
-  function solve(lm, t) {
-    const { P: raw, vis } = points(lm, t), P = raw.map(p => M.vec(cal, p)), see = (...k) => k.every(i => vis[i] >= o.minVis);
+  // How still each foot is in the camera picture (1 = not moving, 0 = clearly moving). The picture shows whether a
+  // foot moves far more reliably than the tracker's height estimate shows whether it is lifted. img: the 33 points in
+  // the picture (x, y from 0 to 1), aspect: picture width / height. Speeds are turned into metres a second with the
+  // least foreshortened body segment as the ruler.
+  function stillness(lm, img, aspect, t) {
+    const dt = mem.tF === undefined ? 0 : t - mem.tF; mem.tF = t; if (!img) return [1, 1];
+    const px = i => [img[i].x * aspect, img[i].y]; let ppm = 0;
+    for (const [a, b] of [[11, 23], [12, 24], [23, 25], [24, 26], [25, 27], [26, 28]]) { const lw = Math.hypot(lm[a].x - lm[b].x, lm[a].y - lm[b].y, lm[a].z - lm[b].z), A = px(a), B = px(b); if (lw > 0.15) ppm = Math.max(ppm, Math.hypot(A[0] - B[0], A[1] - B[1]) / lw); }
+    if (!(ppm > 0)) return [1, 1]; mem.ppm = mem.ppm ? mem.ppm + 0.1 * (ppm - mem.ppm) : ppm;
+    return SIDE.map((d, i) => { const p = [d.an, d.he, d.to].map(px), c = [(p[0][0] + p[1][0] + p[2][0]) / 3, (p[0][1] + p[1][1] + p[2][1]) / 3], m = mem.foot[i]; let st = 1;
+      if (m && dt > 0) { const a = 1 - Math.exp(-dt / 0.08); for (let k = 0; k < 2; k++) m.v[k] += a * ((c[k] - m.c[k]) / dt / mem.ppm - m.v[k]); m.speed = Math.hypot(m.v[0], m.v[1]); st = clamp01((0.35 - m.speed) / 0.23); }
+      mem.foot[i] = { c, v: m ? m.v : [0, 0], speed: m ? m.speed : 0 }; return st; });
+  }
+
+  function solve(lm, t, img = null, aspect = 1) {
+    const still = stillness(lm, img, aspect, t), { P: raw, vis } = points(lm, t), P = raw.map(p => M.vec(cal, p)), see = (...k) => k.every(i => vis[i] >= o.minVis);
     const tgt = new Array(nb).fill(null), wt = new Array(nb).fill(1), T = torso(P), Rp = T.pelvis, Rc = T.chest;
     if (!Rp.every(Number.isFinite) || !Rc.every(Number.isFinite)) return q;
     // trunk: the hips carry the trunk's lean; the turn between hips and shoulders is shared by the three spine joints
@@ -132,7 +146,7 @@ export function makeSolver(S, opt = {}) {
     const pv = [null, null], g = [0, 0];
     SIDE.forEach((d, i) => { const ft = id[d.FT], tb = id[d.TB], zf = K.p[ft][2] - RAD[ft], zt = K.p[tb][2] - RAD[tb], h = Math.min(zf, zt) - low;
       const shinUp = K.p[id[d.SN]][2] - K.p[ft][2] > 0.2;   // the knee well above the ankle: a foot he stands on, not a leg lying on the floor
-      g[i] = o.travel && !!tgt[id[d.LG]] && wt[id[d.LG]] > 0.5 && shinUp ? clamp01((0.05 - h) / 0.025) : 0;
+      g[i] = o.travel && !!tgt[id[d.LG]] && wt[id[d.LG]] > 0.5 && shinUp ? (img ? clamp01((0.10 - h) / 0.05) * still[i] : clamp01((0.05 - h) / 0.025)) : 0;   // with the picture: low and not moving; without it: low
       const toe = root.toe[i] ? zt < zf + 0.005 : zt < zf - 0.01; if (toe !== root.toe[i]) { root.toe[i] = toe; root.lock[i] = null; }   // the held point changed: hold the new one where it is now
       pv[i] = toe ? K.p[tb] : K.p[ft]; if (!g[i]) root.lock[i] = null; });
     let sx = 0, sy = 0, sw = 0; SIDE.forEach((d, i) => { const L = root.lock[i]; if (L) { sx += g[i] * (L[0] - pv[i][0]); sy += g[i] * (L[1] - pv[i][1]); sw += g[i]; } });
@@ -149,7 +163,7 @@ export function makeSolver(S, opt = {}) {
     q = out; return out;
   }
   const home = () => { root.xy = [0, 0]; root.lock = [null, null]; };   // the hips back over the origin (a new recording starts here)
-  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get footCal() { return footCal; }, get performerLeg() { return perf.leg; }, get held() { return SIDE.filter((d, i) => root.lock[i] && root.g && root.g[i] > 0.5).map(d => id[d.FT]); }, get contacts() { return SIDE.map((d, i) => ({ g: root.g ? root.g[i] : 0, pt: root.pt ? root.pt[i] : null })); } };
+  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get footSpeed() { return mem.foot.map(m => m ? m.speed : 0); }, get footCal() { return footCal; }, get performerLeg() { return perf.leg; }, get held() { return SIDE.filter((d, i) => root.lock[i] && root.g && root.g[i] > 0.5).map(d => id[d.FT]); }, get contacts() { return SIDE.map((d, i) => ({ g: root.g ? root.g[i] : 0, pt: root.pt ? root.pt[i] : null })); } };
 }
 
 // A finished recording: frames taken at the camera's own times -> 30 frames a second, lightly smoothed.

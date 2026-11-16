@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RECORD v9</title><link rel="icon" href="../icon-192.png">
+<title>RECORD v10</title><link rel="icon" href="../icon-192.png">
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #3a302a} header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
@@ -25,7 +25,7 @@
   #take[hidden]{display:none}
 </style></head>
 <body>
-<header><b>RECORD v9</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
+<header><b>RECORD v10</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
 <div id="views">
   <div class="view"><span class="lab">Camera</span><div id="vwrap" class="mir"><video id="video" playsinline muted></video><canvas id="over"></canvas></div>
     <div id="msg">Start the camera, step back until your whole body is in view, then calibrate.</div><div id="big" hidden></div><div id="recDot" hidden>REC</div></div>
@@ -66,8 +66,8 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { lookFromGLTF } from '../sim/look.js';
 import { readBody, fk, M } from './mocap/skel.js?v=1';
-import { makeSolver, toMove } from './mocap/solve.js?v=9';
-import { fakePoints } from './mocap/synth.js?v=9';
+import { makeSolver, toMove } from './mocap/solve.js?v=10';
+import { fakePoints } from './mocap/synth.js?v=10';
 import { encodeQ } from './mocap/encq.js?v=1';
 import { decodeQ } from './libq.js?v=1';
 const $ = id => document.getElementById(id);
@@ -152,7 +152,7 @@ function note() {   // what the tracker cannot see right now
   const v = st.last && st.last.world, see = (...k) => k.every(i => (v[i].visibility ?? 1) >= sol.opt.minVis);
   if (!v) { $('note').textContent = st.mode === 'live' || st.mode === 'rec' || st.mode === 'count' ? 'No body in view.' : ''; return; }
   const miss = []; if (!see(23, 25, 27) || !see(24, 26, 28)) miss.push('legs'); if (!see(11, 13, 15) || !see(12, 14, 16)) miss.push('arms');
-  $('note').textContent = miss.length ? 'Hard to see: ' + miss.join(' and ') + '.' : '';
+  $('note').textContent = (st.calibrated ? '' : 'Not calibrated: stand straight, facing the camera, whole body in view. ') + (miss.length ? 'Hard to see: ' + miss.join(' and ') + '.' : '');
 }
 
 // ---------- tracking ----------
@@ -164,7 +164,7 @@ async function loadTracker(kind) {
   st.trackerKind = kind;
 }
 async function start() {
-  const gen = ++st.gen; st.mode = 'loading'; ui(); $('msg').hidden = false; sol.reset(); applyOpts(); st.last = null;
+  const gen = ++st.gen; st.mode = 'loading'; ui(); $('msg').hidden = false; sol.reset(); applyOpts(); st.last = null; st.calibrated = false;
   try {
     if ($('src').value === 'test') { setState('Loading move'); $('msg').textContent = 'Loading the test move.';
       const r = await fetch('clips/' + TEST_MOVE + '.q'); if (!r.ok) throw new Error('The test move could not be loaded.'); st.test = await decodeQ(await r.arrayBuffer()); }
@@ -201,9 +201,22 @@ function onPoints(world, img, t, w, h) {
   st.last = world ? { world, t } : null; drawPoints(img, w, h); st.fpsN++;
   if (t * 1000 - st.fpsT > 1000) { $('fps').textContent = Math.round(st.fpsN * 1000 / (t * 1000 - st.fpsT)) + ' fps'; st.fpsT = t * 1000; st.fpsN = 0; note(); }
   if (!world) return;
-  const q = sol.solve(world, t); drawPose(q, 0, sol.held);
-  if (st.mode === 'rec') { st.frames.push({ t: t - st.t0, q: Float64Array.from(q), lm: world.map(p => [+p.x.toFixed(4), +p.y.toFixed(4), +p.z.toFixed(4), +(p.visibility ?? 1).toFixed(2)]) });
+  autoCal(world, t);
+  const q = sol.solve(world, t, st.test ? null : img, w / h); drawPose(q, 0, sol.held);
+  if (st.mode === 'rec') { st.frames.push({ t: t - st.t0, q: Float64Array.from(q), lm: world.map(p => [+p.x.toFixed(4), +p.y.toFixed(4), +p.z.toFixed(4), +(p.visibility ?? 1).toFixed(2)]), im: img ? img.map(p => [+p.x.toFixed(4), +p.y.toFixed(4)]) : null, asp: +(w / h).toFixed(4) });
     setState('Recording ' + (t - st.t0).toFixed(1) + ' s', 'rec'); if (t - st.t0 > 120) finish(); }
+}
+// Calibration happens by itself the first time he stands still and upright, facing the camera, with the whole body in
+// view for one second. The Calibrate button repeats it on demand.
+let calT = 0;
+function autoCal(world, t) {
+  if (st.calibrated || st.mode !== 'live') { calT = 0; return; }
+  const v = i => world[i].visibility ?? 1, see = [11, 12, 23, 24, 25, 26, 27, 28].every(i => v(i) > 0.7), up = [0, 1, 2].map(k => (world[11]['xyz'[k]] + world[12]['xyz'[k]] - world[23]['xyz'[k]] - world[24]['xyz'[k]]) / 2);
+  const tilt = Math.acos(Math.max(-1, Math.min(1, -up[1] / (Math.hypot(...up) || 1)))) * 180 / Math.PI, yaw = Math.abs(Math.atan2(world[23].z - world[24].z, world[23].x - world[24].x)) * 180 / Math.PI;
+  const legs = [[23, 25, 27], [24, 26, 28]].every(([a, b, c]) => { const d1 = ['x', 'y', 'z'].map(k => world[b][k] - world[a][k]), d2 = ['x', 'y', 'z'].map(k => world[c][k] - world[b][k]); return (d1[0] * d2[0] + d1[1] * d2[1] + d1[2] * d2[2]) / (Math.hypot(...d1) * Math.hypot(...d2)) > 0.94; });   // straight legs
+  const speed = sol.footSpeed, quiet = speed[0] < 0.15 && speed[1] < 0.15;
+  if (!(see && tilt < 30 && yaw < 20 && legs && quiet)) { calT = 0; return; } if (!calT) calT = t;
+  if (t - calT >= 1 && sol.calibrate(world)) { st.calibrated = true; setState('Calibrated', 'live'); setTimeout(() => { if (st.mode === 'live') setState('Tracking', 'live'); }, 1500); note(); }
 }
 function applyOpts() { sol.opt.smooth = +$('smooth').value; sol.opt.hands = $('hands').checked; sol.opt.travel = $('travel').checked; sol.opt.fit = $('fit').checked; }
 for (const k of ['smooth', 'hands', 'travel', 'fit']) $(k).onchange = applyOpts;
@@ -218,7 +231,7 @@ function countdown(text, then) {
     if (n === 0) { big.hidden = true; then(); return; } big.hidden = false; big.innerHTML = n + '<small>' + text + '</small>'; n--; setTimeout(tick, 1000); };
   tick();
 }
-$('cal').onclick = () => countdown('Stand straight, facing the camera', () => { st.mode = 'live'; const okc = st.last && sol.calibrate(st.last.world); ui(); setState(okc ? 'Calibrated' : 'Calibration failed: no body in view', okc ? 'live' : 'err'); if (okc) setTimeout(() => { if (st.mode === 'live') setState('Tracking', 'live'); }, 1500); });
+$('cal').onclick = () => countdown('Stand straight, facing the camera', () => { st.mode = 'live'; const okc = st.last && sol.calibrate(st.last.world); if (okc) st.calibrated = true; ui(); setState(okc ? 'Calibrated' : 'Calibration failed: no body in view', okc ? 'live' : 'err'); if (okc) setTimeout(() => { if (st.mode === 'live') setState('Tracking', 'live'); }, 1500); });
 $('rec').onclick = () => { if (st.mode === 'rec') return finish(); if (st.mode === 'count') { st.mode = 'live'; $('big').hidden = true; ui(); setState('Tracking', 'live'); return; }
   if (st.mode === 'take') return; countdown('Recording starts', () => { sol.home(); st.frames = []; st.t0 = performance.now() / 1000; st.mode = 'rec'; ui(); }); };
 function finish() {
@@ -244,7 +257,7 @@ const save = (blob, file) => { const a = document.createElement('a'); a.href = U
 const fileName = () => ($('name').value.trim().replace(/[^\w.-]+/g, '_') || 'rec');
 function trimmed() { const { mv } = st.take, T = st.out - st.in + 1; return { T, q: mv.q.slice(st.in * 73, (st.out + 1) * 73) }; }
 $('dlQ').onclick = async () => { const m = trimmed(); save(new Blob([await encodeQ(m.q, m.T)], { type: 'application/octet-stream' }), fileName() + '.q'); };
-$('dlRaw').onclick = () => save(new Blob([JSON.stringify({ about: 'MediaPipe Pose Landmarker world points of one recording (x, y, z in metres, visibility)', model: st.trackerKind || 'test', frames: st.take.raw.map(f => ({ t: +f.t.toFixed(4), lm: f.lm })) })], { type: 'application/json' }), fileName() + '.tracking.json');
+$('dlRaw').onclick = () => save(new Blob([JSON.stringify({ about: 'MediaPipe Pose Landmarker points of one recording: lm = world points (x, y, z in metres, visibility), im = the same points in the picture (x, y from 0 to 1), asp = picture width / height', model: st.trackerKind || 'test', frames: st.take.raw.map(f => ({ t: +f.t.toFixed(4), lm: f.lm, im: f.im, asp: f.asp })) })], { type: 'application/json' }), fileName() + '.tracking.json');
 addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' && e.target.type === 'text') return; const k = e.key.toLowerCase();
   if (k === ' ') { e.preventDefault(); playPause(); } else if (k === 'r' && !$('rec').disabled) $('rec').click(); else if (st.mode === 'take' && k === 'i') $('trimIn').click(); else if (st.mode === 'take' && k === 'o') $('trimOut').click(); });
 ui();
