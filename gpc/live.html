@@ -502,6 +502,7 @@ function woodMat(t) {
 // ================= the box =================
 let boxGroup = null;
 const EDITOR = /[?&]editor/.test(location.search);
+const roomView = () => EDITOR && window.__box && window.__box.worldView;
 if (EDITOR) document.documentElement.classList.add('editor');
 function buildBox() {
   const s = Math.min(innerWidth, innerHeight);
@@ -1136,6 +1137,27 @@ function fingerPush() {
 let drag = null;
 const dragRot = { roll: 0, pitch: 0 }, dragS = { roll: 0, pitch: 0 };
 const el = renderer.domElement;
+// (editor, room view) the camera is yours: left-drag empty space orbits, right- or shift-drag pans, the wheel zooms, F frames.
+// Left-drag on him still pushes him. These run first and keep the page's own tilt-drag and glass zoom out of the way.
+if (EDITOR) {
+  el.addEventListener('contextmenu', e => e.preventDefault());
+  el.addEventListener('pointerdown', e => {
+    if (!roomView() || (e.button === 0 && !e.shiftKey && figureAt(e.clientX, e.clientY))) return;
+    RV.drag = { pan: e.button !== 0 || e.shiftKey, x: e.clientX, y: e.clientY, yaw: RV.yaw, pitch: RV.pitch, p: RV.pan.clone() };
+    try { el.setPointerCapture(e.pointerId); } catch (_) {} e.stopImmediatePropagation(); e.preventDefault();
+  }, true);
+  el.addEventListener('pointermove', e => {
+    if (!RV.drag) return; const dx = e.clientX - RV.drag.x, dy = e.clientY - RV.drag.y;
+    if (!RV.drag.pan) { RV.yaw = RV.drag.yaw - dx * 0.008; RV.pitch = clamp(RV.drag.pitch + dy * 0.008, -1.45, 1.45); }
+    else { const k = (3.1 * Math.hypot(hw, hh) + D / 2) * RV.zoom * 0.75 / innerHeight, cy = Math.cos(RV.yaw), sy = Math.sin(RV.yaw), cp = Math.cos(RV.pitch), sp = Math.sin(RV.pitch);
+      RV.pan.copy(RV.drag.p).add(new THREE.Vector3(-cy * dx * k - sy * sp * dy * k, cp * dy * k, sy * dx * k - cy * sp * dy * k)); }
+    e.stopImmediatePropagation();
+  }, true);
+  const endRV = e => { if (RV.drag) { RV.drag = null; e.stopImmediatePropagation(); } };
+  el.addEventListener('pointerup', endRV, true); el.addEventListener('pointercancel', endRV, true);
+  el.addEventListener('wheel', e => { if (!roomView()) return; RV.zoom = clamp(RV.zoom * Math.exp(e.deltaY * 0.0012), 0.12, 3); e.preventDefault(); e.stopImmediatePropagation(); }, { capture: true, passive: false });
+  addEventListener('keydown', e => { if ((e.key === 'f' || e.key === 'F') && roomView()) { RV.yaw = 0; RV.pitch = 0.12; RV.zoom = 1; RV.pan.set(0, 0, 0); } });
+}
 el.addEventListener('pointerdown', e => {
   if (look.on) return;
   const hit = figureAt(e.clientX, e.clientY);
@@ -1679,11 +1701,16 @@ function lookCameraLight() {
 }
 // (editor) the box seen from the room: the camera keeps the room's up; the box turns with the tilt (dragS, smoothed)
 const _q = new THREE.Quaternion(), _qx = new THREE.Quaternion(), _v = new THREE.Vector3(), _c = new THREE.Vector3();
+// the room view's own camera: left-drag empty space to orbit, right-drag to pan, wheel to zoom, F to frame (like the editor)
+const RV = { yaw: 0, pitch: 0.12, zoom: 1, pan: new THREE.Vector3(), drag: null };
+const _o = new THREE.Vector3(), _t = new THREE.Vector3();
 function worldCamera() {
   _qx.setFromAxisAngle(_v.set(1, 0, 0), dragS.pitch); _q.setFromAxisAngle(_v.set(0, 0, 1), dragS.roll).multiply(_qx);
-  _c.set(0, 0, -D / 2); const dist = 3.1 * Math.hypot(hw, hh) + D / 2;
-  camera.position.copy(_v.set(0, 0.12 * hh, dist).applyQuaternion(_q)).add(_c);
-  camera.up.set(0, 1, 0).applyQuaternion(_q); camera.lookAt(_c); camera.updateMatrixWorld();
+  _c.set(0, 0, -D / 2); const dist = (3.1 * Math.hypot(hw, hh) + D / 2) * RV.zoom;
+  _o.set(Math.sin(RV.yaw) * Math.cos(RV.pitch), Math.sin(RV.pitch), Math.cos(RV.yaw) * Math.cos(RV.pitch)).multiplyScalar(dist).add(RV.pan).applyQuaternion(_q);
+  _t.copy(RV.pan).applyQuaternion(_q).add(_c);
+  camera.position.copy(_c).add(_o);
+  camera.up.set(0, 1, 0).applyQuaternion(_q); camera.lookAt(_t); camera.updateMatrixWorld();
   const n = 0.05, top = n * Math.tan(20 * DEG), right = top * innerWidth / innerHeight;
   camera.projectionMatrix.makePerspective(-right, right, top, -top, n, 60);
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
