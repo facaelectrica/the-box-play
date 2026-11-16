@@ -9,12 +9,15 @@ export async function makeEngine({ wasm, wasmMt, helperURL, threads = 1, layers,
   if (threads > 1 && wasmMt && typeof SharedArrayBuffer !== 'undefined') {
     memory = new WebAssembly.Memory({ initial: 2560, maximum: 4096, shared: true });
     const mod = await WebAssembly.compile(wasmMt); gemv = (await WebAssembly.instantiate(mod, { env: { memory } })).exports.gemv;
-    const ctl = new Int32Array(new SharedArrayBuffer(64)), ws = [];   // 0 generation, 1 done, 2 ptr, 3 x, 4 y, 5 rows, 6 cols, 7 parts
+    const ctl = new Int32Array(new SharedArrayBuffer(64)), ws = [];   // 0 generation, 1 helpers done, 2 ptr, 3 x, 4 y, 5 rows, 6 cols, 7 block rows, 8 blocks, 9 next block
     await Promise.all(Array.from({ length: threads - 1 }, (_, i) => new Promise((ok, no) => { const w = new Worker(helperURL, { type: 'module' }); w.onmessage = () => ok(); w.onerror = e => no(new Error('helper: ' + (e.message || e))); w.postMessage({ mod, memory, ctl, idx: i + 1 }); ws.push(w); })));
     const one = gemv;
+    // rows go out in small blocks that each core takes as it gets free (a phone's cores are not equally fast: with
+    // equal thirds the slowest core set the pace - live 8: 3 cores gave only 1.5x)
     par = (ptr, X, Y, rows, cols) => {
-      ctl[2] = ptr; ctl[3] = X; ctl[4] = Y; ctl[5] = rows; ctl[6] = cols; ctl[7] = threads; Atomics.store(ctl, 1, 0); Atomics.add(ctl, 0, 1); Atomics.notify(ctl, 0);
-      const per = (Math.floor(rows / threads) + 1) & ~1; one(ptr, X, Y, Math.min(per, rows), cols);
+      const blk = Math.max(2, (Math.ceil(rows / (threads * 6)) + 1) & ~1), nb = Math.ceil(rows / blk);
+      ctl[2] = ptr; ctl[3] = X; ctl[4] = Y; ctl[5] = rows; ctl[6] = cols; ctl[7] = blk; ctl[8] = nb; Atomics.store(ctl, 9, 0); Atomics.store(ctl, 1, 0); Atomics.add(ctl, 0, 1); Atomics.notify(ctl, 0);
+      for (;;) { const b = Atomics.add(ctl, 9, 1); if (b >= nb) break; const r0 = b * blk; one(ptr + r0 * cols, X, Y + 4 * r0, Math.min(blk, rows - r0), cols); }
       let d; while ((d = Atomics.load(ctl, 1)) < threads - 1) Atomics.wait(ctl, 1, d, 2);
     };
     gemv = par;
