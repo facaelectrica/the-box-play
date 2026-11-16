@@ -1,0 +1,61 @@
+{
+ "version": 2,
+ "saved": "2026-11-16T15:09:44.128Z",
+ "orders": [
+  {
+   "name": "Idle",
+   "start": {
+    "all": [
+     {
+      "s": "head",
+      "c": ">",
+      "v": 1.3
+     },
+     {
+      "s": "hips",
+      "c": ">",
+      "v": 0.8
+     }
+    ],
+    "for": 0.2
+   },
+   "stop": {
+    "all": [
+     {
+      "s": "head",
+      "c": "<",
+      "v": 1.05
+     }
+    ],
+    "for": 0.3
+   },
+   "pose": {
+    "RightArm_y": -0.4657,
+    "LeftArm_y": 1.2234,
+    "RightArm_z": 1.2193,
+    "LeftArm_z": -1.0698,
+    "LeftArm_x": 1.1929,
+    "LeftForeArm_x": -0.0907,
+    "LeftForeArm_y": -0.1396,
+    "LeftForeArm_z": -0.4106,
+    "LeftHand_x": 0.2523,
+    "LeftHand_z": -0.216,
+    "RightArm_x": 1.3585,
+    "RightForeArm_x": -0.4185,
+    "RightForeArm_y": -0.1396,
+    "RightForeArm_z": 0.3782,
+    "RightLeg_x": -0.0918,
+    "RightLeg_z": -0.0002,
+    "RightShin_x": 0.1869,
+    "RightFoot_x": -0.0949,
+    "RightFoot_z": 0.0002,
+    "LeftLeg_x": -0.092,
+    "LeftLeg_z": -0.0002,
+    "LeftShin_x": 0.1869,
+    "LeftFoot_x": -0.0947,
+    "LeftFoot_z": 0.2094
+   }
+  }
+ ],
+ "otherwise": "chooser"
+}
