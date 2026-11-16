@@ -1,6 +1,7 @@
 // Puts NVIDIA's GPC prior in the page brain's seat. Big part in a background worker (a new set of picks whenever it
 // finishes one), small part (decoder, 3 M numbers) here every control tick on his current body.
-import { qrot, qmul, NB } from '../sim/brain.js';
+import { qrot, qmul, NB, BODY_NAMES } from '../sim/brain.js';
+import { decodeQ, expandQ, overflow } from './libq.js?v=1';
 export async function attachGPC(brain, ort, say) {
   const here = new URL('./', import.meta.url).href, iso = self.crossOriginIsolated, cores = navigator.hardwareConcurrency || 2;
   // the big part's kernel on 3 cores by default when the browser allows shared memory (?cores=1..4 to try others)
@@ -51,7 +52,7 @@ export async function attachGPC(brain, ort, say) {
   st.apply = O => { if (!O || !O.orders) return false; if (!O.version || O.version < 2) O = v1(O);
     st.orders = O.orders.map(norm); tm.clear();
     if (st.rec) { brain.react = null; st.rec = null; }
-    st.active = DANCE ? null : (st.orders.find(o => st.active && o.name === st.active.name) || null); st.step = 0; st.stepT = 0; standFor(st.active, 0); st.ordersFile = O; return true; };
+    st.active = DANCE ? null : (st.orders.find(o => st.active && o.name === st.active.name) || null); st.step = 0; st.stepT = 0; standFor(st.active, 0); st.ordersFile = O; prefetch(); return true; };
   st.setStepPose = (o, k, pose) => { const sp = o.steps[k]; sp.pose = pose; sp._stand = null; if (st.active === o && st.step === k) standFor(o, k); };
   st.setPose = (o, pose) => st.setStepPose(o, 0, pose);
   function standFor(o, k) { if (!o) return; const sp = o.steps[Math.min(k, o.steps.length - 1)]; brain.stand = sp._stand || (sp._stand = makeStand(sp.pose || {})); }
@@ -99,8 +100,39 @@ export async function attachGPC(brain, ort, say) {
   const hdg = (q, i) => { const t = [0, 0, 0]; qrot(q, i, 1, 0, 0, t, 0); return Math.atan2(t[1], t[0]); };
   // a body shape that does not depend on where he faces: the hips' three axes, how much each points up
   const shapeOf = (q, i) => { const a = [0, 0, 0], b = [0, 0, 0], c = [0, 0, 0]; qrot(q, i, 1, 0, 0, a, 0); qrot(q, i, 0, 1, 0, b, 0); qrot(q, i, 0, 0, 1, c, 0); return [a[2], b[2], c[2]]; };
+  // library moves (do.moves = a list of ids): the game reads clips/<id>.q (Save copies the moves orders use there);
+  // the editor, when a move is not copied yet, reads it from the private library with the token kept in this browser
+  const LIBQ = 'https://api.github.com/repos/facaelectrica/the-box-library/contents/moves/', MV = {};
+  st.moveRaw = async id => { let r = null;
+    try { r = await fetch(here + 'clips/' + encodeURIComponent(id) + '.q'); } catch (_) {}
+    if (!r || !r.ok) { const key = localStorage.getItem('gpc.ghKey'); if (!key) throw new Error('move ' + id + ' is not in the game');
+      r = await fetch(LIBQ + encodeURIComponent(id) + '.q', { headers: { Authorization: 'Bearer ' + key, Accept: 'application/vnd.github.raw' } });
+      if (!r.ok) throw new Error('library ' + r.status); }
+    return r.arrayBuffer(); };
+  st.move = id => MV[id] || (MV[id] = st.moveRaw(id).then(decodeQ).then(dec => expandQ(brain.W.mj, brain.W.m, dec, brain.bodyId, BODY_NAMES)).catch(e => { delete MV[id]; throw e; }));
+  const prefetch = () => { for (const o of st.orders) if (o.do && o.do.moves) for (const id of o.do.moves) st.move(id).catch(() => {}); };
+  // which listed move to play: the closest first frame to his body now (shape of the hips, then the joints), and how
+  // far it would take his body through the walls from where he is (every listed move is still allowed: the least bad)
+  async function pickMove(o) {
+    const me = shapeOf(brain.rot, 0), d = brain.W.d, P = brain.pos, yaw = hdg(brain.rot, 0), out = [];
+    for (const id of o.do.moves) { let buf; try { buf = await st.move(id); } catch (_) { continue; }
+      const n = Math.floor(buf.length / 376), s0 = shapeOf(buf, 3); let h = 0, k = 0;
+      for (const a of brain.W.act) { h += Math.abs(d.qpos[a.qadr] - buf[299 + a.qadr]); k++; }
+      const pose = Math.hypot(me[0] - s0[0], me[1] - s0[1], me[2] - s0[2]) + 0.3 * h / k;
+      const ov = overflow(buf, n, { G: brain.G, xy: [P[0], P[1]], yaw, h0: hdg(buf, 3), mid: [buf[0], buf[1]] }, brain.W.box, brain.ground);
+      out.push({ id, buf, n, pose: +pose.toFixed(3), wall: +ov.worst.toFixed(2), score: pose + 2 * ov.worst }); }
+    out.sort((a, b) => a.score - b.score); return out;
+  }
   async function startRecording(o) {
     const D = o.do || {}; let file = D.file;
+    if (D.moves && D.moves.length) {
+      const L = await pickMove(o); if (st.active !== o) return; const b = L[0];
+      if (!b || b.n < 10) { st.rec = { failed: D.moves.join(' ') }; return; }
+      const P = brain.pos, buf = b.buf;
+      brain.react = { buf, n: b.n, end: b.n - 1, fps: 30, mid: [buf[0], buf[1]], h0: hdg(buf, 3), t: 0, xy: [P[0], P[1]], yaw: hdg(brain.rot, 0) };
+      if (brain.blendStart) brain.blendStart();
+      st.rec = { file: b.id, n: b.n, o, wall: b.wall, pose: b.pose, others: L.slice(1, 4).map(x => [x.id, x.pose, x.wall]) }; st.fresh = false; return;
+    }
     if (!file && D.category) {
       const L = (await st.library()).filter(x => x.cat === D.category || x.cat.startsWith(D.category + '-') || (D.category === 'getup' && x.cat.startsWith('getup-'))), me = shapeOf(brain.rot, 0), d = brain.W.d;
       let best = null; await st.starts(L);
