@@ -1,5 +1,6 @@
 // Puts NVIDIA's GPC prior in the page brain's seat. Big part in a background worker (a new set of picks whenever it
 // finishes one), small part (decoder, 3 M numbers) here every control tick on his current body.
+import { qrot, qmul, NB } from '../sim/brain.js';
 export async function attachGPC(brain, ort, say) {
   const here = new URL('./', import.meta.url).href, iso = self.crossOriginIsolated, cores = navigator.hardwareConcurrency || 2;
   // the big part's kernel on 3 cores by default when the browser allows shared memory (?cores=1..4 to try others)
@@ -52,7 +53,32 @@ export async function attachGPC(brain, ort, say) {
     st.active = DANCE ? null : (st.orders.find(o => st.active && o.name === st.active.name) || null); st.step = 0; st.stepT = 0; standFor(st.active, 0); st.ordersFile = O; return true; };
   st.setStepPose = (o, k, pose) => { const sp = o.steps[k]; sp.pose = pose; sp._stand = null; if (st.active === o && st.step === k) standFor(o, k); };
   st.setPose = (o, pose) => st.setStepPose(o, 0, pose);
-  function standFor(o, k) { if (!o) return; const sp = o.steps[Math.min(k, o.steps.length - 1)]; if (!sp._stand) { brain.setStandPose(sp.pose || {}); sp._stand = brain.stand; } else brain.stand = sp._stand; }
+  function standFor(o, k) { if (!o) return; const sp = o.steps[Math.min(k, o.steps.length - 1)]; brain.stand = sp._stand || (sp._stand = makeStand(sp.pose || {})); }
+  // a pose = the body's orientation (root_w/x/y/z, upright if absent) + joint angles. Placed with its lowest point on
+  // the floor (standing: the soles; lying: whatever touches), on his spot, turned the way he faces (brain.updateRef).
+  function makeStand(pose) {
+    const W = brain.W, mj = W.mj, m = W.m, d2 = new mj.MjData(m), qa = brain.qadr;
+    const r = pose.root_w !== undefined ? [pose.root_w, pose.root_x, pose.root_y, pose.root_z] : [1, 0, 0, 0], rl = Math.hypot(...r) || 1;
+    for (let k = 0; k < 4; k++) d2.qpos[qa + 3 + k] = r[k] / rl;
+    for (const a of W.act) d2.qpos[a.qadr] = pose[a.name] || 0;
+    mj.mj_kinematics(m, d2);
+    const P = new Float64Array(NB * 3), R = new Float64Array(NB * 4);
+    for (let b = 0; b < NB; b++) { const id = brain.bodyId[b]; for (let k = 0; k < 3; k++) P[3 * b + k] = d2.xpos[3 * id + k];
+      R[4 * b] = d2.xquat[4 * id + 1]; R[4 * b + 1] = d2.xquat[4 * id + 2]; R[4 * b + 2] = d2.xquat[4 * id + 3]; R[4 * b + 3] = d2.xquat[4 * id]; }
+    let lo = 1e9; const X = d2.geom_xmat, sz = m.geom_size;
+    for (let g = 0; g < m.ngeom; g++) { if (!W.isFig[m.geom_bodyid[g]]) continue; const t = m.geom_type[g]; let dz;
+      if (t === 6) { dz = 0; for (let k = 0; k < 3; k++) dz += Math.abs(X[9 * g + 6 + k]) * sz[3 * g + k]; } else if (t === 3) dz = Math.abs(X[9 * g + 8]) * sz[3 * g + 1] + sz[3 * g]; else dz = sz[3 * g];
+      lo = Math.min(lo, d2.geom_xpos[3 * g + 2] - dz); }
+    const tx = [0, 0, 0]; qrot(R, 0, 1, 0, 0, tx, 0); const h = Math.atan2(tx[1], tx[0]), q = [0, 0, Math.sin(-h / 2), Math.cos(-h / 2)], t = [0, 0, 0];
+    const S = { pos: new Float64Array(NB * 3), rot: new Float64Array(NB * 4), height: P[2] - lo };
+    for (let b = 0; b < NB; b++) { qrot(q, 0, P[3 * b] - P[0], P[3 * b + 1] - P[1], P[3 * b + 2] - P[2], t, 0); S.pos.set(t, 3 * b); qmul(q, 0, R, 4 * b, S.rot, 4 * b); }
+    d2.delete(); return S;
+  }
+  // his body as it is now, as a pose (for "new order from this moment"): orientation without heading + joint angles
+  st.poseNow = () => { const d = brain.W.d, qa = brain.qadr, out = {}; for (const a of brain.W.act) out[a.name] = d.qpos[a.qadr];
+    const w = d.qpos[qa + 3], x = d.qpos[qa + 4], y = d.qpos[qa + 5], z = d.qpos[qa + 6], R = [x, y, z, w], tx = [0, 0, 0]; qrot(R, 0, 1, 0, 0, tx, 0);
+    const h = Math.atan2(tx[1], tx[0]), q = [0, 0, Math.sin(-h / 2), Math.cos(-h / 2)], o = [0, 0, 0, 1]; qmul(q, 0, R, 0, o, 0);
+    out.root_w = o[3]; out.root_x = o[0]; out.root_y = o[1]; out.root_z = o[2]; return out; };
   // how far his joints are from a step's pose (mean over the hinges, radians)
   function poseGap(pose) { const d = brain.W.d; let s = 0, n = 0; for (const a of brain.W.act) { s += Math.abs(d.qpos[a.qadr] - (pose[a.name] || 0)); n++; } return s / n; }
   // the signs: heights above the floor (m), lean of his trunk from upright (deg), speed of his hips (m/s), box tilt (deg)

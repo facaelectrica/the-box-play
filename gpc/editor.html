@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v24</title>
+<title>EDITOR v25</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -42,7 +42,7 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v24</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v25</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Default<br><small>Chooser</small></div></div>
@@ -66,7 +66,7 @@
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=24"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=25"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -113,14 +113,15 @@ boot();
 
 // ---------- the pose: forward kinematics on a scratch copy of his body ----------
 const BODIES = ['Hips', 'Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightLeg', 'RightShin', 'RightFoot', 'RightToeBase', 'LeftLeg', 'LeftShin', 'LeftFoot', 'LeftToeBase'];
+function setRoot(p) { d2.qpos.fill(0); if (p.root_w !== undefined) { const r = [p.root_w, p.root_x, p.root_y, p.root_z], l = Math.hypot(...r) || 1; for (let k = 0; k < 4; k++) d2.qpos[3 + k] = r[k] / l; } else d2.qpos[3] = 1; }
 function fk(p) {
-  d2.qpos.fill(0); d2.qpos[3] = 1; for (const a of acts) d2.qpos[a.qadr] = p[a.name] || 0;
+  setRoot(p); for (const a of acts) d2.qpos[a.qadr] = p[a.name] || 0;
   mj.mj_kinematics(m, d2); const out = {};
   for (const n of BODIES) { const id = W.bodyId[n]; out[n] = [d2.xpos[3 * id], d2.xpos[3 * id + 1], d2.xpos[3 * id + 2], m.body_parentid[id]]; out[n].id = id; }
   // the soles: the lowest point of the feet and toes (their shapes' bottoms, as the game's brain measures them)
   let lo = 1e9;
   for (let g = 0; g < m.ngeom; g++) {
-    const b = m.geom_bodyid[g], nm = BODIES.find(k => out[k].id === b); if (!nm || !/Foot|ToeBase/.test(nm)) continue;
+    const b = m.geom_bodyid[g]; if (!W.isFig[b]) continue;
     const t = m.geom_type[g], sz = m.geom_size, R = d2.geom_xmat; let dz;
     if (t === 6) { dz = 0; for (let k = 0; k < 3; k++) dz += Math.abs(R[9 * g + 6 + k]) * sz[3 * g + k]; }
     else if (t === 3) dz = Math.abs(R[9 * g + 8]) * sz[3 * g + 1] + sz[3 * g]; else dz = sz[3 * g];
@@ -152,13 +153,13 @@ const LIMB = { RightHand: ['RightArm', 'RightForeArm', 'RightHand', [-0.35, 1, 0
 let tb2 = null;
 function twoBone(end, T) { if (!tb2) tb2 = makeTwoBone({ THREE, m, W, pose: () => pose, fkRaw, clampA, acts }); return tb2(LIMB, end, T); }
 // rotate (FK): the joint's own three hinges, exactly (their order is x then y then z, axes +x +y +z, rest frames aligned)
-function setRot(n, qWorld) { const par = W.bodyNames.find(k => W.bodyId[k] === m.body_parentid[W.bodyId[n]]), R = fkRaw(pose, [par]), e = new THREE.Euler().setFromQuaternion(R[par].q.clone().invert().multiply(qWorld), 'XYZ');
+function setRot(n, qWorld) { if (n === 'Hips') { const q = qWorld.clone().normalize(); pose.root_w = q.w; pose.root_x = q.x; pose.root_y = q.y; pose.root_z = q.z; return; } const par = W.bodyNames.find(k => W.bodyId[k] === m.body_parentid[W.bodyId[n]]), R = fkRaw(pose, [par]), e = new THREE.Euler().setFromQuaternion(R[par].q.clone().invert().multiply(qWorld), 'XYZ');
   for (const k of ['x', 'y', 'z']) { const A = acts.find(a => a.name === n + '_' + k); if (A) pose[A.name] = clampA(A, e[k]); } }
 
 const clampA = (a, v) => (a.j >= 0 && m.jnt_limited[a.j]) ? Math.max(m.jnt_range[2 * a.j], Math.min(m.jnt_range[2 * a.j + 1], v)) : v;
 const actsOf = names => acts.filter(a => names.some(b => a.name.startsWith(b + '_')));
 // raw forward kinematics (hips at the origin, no drawing shift): positions and rotations of some bodies
-function fkRaw(p, names) { d2.qpos.fill(0); d2.qpos[3] = 1; for (const a of acts) d2.qpos[a.qadr] = p[a.name] || 0; mj.mj_kinematics(m, d2);
+function fkRaw(p, names) { setRoot(p); for (const a of acts) d2.qpos[a.qadr] = p[a.name] || 0; mj.mj_kinematics(m, d2);
   const o = {}; for (const n of names) { const id = W.bodyId[n]; o[n] = { p: [d2.xpos[3 * id], d2.xpos[3 * id + 1], d2.xpos[3 * id + 2]], q: new THREE.Quaternion(d2.xquat[4 * id + 1], d2.xquat[4 * id + 2], d2.xquat[4 * id + 3], d2.xquat[4 * id]) }; } return o; }
 // targets: [{ n, p?: [x,y,z], q?: Quaternion, w? }]; damped least squares over the given joints, human limits each step
 function solve(jointNames, targets, iters = 16) {
@@ -270,8 +271,9 @@ function draw() {
     mm.material.color.setHex(n === sel ? COL.tgt : piv.includes(n) ? COL.piv : n === hover ? COL.hover : COL.joint); }
   if (sel && !tc.dragging) { proxy.position.set(...P[sel].slice(0, 3)); proxy.quaternion.set(...P[sel].q); }
   const rows = acts.filter(a => Math.abs((pose[a.name] || 0) - (ORIG[a.name] || 0)) > 0.017).map(a => `<tr><td>${a.name.replace('_', ' ')}</td><td>${((pose[a.name] || 0) * DEG).toFixed(0)} <span class="old" data-j="${a.name}" title="put it back">(${((ORIG[a.name] || 0) * DEG).toFixed(0)})</span></td></tr>`);
+  if (pose.root_w !== undefined) { const ang = 2 * Math.acos(Math.min(1, Math.abs(pose.root_w))) * DEG; if (ang > 1) rows.unshift(`<tr><td>Body tilt</td><td>${ang.toFixed(0)} <span class="old" data-j="__root">(0)</span></td></tr>`); }
   $('tbl').innerHTML = rows.length ? rows.join('') : '<tr><td class="dim">none</td><td></td></tr>';
-  for (const o of $('tbl').querySelectorAll('.old')) o.onclick = () => { history.push(Object.assign({}, pose)); const n = o.dataset.j; if (ORIG[n]) pose[n] = ORIG[n]; else delete pose[n]; applyPose(); draw(); dirty(); };
+  for (const o of $('tbl').querySelectorAll('.old')) o.onclick = () => { history.push(Object.assign({}, pose)); const n = o.dataset.j; if (n === '__root') { for (const k of ['root_w', 'root_x', 'root_y', 'root_z']) delete pose[k]; } else if (ORIG[n]) pose[n] = ORIG[n]; else delete pose[n]; applyPose(); draw(); dirty(); };
   $('hint').textContent = sel ? `${sel} · ${mode() === 'translate' ? (MOVE[sel] ? 'Move' : 'Move unavailable') : 'Rotate'}` : '';
 }
 // the gizmo: an invisible stand-in on the selected joint; dragging it poses him
@@ -285,7 +287,7 @@ tc.addEventListener('dragging-changed', e => { orbit.enabled = !e.value;
 tc.addEventListener('objectChange', () => {
   if (!gstart || !sel) return;
   if (mode() === 'rotate') {   // FK: this joint's own three hinges turn it to the gizmo's rotation; everything below follows
-    if (!actsOf([sel]).length) return; setRot(sel, proxy.quaternion.clone());
+    if (sel !== 'Hips' && !actsOf([sel]).length) return; setRot(sel, proxy.quaternion.clone());
   } else {
     const M = MOVE[sel]; if (!M) return; const d = proxy.position.clone().sub(gstart.pos), R0 = gstart.raw;
     if (M.hips) {   // hips: the feet stay where they are (they move the other way, relative to the hips), and flat
@@ -366,7 +368,7 @@ $('oUp').onclick = () => { if (cur < 1) return; [orders[cur - 1], orders[cur]] =
 $('oDn').onclick = () => { if (cur >= orders.length - 1) return; [orders[cur + 1], orders[cur]] = [orders[cur], orders[cur + 1]]; cur++; listOrders(); dirty(); };
 $('oDel').onclick = () => { if (orders.length < 2) return; const o = orders.splice(cur, 1)[0]; if (G.active === o) G.active = null; if (G.force === o.name) G.force = null; cur = Math.max(0, cur - 1); stepK = 0; pose = orders[cur].steps[0].pose; listOrders(); showOrder(); draw(); dirty(); };
 $('oTest').onclick = () => { const o = orders[cur]; G.force = G.force === o.name ? null : o.name; showOrder(); listOrders(); };
-const clean = p => Object.fromEntries(Object.entries(p).filter(([k, v]) => Math.abs(v) > 1e-6).map(([k, v]) => [k, +v.toFixed(4)]));
+const clean = p => Object.fromEntries(Object.entries(p).filter(([k, v]) => Math.abs(v) > 1e-6 || k === 'root_w').map(([k, v]) => [k, +v.toFixed(4)]));
 function ordersFile() { return { version: 3, saved: new Date().toISOString(), orders: orders.map(o => ({ name: o.name, on: o.on !== false, strength: o.strength || 'control', start: o.start, stop: o.stop, steps: o.steps.map(x => ({ pose: clean(x.pose), time: x.time ?? 1 })), example: o.example })), otherwise: 'chooser' }; }
 // Save: this browser's game uses the orders at once; with a GitHub key, they are also published (gpc/orders.json on
 // facaelectrica/the-box-play), which every phone's game loads within a minute or two. The key stays in this browser.
