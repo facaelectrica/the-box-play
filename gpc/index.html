@@ -1,0 +1,70 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Brain speed test</title>
+<style>body{font:16px/1.45 system-ui,sans-serif;margin:16px;background:#14110f;color:#eee}h1{font-size:20px;margin:0 0 4px}
+button{font:inherit;padding:12px 14px;margin:6px 0;border-radius:10px;border:0;background:#e0a34a;color:#111;width:100%}button:disabled{opacity:.4}
+.r{padding:10px 12px;margin:8px 0;border-radius:10px;background:#221d19}.big{font-size:26px;font-weight:700}.ok{color:#7ddc8a}.no{color:#ff8a7a}.dim{color:#a99}small{color:#a99}</style></head><body>
+<h1>Brain speed test</h1><small id="ver">GPC timing v1 · target: under 33 ms per decision · nothing is downloaded but the engine (28 MB)</small>
+<div class="r dim" id="env">checking…</div>
+<button id="b1">1 · Processor, one core</button><div class="r" id="o1">not run</div>
+<button id="bn">2 · Processor, up to 4 cores</button><div class="r" id="on">not run</div>
+<button id="bg">3 · Graphics chip (heavy: may reload the page on some phones)</button><div class="r" id="og">not run</div>
+<script type="module">
+import * as ort from './ort/ort.all.min.mjs';
+ort.env.wasm.wasmPaths = new URL('./ort/', location.href).href;
+const $ = id => document.getElementById(id), L = 6, NP = 9, D = 1024, V = 59049;
+const iso = self.crossOriginIsolated, cores = navigator.hardwareConcurrency || 1, Q = new URLSearchParams(location.search), TH = iso ? (+Q.get('th') || 1) : 1; ort.env.wasm.numThreads = TH;
+if ('serviceWorker' in navigator && !iso && !sessionStorage.getItem('swtry')) { sessionStorage.setItem('swtry', '1'); navigator.serviceWorker.register('./sw.js').then(() => navigator.serviceWorker.ready).then(() => location.reload()); }
+let gpu = false; try { gpu = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch (e) {}
+$('env').textContent = `cores: ${cores} · several-core mode: ${iso ? 'available' : 'not available in this browser'} · graphics chip access: ${gpu ? 'available' : 'not available in this browser'}`;
+const sizes = await (await fetch('./sizes.json')).json();
+function weights(n, float) {   // timing does not depend on the values, so the page makes its own instead of downloading NVIDIA's
+  const b = new Uint8Array(n); let s = 12345;
+  if (float) { const f = new Float32Array(b.buffer, 0, n >> 2); for (let i = 0; i < f.length; i++) { s = (s * 1664525 + 1013904223) | 0; f[i] = (s >> 8) * 2.4e-9; } }
+  else for (let i = 0; i < n; i++) { s = (s * 1664525 + 1013904223) | 0; b[i] = (s >> 16) & 63; }
+  return b;
+}
+async function sess(name, opts, float) {
+  const g = new Uint8Array(await (await fetch(`./${name}.onnx`)).arrayBuffer());
+  return ort.InferenceSession.create(g, Object.assign({ externalData: [{ path: 'w.bin', data: weights(sizes[name], float) }], graphOptimizationLevel: 'all' }, opts));
+}
+function pick(lg) {   // NVIDIA's rule: keep the top moves that hold 90% of the probability, draw among them
+  let mx = -1e9; for (let i = 0; i < V; i++) if (lg[i] > mx) mx = lg[i];
+  let tot = 0; const p = PB; for (let i = 0; i < V; i++) { const e = Math.exp((lg[i] - mx) * PEAK); p[i] = e; tot += e; }
+  let lo = 0, hi = 1;   // find the probability level above which 90% of the mass sits (20 passes, no sort)
+  for (let it = 0; it < 20; it++) { const th = (lo + hi) / 2; let m = 0; for (let i = 0; i < V; i++) if (p[i] >= th) m += p[i]; if (m >= 0.9 * tot) lo = th; else hi = th; }
+  let m = 0; for (let i = 0; i < V; i++) if (p[i] >= lo) m += p[i]; let u = Math.random() * m, c = 0, last = 0;
+  for (let i = 0; i < V; i++) if (p[i] >= lo) { c += p[i]; last = i; if (c >= u) return i; } return last;
+}
+const PB = new Float64Array(V); let PEAK = 1;
+const T = { a: 0, b: 0, c: 0 };
+async function decision(S, H, gpuKeep) {
+  let Kc = new ort.Tensor('float32', new Float32Array(L * NP * D), [L, NP, D]), Vc = new ort.Tensor('float32', new Float32Array(L * NP * D), [L, NP, D]);
+  let x = new Float32Array(D).map(() => Math.random() - 0.5);
+  for (let k = 0; k < 8; k++) {
+    const add = new Float32Array(NP).fill(-1e9), hot = new Float32Array(NP); for (let j = 0; j <= k; j++) add[j] = 0; hot[k] = 1;
+    let t0 = performance.now(); const o = await S.run({ x: new ort.Tensor('float32', x, [1, D]), Kc, Vc, add: new ort.Tensor('float32', add, [NP]), hot: new ort.Tensor('float32', hot, [NP]) });
+    Kc = o.K; Vc = o.V; let t1 = performance.now();
+    const lg = (await H.run({ h: o.h })).logits; const d = gpuKeep ? await lg.getData() : lg.data; let t2 = performance.now(); const t = pick(d); T.a += t1 - t0; T.b += t2 - t1; T.c += performance.now() - t2;
+    x = new Float32Array(D).map((_, i) => ((t * 31 + i * 17) % 97) / 97 - 0.5);
+  }
+}
+async function bench(out, mk, gpuKeep) {
+  try {
+    out.textContent = 'building the brain…'; const t0 = performance.now(); const [S, H] = await mk(); out.textContent = `built in ${((performance.now() - t0) / 1000).toFixed(1)} s, timing…`;
+    await decision(S, H, gpuKeep); await decision(S, H, gpuKeep); const ts = []; T.a = T.b = T.c = 0;
+    for (let i = 0; i < 12; i++) { const t = performance.now(); await decision(S, H, gpuKeep); ts.push(performance.now() - t); out.textContent = `timing… ${i + 1}/12`; }
+    ts.sort((a, b) => a - b); const m = ts[6], ok = m <= 33;
+    out.innerHTML = `<span class="big ${ok ? 'ok' : 'no'}">${m.toFixed(0)} ms</span> per decision <span class="dim">(fastest ${ts[0].toFixed(0)}, slowest ${ts[11].toFixed(0)})</span><br><span class="dim">thinking ${(T.a / 12).toFixed(0)} · scoring ${(T.b / 12).toFixed(0)} · picking ${(T.c / 12).toFixed(0)} ms</span><br>${ok ? 'Fast enough for 30 a second.' : (m <= 66 ? 'Fast enough for 15 a second, not 30.' : `${(m / 33).toFixed(1)} times too slow for 30 a second.`)}`;
+    window.__res = (window.__res || {}); window.__res[out.id] = m; try { await S.release(); await H.release(); } catch (e) {}
+  } catch (e) { out.innerHTML = `<span class="no">failed:</span> ${String(e && e.message || e).slice(0, 300)}`; }
+}
+const all = [$('b1'), $('bn'), $('bg')], lock = async f => { all.forEach(b => b.disabled = true); await f(); all.forEach(b => b.disabled = false); $('bn').disabled = !iso; $('bg').disabled = !gpu; };
+$('bn').disabled = !iso; $('bg').disabled = !gpu; if (!iso) $('on').textContent = 'this browser does not allow it here'; if (!gpu) $('og').textContent = 'this browser does not give pages the graphics chip';
+const cpu = out => lock(async () => { await bench(out, async () => [await sess('step_q8pc', { executionProviders: ['wasm'] }), await sess('head0_q8', { executionProviders: ['wasm'] })]); });
+$('b1').onclick = () => TH !== 1 ? (location.search = '?th=1&go=1') : cpu($('o1'));
+$('bn').onclick = () => TH === 1 ? (location.search = `?th=${Math.min(4, cores)}&go=n`) : cpu($('on'));
+if (Q.get('go') === '1') cpu($('o1')); if (Q.get('go') === 'n' && TH > 1) cpu($('on'));
+const _x1 = () => lock(async () => { await bench($('o1'), async () => [await sess('step_q8pc', { executionProviders: ['wasm'] }), await sess('head0_q8', { executionProviders: ['wasm'] })]); });
+const _x2 = () => lock(async () => { await bench($('on'), async () => [await sess('step_q8pc', { executionProviders: ['wasm'] }), await sess('head0_q8', { executionProviders: ['wasm'] })]); });
+$('bg').onclick = () => lock(async () => { await bench($('og'), async () => [await sess('step', { executionProviders: ['webgpu'], preferredOutputLocation: { h: 'gpu-buffer', K: 'gpu-buffer', V: 'gpu-buffer' } }, true), await sess('head0', { executionProviders: ['webgpu'] }, true)], true); });
+</script></body></html>
