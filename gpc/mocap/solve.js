@@ -1,0 +1,124 @@
+// Camera tracking -> his pose. Input: the 33 body points of MediaPipe's Pose Landmarker ("world" points: metres, centred
+// on the hips, x to the image's right, y down, z away from the camera). Output: the game's 73 numbers for each frame.
+// Every bone is aimed along the tracked limb; the twist of an upper arm or thigh comes from the plane its elbow or
+// knee bends in. Points the camera cannot see keep the joint's last angles. The hips travel by keeping the
+// standing foot still on the floor, because the tracked points carry no position in the room.
+import { M, V, fk, standPose } from './skel.js?v=1';
+
+export const LM = { nose: 0, lEar: 7, rEar: 8, lSh: 11, rSh: 12, lEl: 13, rEl: 14, lWr: 15, rWr: 16, lPk: 17, rPk: 18, lIx: 19, rIx: 20,
+  lHip: 23, rHip: 24, lKn: 25, rKn: 26, lAn: 27, rAn: 28, lHe: 29, rHe: 30, lTo: 31, rTo: 32 };
+const clamp01 = v => Math.max(0, Math.min(1, v));
+// rotation taking the rest pair (direction d0, side axis f0) onto the tracked pair (d, f)
+const basis = (d, f) => { const u = V.norm(d), w = V.norm(V.perp(f, u)); return M.cols(u, V.cross(w, u), w); };
+const aim = (d, f, d0, f0) => M.mul(basis(d, f), M.T(basis(d0, f0)));
+const ok3 = v => Number.isFinite(v[0] + v[1] + v[2]) && V.len(v) > 1e-6;
+
+// smoothing that follows fast motion and steadies slow motion (the "1 euro" filter), one per number
+class Euro { constructor(minCut, beta) { this.mc = minCut; this.beta = beta; this.x = null; this.dx = 0; }
+  step(x, dt) { if (this.x === null || !(dt > 0)) { this.x = x; return x; }
+    const al = c => { const r = 2 * Math.PI * c * dt; return r / (r + 1); }, d = (x - this.x) / dt; this.dx += al(1) * (d - this.dx);
+    this.x += al(this.mc + this.beta * Math.abs(this.dx)) * (x - this.x); return this.x; } }
+
+export function makeSolver(S, opt = {}) {
+  const o = Object.assign({ smooth: 1, hands: true, minVis: 0.5, travel: true }, opt), id = S.id, nb = S.names.length;
+  const rest = n => V.norm(S.off[id[n]]), Z0 = [0, 0, 1], X0 = [1, 0, 0];
+  const SIDE = [   // right, then left: the points and bodies of one arm and one leg
+    { s: -1, sh: LM.rSh, el: LM.rEl, wr: LM.rWr, pk: LM.rPk, ix: LM.rIx, hip: LM.rHip, kn: LM.rKn, an: LM.rAn, he: LM.rHe, to: LM.rTo, A: 'RightArm', FA: 'RightForeArm', H: 'RightHand', SH: 'RightShoulder', LG: 'RightLeg', SN: 'RightShin', FT: 'RightFoot', TB: 'RightToeBase' },
+    { s: 1, sh: LM.lSh, el: LM.lEl, wr: LM.lWr, pk: LM.lPk, ix: LM.lIx, hip: LM.lHip, kn: LM.lKn, an: LM.lAn, he: LM.lHe, to: LM.lTo, A: 'LeftArm', FA: 'LeftForeArm', H: 'LeftHand', SH: 'LeftShoulder', LG: 'LeftLeg', SN: 'LeftShin', FT: 'LeftFoot', TB: 'LeftToeBase' } ];
+  const RAD = S.names.map(n => /Toe/.test(n) ? 0.025 : /Foot/.test(n) ? 0.075 : n === 'Head' ? 0.11 : /Hand|ForeArm/.test(n) ? 0.04 : 0.08);   // rough distance from a joint to the skin
+  let q, cal, headCal, filt, tPrev, mem, root;
+  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0] }; root = { xy: [0, 0], foot: -1, lock: null, z: null }; }
+  reset();
+
+  // tracked points -> the game's axes (x to his left, y behind him, z up), steadied
+  function points(lm, t) {
+    const dt = tPrev === null ? 0 : t - tPrev; tPrev = t;
+    if (!filt) filt = Array.from({ length: 33 }, (_, i) => { const hand = i >= 17 && i <= 22, c = (hand ? 0.6 : 1.4) / o.smooth; return [new Euro(c, 0.6), new Euro(c, 0.6), new Euro(c, 0.6)]; });
+    const P = new Array(33), vis = new Array(33);
+    for (let i = 0; i < 33; i++) { const l = lm[i] || { x: 0, y: 0, z: 0, visibility: 0 }, g = [l.x, l.z, -l.y];
+      P[i] = o.smooth > 0 ? [filt[i][0].step(g[0], dt), filt[i][1].step(g[1], dt), filt[i][2].step(g[2], dt)] : g; vis[i] = l.visibility === undefined ? 1 : l.visibility; }
+    return { P, vis };
+  }
+  const torso = P => { const HM = V.mid(P[LM.lHip], P[LM.rHip]), SM = V.mid(P[LM.lSh], P[LM.rSh]), up = V.sub(SM, HM);
+    const fr = (l, r) => { const X = V.norm(V.sub(P[l], P[r])), Z = V.norm(V.perp(up, X)), Y = V.cross(Z, X); return M.cols(X, Y, Z); };
+    return { pelvis: fr(LM.lHip, LM.rHip), chest: fr(LM.lSh, LM.rSh) }; };
+  const headOf = P => { const X = V.norm(V.sub(P[LM.lEar], P[LM.rEar])), f = V.sub(P[LM.nose], V.mid(P[LM.lEar], P[LM.rEar])), Y = V.mul(V.norm(V.perp(f, X)), -1); return M.cols(X, Y, V.cross(X, Y)); };
+
+  // Stand straight, facing the camera: from here on the hips' frame at this moment counts as upright and facing
+  // forward (this removes the camera's own tilt), and the head's angle at this moment counts as level.
+  function calibrate(lm) { const P = lm.map(l => [l.x, l.z, -l.y]), T = torso(P); if (!T.pelvis.every(Number.isFinite)) return false;
+    cal = M.T(T.pelvis); const Pc = P.map(p => M.vec(cal, p)), T2 = torso(Pc), H = headOf(Pc);
+    headCal = H.every(Number.isFinite) ? M.mul(M.T(T2.chest), H) : M.I(); filt = null; mem.fw = {}; return true; }
+
+  function solve(lm, t) {
+    const { P: raw, vis } = points(lm, t), P = raw.map(p => M.vec(cal, p)), see = (...k) => k.every(i => vis[i] >= o.minVis);
+    const tgt = new Array(nb).fill(null), T = torso(P), Rp = T.pelvis, Rc = T.chest;
+    if (!Rp.every(Number.isFinite) || !Rc.every(Number.isFinite)) return q;
+    // trunk: the hips carry the trunk's lean; the turn between hips and shoulders is shared by the three spine joints
+    const rel = M.mul(M.T(Rp), Rc); tgt[0] = Rp; tgt[id.Spine1] = M.mul(Rp, M.part(rel, 1 / 3)); tgt[id.Spine2] = M.mul(Rp, M.part(rel, 2 / 3)); tgt[id.Chest] = Rc;
+    if (see(LM.nose, LM.lEar, LM.rEar)) { const Rh = M.mul(headOf(P), M.T(headCal));
+      if (Rh.every(Number.isFinite)) { const rh = M.mul(M.T(Rc), Rh); tgt[id.Neck1] = M.mul(Rc, M.part(rh, 1 / 3)); tgt[id.Neck2] = M.mul(Rc, M.part(rh, 2 / 3)); tgt[id.Head] = Rh; } }
+    const Fc = [-Rc[1], -Rc[4], -Rc[7]], Zc = [Rc[2], Rc[5], Rc[8]], Fp = [-Rp[1], -Rp[4], -Rp[7]];
+    // the side axis an elbow or knee bends around: from the bend itself when it is bent enough, otherwise the last
+    // one, drifting to the natural one (elbows and knees bend forward)
+    const bendAxis = (key, a, b, sgn, nat, strict) => { const n = V.cross(a, b), sn = V.len(n); let w = clamp01((sn - 0.15) / 0.35), dir = V.mul(n, sgn / (sn || 1));
+      const fb = ok3(V.perp(nat, a)) ? V.norm(V.perp(nat, a)) : null, prev = mem.fw[key];
+      if (strict && fb && V.dot(dir, fb) < -0.2) w = 0;   // a knee never bends backwards: that is tracking noise
+      let base = prev && fb ? V.perp(V.add(V.mul(prev, 0.85), V.mul(fb, 0.15)), a) : prev ? V.perp(prev, a) : fb; if (!base || !ok3(base)) base = fb || dir; base = V.norm(base);
+      let f = V.perp(V.add(V.mul(dir, w), V.mul(base, 1 - w)), a); if (!ok3(f)) f = base; f = V.norm(f); mem.fw[key] = f; return f; };
+    SIDE.forEach((d, si) => {
+      tgt[id[d.SH]] = Rc;
+      if (see(d.sh, d.el, d.wr)) { const a = V.norm(V.sub(P[d.el], P[d.sh])), b = V.norm(V.sub(P[d.wr], P[d.el])), sgn = -d.s;
+        const f = bendAxis(d.A, a, b, sgn, V.add(V.mul(V.cross(a, Fc), sgn), V.mul(Zc, 0.3)), false);
+        tgt[id[d.A]] = aim(a, f, rest(d.FA), Z0); let Rf = aim(b, f, rest(d.H), Z0);
+        if (o.hands && see(d.pk, d.ix)) { const dir = V.sub(V.mid(P[d.ix], P[d.pk]), P[d.wr]), nrm = V.mul(V.cross(dir, V.sub(P[d.ix], P[d.pk])), -d.s);
+          if (ok3(dir) && ok3(V.perp(nrm, V.norm(dir)))) { const Rh = aim(dir, nrm, [d.s, 0, 0], Z0), qh = M.toQuat(M.mul(M.T(Rf), Rh));
+            let tw = 2 * Math.atan2(qh[1], qh[0]); if (tw > Math.PI) tw -= 2 * Math.PI; if (tw < -Math.PI) tw += 2 * Math.PI;   // the hand's turn around the forearm goes into the forearm
+            tw = Math.max(-1.6, Math.min(1.6, tw)); mem.tw[si] = tw; Rf = M.mul(Rf, M.euler(tw, 0, 0)); tgt[id[d.H]] = Rh; } }
+        else Rf = M.mul(Rf, M.euler(mem.tw[si], 0, 0));
+        tgt[id[d.FA]] = Rf; }
+      if (see(d.hip, d.kn, d.an)) { const a = V.norm(V.sub(P[d.kn], P[d.hip])), b = V.norm(V.sub(P[d.an], P[d.kn])), foot = see(d.he, d.to), fwd = foot ? V.sub(P[d.to], P[d.he]) : Fp;
+        const f = bendAxis(d.LG, a, b, 1, V.cross(ok3(V.perp(fwd, a)) ? fwd : Fp, a), true);
+        tgt[id[d.LG]] = aim(a, f, rest(d.SN), X0); tgt[id[d.SN]] = aim(b, f, rest(d.FT), X0);
+        if (foot && ok3(fwd)) { const up = V.perp(V.sub(P[d.an], P[d.he]), V.norm(fwd)); if (ok3(up)) tgt[id[d.FT]] = aim(fwd, up, [0, -1, 0], Z0); } }
+    });
+    // world rotations -> hinge angles, joint by joint; a joint without a tracked rotation keeps its angles
+    const out = new Float64Array(q), Rw = new Array(nb); Rw[0] = tgt[0];
+    let qr = M.toQuat(Rw[0]); if (qr[0] * q[3] + qr[1] * q[4] + qr[2] * q[5] + qr[3] * q[6] < 0) qr = qr.map(v => -v);
+    out[3] = qr[0]; out[4] = qr[1]; out[5] = qr[2]; out[6] = qr[3];
+    for (let b = 1; b < nb; b++) { const h = 7 + 3 * (b - 1), pa = Rw[S.parent[b]], near = [q[h], q[h + 1], q[h + 2]];
+      if (tgt[b]) { const e = M.toEuler(M.mul(M.T(pa), tgt[b]), near); out[h] = e[0]; out[h + 1] = e[1]; out[h + 2] = e[2]; Rw[b] = tgt[b]; }
+      else Rw[b] = M.mul(pa, M.euler(near[0], near[1], near[2])); }
+    // the hips in the room: the lowest part of the body rests on the floor; the lower foot, while on the floor, stays where it is
+    out[0] = 0; out[1] = 0; out[2] = 0; const K = fk(S, out), fr = id.RightFoot, fl = id.LeftFoot; let low = 1e9;
+    for (let b = 0; b < nb; b++) low = Math.min(low, K.p[b][2] - RAD[b]);
+    const zr = K.p[fr][2] - RAD[fr], zl = K.p[fl][2] - RAD[fl]; let foot = root.foot;
+    if (Math.min(zr, zl) - low > 0.04) foot = -1; else if (foot < 0) foot = zr <= zl ? fr : fl; else if (foot === fr && zl < zr - 0.02) foot = fl; else if (foot === fl && zr < zl - 0.02) foot = fr;
+    if (o.travel && foot >= 0) { if (foot !== root.foot || !root.lock) root.lock = [root.xy[0] + K.p[foot][0], root.xy[1] + K.p[foot][1]];
+      root.xy = [root.lock[0] - K.p[foot][0], root.lock[1] - K.p[foot][1]]; } else root.lock = null;
+    root.foot = foot; out[0] = root.xy[0]; out[1] = root.xy[1]; out[2] = -low;
+    q = out; return out;
+  }
+  const home = () => { root.xy = [0, 0]; root.lock = null; root.foot = -1; };   // the hips back over the origin (a new recording starts here)
+  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get support() { return root.foot; } };
+}
+
+// A finished recording: frames taken at the camera's own times -> 30 frames a second, lightly smoothed.
+// frames = [{ t (seconds), q (73) }]. Returns { T, C, q } like libq.js decodeQ. Joints are mixed as rotations, not as
+// hinge angles, so a frame between two camera frames is always a real pose.
+export function toMove(frames, fps = 30, soften = 1) {
+  const C = 73, NJ = 23, n = frames.length, Q = frames.map(f => { const a = new Float64Array(4 * NJ); a.set([f.q[3], f.q[4], f.q[5], f.q[6]]);
+    for (let j = 1; j < NJ; j++) a.set(M.toQuat(M.euler(f.q[4 + 3 * j], f.q[5 + 3 * j], f.q[6 + 3 * j])), 4 * j); return a; });
+  for (let i = 1; i < n; i++) for (let j = 0; j < NJ; j++) { const o = 4 * j, A = Q[i - 1], B = Q[i]; if (A[o] * B[o] + A[o + 1] * B[o + 1] + A[o + 2] * B[o + 2] + A[o + 3] * B[o + 3] < 0) for (let c = 0; c < 4; c++) B[o + c] = -B[o + c]; }
+  const t0 = frames[0].t, T = Math.max(1, Math.floor((frames[n - 1].t - t0) * fps + 1e-6) + 1), rp = new Float64Array(T * 3), rq = new Float64Array(T * 4 * NJ); let k = 0;
+  for (let i = 0; i < T; i++) { const t = t0 + i / fps; while (k < n - 2 && frames[k + 1].t < t) k++;
+    const a = k, b = Math.min(n - 1, k + 1), u = frames[b].t > frames[a].t ? clamp01((t - frames[a].t) / (frames[b].t - frames[a].t)) : 0;
+    for (let c = 0; c < 3; c++) rp[i * 3 + c] = frames[a].q[c] + (frames[b].q[c] - frames[a].q[c]) * u;
+    for (let c = 0; c < 4 * NJ; c++) rq[i * 4 * NJ + c] = Q[a][c] + (Q[b][c] - Q[a][c]) * u; }
+  const q = new Float64Array(T * C), w = 0.25 * soften, mix = (src, i, c, W) => { const a = Math.max(0, i - 1), b = Math.min(T - 1, i + 1); return w * src[a * W + c] + (1 - 2 * w) * src[i * W + c] + w * src[b * W + c]; };
+  for (let i = 0; i < T; i++) { const o = i * C; for (let c = 0; c < 3; c++) q[o + c] = mix(rp, i, c, 3);
+    for (let j = 0; j < NJ; j++) { const v = [0, 1, 2, 3].map(c => mix(rq, i, 4 * j + c, 4 * NJ)), l = Math.hypot(...v) || 1;
+      if (j === 0) for (let c = 0; c < 4; c++) q[o + 3 + c] = v[c] / l;
+      else { const h = o + 4 + 3 * j, e = M.toEuler(M.fromQuat(v[0], v[1], v[2], v[3]), i ? [q[h - C], q[h + 1 - C], q[h + 2 - C]] : [frames[0].q[4 + 3 * j], frames[0].q[5 + 3 * j], frames[0].q[6 + 3 * j]]); q[h] = e[0]; q[h + 1] = e[1]; q[h + 2] = e[2]; } } }
+  return { T, C, q };
+}

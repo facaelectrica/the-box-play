@@ -1,0 +1,220 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RECORD v1</title><link rel="icon" href="../icon-192.png">
+<style>
+  *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #3a302a} header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
+  a{color:#e0a34a;text-decoration:none} a:hover{text-decoration:underline}
+  select,input[type=text]{font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:4px 6px}
+  button{font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:8px;padding:6px 12px;cursor:pointer;white-space:nowrap}
+  button:hover{background:#352b23} button:disabled{opacity:.4;cursor:default} button.pri{background:#e0a34a;color:#1b1612;border-color:#e0a34a} button.danger{background:#7a2b22;border-color:#b0483a;color:#fff} button.on{background:#e0a34a;color:#1b1612}
+  #views{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px}
+  .view{position:relative;background:#241d18;border-radius:10px;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center}
+  .view .lab{position:absolute;left:10px;top:6px;font-size:12px;color:#a99a8c;pointer-events:none;z-index:2}
+  #vwrap{position:relative;max-width:100%;max-height:100%} #video{display:block;max-width:100%;max-height:100%} #over{position:absolute;inset:0;width:100%;height:100%}
+  #vwrap.mir{transform:scaleX(-1)} #vwrap.test{height:100%;aspect-ratio:1} #vwrap.test video{display:none} #c3{width:100%;height:100%;display:block;cursor:grab}
+  #big{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:120px;font-weight:700;color:#ffd38a;text-shadow:0 2px 12px #000;pointer-events:none;z-index:3} #big small{font-size:16px;font-weight:400;color:#eee} #big[hidden]{display:none}
+  #msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#a99a8c;font-size:13px;padding:20px;pointer-events:none} #msg[hidden]{display:none}
+  #recDot{position:absolute;right:10px;top:8px;z-index:3;font-size:12px;font-weight:600;color:#fff;background:#b0362a;border-radius:6px;padding:1px 8px} #recDot[hidden]{display:none}
+  #bar{flex:none;padding:0 8px 8px;display:grid;gap:6px}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;background:#1f1915;border:1px solid #3a302a;border-radius:8px;padding:8px}
+  .row label{white-space:nowrap;color:#d8cdc2} .row input[type=checkbox]{vertical-align:-2px;margin:0 3px 0 0}
+  #state{font-weight:600;padding:0 8px;border-radius:4px;background:#3a302a;color:#d8cdc2} #state.live{background:#1f3a24;color:#9be3a6} #state.rec{background:#7a2b22;color:#fff} #state.err{background:#4a2020;color:#ff9f7a}
+  #note{font-size:12px;color:#ffb27a}
+  #tlBar{flex:1;min-width:120px;accent-color:#e0a34a} #tlTime,#trimTxt{font-variant-numeric:tabular-nums;color:#ffd38a;white-space:nowrap;font-size:12px} #name{width:230px}
+  #take[hidden]{display:none}
+</style></head>
+<body>
+<header><b>RECORD v1</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
+<div id="views">
+  <div class="view"><span class="lab">Camera</span><div id="vwrap" class="mir"><video id="video" playsinline muted></video><canvas id="over"></canvas></div>
+    <div id="msg">Start the camera, step back until your whole body is in view, then calibrate.</div><div id="big" hidden></div><div id="recDot" hidden>REC</div></div>
+  <div class="view"><span class="lab" id="lab3">Pose</span><canvas id="c3"></canvas></div>
+</div>
+<div id="bar">
+  <div class="row">
+    <select id="src" title="Video source"><option value="">Default camera</option><option value="test">Library move (test input)</option></select>
+    <button id="cam" class="pri">Start camera</button>
+    <button id="cal" disabled title="Stand straight, facing the camera. Sets upright, forward and a level head.">Calibrate</button>
+    <button id="rec" disabled title="Starts after a 3 second countdown (R)">Record</button>
+    <span class="sp"></span>
+    <label title="Tracking model: Heavy is the most accurate and the slowest">Model <select id="model"><option value="lite">Lite</option><option value="full" selected>Full</option><option value="heavy">Heavy</option></select></label>
+    <label title="Steadies the tracked points; higher values lag more">Smoothing <select id="smooth"><option value="0">Off</option><option value="0.5">Low</option><option value="1" selected>Medium</option><option value="2">High</option></select></label>
+    <label title="Show the camera and the pose as in a mirror"><input type="checkbox" id="mirror" checked>Mirror view</label>
+    <label title="Track wrist bend and forearm turn from the hand points"><input type="checkbox" id="hands" checked>Hands</label>
+    <label title="Move the hips through the room by keeping the standing foot still"><input type="checkbox" id="travel" checked>Travel</label>
+  </div>
+  <div class="row" id="take" hidden>
+    <button id="tlStart" title="To start">⏮</button><button id="tlPlay" title="Play (Space)">▶</button><button id="tlEnd" title="To end">⏭</button>
+    <input type="range" id="tlBar" min="0" max="0" value="0"><span id="tlTime">0.0 / 0.0 s</span>
+    <button id="trimIn" title="Start the move at the current frame (I)">Set start</button><button id="trimOut" title="End the move at the current frame (O)">Set end</button><span id="trimTxt"></span>
+    <input type="text" id="name" title="File name of the move" spellcheck="false">
+    <button id="dlQ" class="pri" title="Download the move in the library's format">Download move</button>
+    <button id="dlRaw" title="Download the tracked points of this recording, for diagnosis">Download tracking</button>
+    <button id="discard" class="danger">Discard</button>
+  </div>
+</div>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+// Record a move with the camera: MediaPipe's Pose Landmarker tracks 33 body points in the browser (nothing is sent
+// anywhere), mocap/solve.js turns them into his pose every frame, and a finished recording is a library move (.q).
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { readBody, fk } from './mocap/skel.js?v=1';
+import { makeSolver, toMove } from './mocap/solve.js?v=1';
+import { fakePoints } from './mocap/synth.js?v=1';
+import { encodeQ } from './mocap/encq.js?v=1';
+import { decodeQ } from './libq.js?v=1';
+const $ = id => document.getElementById(id);
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3', MODEL = k => `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${k}/float16/latest/pose_landmarker_${k}.task`;
+const TEST_MOVE = 'h_b_w_crouch_to_stand_270_start_003__A342', FPS = 30;
+const S = readBody(await (await fetch('../body/soma23_box.xml')).text()), sol = makeSolver(S);
+const st = { mode: 'off', stream: null, tracker: null, trackerKind: '', test: null, last: null, frames: null, t0: 0, take: null, play: false, frame: 0, in: 0, out: 0, count: 0, seen: 0, fpsT: 0, fpsN: 0, gen: 0 };
+
+// ---------- the pose view ----------
+const c3 = $('c3'), ren = new THREE.WebGLRenderer({ canvas: c3, antialias: true }), scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(40, 1, 0.05, 50);
+cam.up.set(0, 0, 1); cam.position.set(0, -3.6, 1.2); const orbit = new OrbitControls(cam, c3); orbit.target.set(0, 0, 0.9); orbit.update();
+scene.background = new THREE.Color(0x241d18); scene.add(new THREE.HemisphereLight(0xffffff, 0x5a4a3e, 2.2)); const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(-2, -3, 5); scene.add(sun);
+const world = new THREE.Group(); scene.add(world);
+const grid = new THREE.GridHelper(6, 12, 0x5a4a3e, 0x3a302a); grid.rotation.x = Math.PI / 2; world.add(grid);
+const matB = new THREE.MeshStandardMaterial({ color: 0xd8cdc2, roughness: 0.7, side: THREE.DoubleSide }), matJ = new THREE.MeshStandardMaterial({ color: 0xe0a34a, roughness: 0.5, side: THREE.DoubleSide }), matF = new THREE.MeshStandardMaterial({ color: 0x7ddc8a, roughness: 0.5, side: THREE.DoubleSide });
+const bones = [], joints = [], cyl = new THREE.CylinderGeometry(1, 1, 1, 10), sph = new THREE.SphereGeometry(1, 14, 10);
+for (let b = 0; b < 23; b++) { const j = new THREE.Mesh(sph, matJ); j.scale.setScalar(S.names[b] === 'Head' ? 0.09 : 0.03); world.add(j); joints.push(j);
+  if (b) { const m = new THREE.Mesh(cyl, matB); world.add(m); bones.push(m); } else bones.push(null); }
+const UP = new THREE.Vector3(0, 1, 0), va = new THREE.Vector3(), vb = new THREE.Vector3();
+let follow = null;
+function drawPose(q, o = 0, support = -1) {
+  const K = fk(S, q, o), hx = K.p[0][0] * world.scale.x, hy = K.p[0][1];
+  if (follow) { const dx = (hx - follow[0]) * 0.15, dy = (hy - follow[1]) * 0.15; follow[0] += dx; follow[1] += dy; cam.position.x += dx; cam.position.y += dy; orbit.target.x += dx; orbit.target.y += dy; orbit.update(); } else follow = [0, 0];   // the view follows the hips
+  for (let b = 0; b < 23; b++) { const p = K.p[b]; joints[b].position.set(p[0], p[1], p[2] + (S.names[b] === 'Head' ? 0.08 : 0)); joints[b].material = b === support ? matF : matJ;
+    if (b) { const a = K.p[S.parent[b]]; va.set(a[0], a[1], a[2]); vb.set(p[0], p[1], p[2]); const d = vb.clone().sub(va), l = d.length() || 1e-4;
+      bones[b].position.copy(va).addScaledVector(d, 0.5); bones[b].scale.set(0.02, l, 0.02); bones[b].quaternion.setFromUnitVectors(UP, d.divideScalar(l)); } }
+}
+function size() { const w = c3.clientWidth, h = c3.clientHeight; if (!w || !h) return; ren.setPixelRatio(Math.min(2, devicePixelRatio)); ren.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+addEventListener('resize', size); size(); drawPose(sol.pose);
+(function loop() { requestAnimationFrame(loop); if (st.mode === 'take' && st.play) stepPlay(); ren.render(scene, cam); })();
+
+// ---------- the camera view: the tracked points over the picture ----------
+const video = $('video'), over = $('over'), g = over.getContext('2d');
+const LINKS = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28], [27, 29], [29, 31], [27, 31], [28, 30], [30, 32], [28, 32], [15, 19], [16, 20], [0, 7], [0, 8]];
+function drawPoints(pts, w, h) {   // pts: 33 points in the picture, x and y from 0 to 1
+  if (over.width !== w || over.height !== h) { over.width = w; over.height = h; } g.clearRect(0, 0, w, h); if (!pts) return;
+  const min = sol.opt.minVis, lw = Math.max(2, w / 320); g.lineWidth = lw;
+  for (const [a, b] of LINKS) { const A = pts[a], B = pts[b], okv = (A.visibility ?? 1) >= min && (B.visibility ?? 1) >= min; g.strokeStyle = okv ? '#e0a34a' : 'rgba(169,154,140,.5)'; g.beginPath(); g.moveTo(A.x * w, A.y * h); g.lineTo(B.x * w, B.y * h); g.stroke(); }
+  for (let i = 0; i < 33; i++) { if (i > 0 && i < 11 && i !== 7 && i !== 8) continue; const p = pts[i]; g.fillStyle = (p.visibility ?? 1) >= min ? '#ffd38a' : 'rgba(169,154,140,.6)'; g.beginPath(); g.arc(p.x * w, p.y * h, lw * 1.5, 0, 7); g.fill(); }
+}
+
+// ---------- status ----------
+function setState(txt, cls = '') { $('state').textContent = txt; $('state').className = cls; }
+function ui() {
+  const live = st.mode === 'live', busy = st.mode === 'count' || st.mode === 'rec', on = st.mode !== 'off';
+  $('cam').textContent = on ? 'Stop camera' : 'Start camera'; $('cam').classList.toggle('pri', !on); $('cam').disabled = st.mode === 'loading';
+  $('cal').disabled = !live; $('rec').disabled = !(live || st.mode === 'rec' || st.mode === 'count'); $('rec').textContent = busy ? 'Stop' : 'Record'; $('rec').classList.toggle('danger', busy);
+  $('src').disabled = on; $('model').disabled = !(st.mode === 'off' || st.mode === 'live'); $('take').hidden = st.mode !== 'take'; $('recDot').hidden = st.mode !== 'rec';
+  $('lab3').textContent = st.mode === 'take' ? 'Recording' : 'Pose'; $('msg').hidden = on && st.mode !== 'loading';
+  if (st.mode === 'off') { setState('Camera off'); $('fps').textContent = ''; $('note').textContent = ''; }
+  else if (st.mode === 'take') setState('Review');
+}
+function note() {   // what the tracker cannot see right now
+  const v = st.last && st.last.world, see = (...k) => k.every(i => (v[i].visibility ?? 1) >= sol.opt.minVis);
+  if (!v) { $('note').textContent = st.mode === 'live' || st.mode === 'rec' || st.mode === 'count' ? 'No body in view.' : ''; return; }
+  const miss = []; if (!see(23, 25, 27) || !see(24, 26, 28)) miss.push('legs'); if (!see(11, 13, 15) || !see(12, 14, 16)) miss.push('arms');
+  $('note').textContent = miss.length ? 'Out of view: ' + miss.join(' and ') + '. They keep their last pose.' : '';
+}
+
+// ---------- tracking ----------
+async function loadTracker(kind) {
+  if (st.tracker && st.trackerKind === kind) return; if (st.tracker) { st.tracker.close(); st.tracker = null; }
+  const { PoseLandmarker, FilesetResolver } = await import(MP + '/vision_bundle.mjs'), files = await FilesetResolver.forVisionTasks(MP + '/wasm');
+  const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL(kind), delegate }, runningMode: 'VIDEO', numPoses: 1 });
+  try { st.tracker = await make('GPU'); } catch (e) { console.warn('GPU tracker failed, using the CPU', e); st.tracker = await make('CPU'); }
+  st.trackerKind = kind;
+}
+async function start() {
+  const gen = ++st.gen; st.mode = 'loading'; ui(); $('msg').hidden = false; sol.reset(); applyOpts(); st.last = null;
+  try {
+    if ($('src').value === 'test') { setState('Loading move'); $('msg').textContent = 'Loading the test move.';
+      const r = await fetch('clips/' + TEST_MOVE + '.q'); if (!r.ok) throw new Error('The test move could not be loaded.'); st.test = await decodeQ(await r.arrayBuffer()); }
+    else { setState('Loading tracker'); $('msg').textContent = 'Loading the tracker. The first load downloads the model.';
+      await loadTracker($('model').value); if (gen !== st.gen) return;
+      setState('Opening camera'); const id = $('src').value;
+      st.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { deviceId: id ? { exact: id } : undefined, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
+      if (gen !== st.gen) { st.stream.getTracks().forEach(t => t.stop()); st.stream = null; return; }
+      video.srcObject = st.stream; await video.play(); listCameras(); }
+  } catch (e) { if (gen !== st.gen) return; stop(); setState(e && e.name === 'NotAllowedError' ? 'Camera blocked' : 'Error', 'err'); $('msg').hidden = false; $('msg').textContent = e && e.name === 'NotAllowedError' ? 'The browser blocked the camera. Allow camera access for this page, then start again.' : String(e && e.message || e); return; }
+  st.mode = 'live'; st.fpsT = performance.now(); st.fpsN = 0; $('vwrap').classList.toggle('test', !!st.test); ui(); setState('Tracking', 'live'); st.test ? testLoop(gen) : camLoop(gen);
+}
+function stop() { st.gen++; if (st.stream) st.stream.getTracks().forEach(t => t.stop()); st.stream = null; video.srcObject = null; st.test = null; st.frames = null; st.take = null; st.play = false; st.mode = 'off'; $('big').hidden = true; drawPoints(null, over.width, over.height);
+  $('msg').textContent = 'Start the camera, step back until your whole body is in view, then calibrate.'; ui(); }
+async function listCameras() { try { const cur = $('src').value, ds = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput' && d.label);
+  if (!ds.length) return; $('src').innerHTML = ds.map(d => `<option value="${d.deviceId}">${d.label.replace(/[<&]/g, '')}</option>`).join('') + '<option value="test">Library move (test input)</option>';
+  const act = st.stream && st.stream.getVideoTracks()[0].getSettings().deviceId; $('src').value = ds.some(d => d.deviceId === act) ? act : cur; } catch (_) {} }
+function camLoop(gen) {
+  let lastT = -1;
+  const tick = () => { if (gen !== st.gen) return; next();
+    if (video.readyState >= 2 && video.currentTime !== lastT && st.mode !== 'take') { lastT = video.currentTime; const now = performance.now(); let res = null;
+      try { res = st.tracker.detectForVideo(video, now); } catch (e) { console.warn(e); }
+      const world = res && res.worldLandmarks && res.worldLandmarks[0], img = res && res.landmarks && res.landmarks[0];
+      onPoints(world || null, img || null, now / 1000, video.videoWidth, video.videoHeight); } };
+  const next = () => video.requestVideoFrameCallback ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); next();
+}
+function testLoop(gen) {   // a library move stands in for the camera: its poses become tracked points
+  const d = st.test, t0 = performance.now(); let lastF = -1;
+  const tick = () => { if (gen !== st.gen) return; requestAnimationFrame(tick); const now = performance.now(), f = Math.floor((now - t0) / 1000 * FPS) % d.T; if (f === lastF || st.mode === 'take') return; lastF = f;
+    const world = fakePoints(S, d.q, f * 73), img = world.map(p => ({ x: 0.5 - p.x * 0.42, y: 0.52 + p.y * 0.42, visibility: 1 })); onPoints(world, img, now / 1000, 640, 640); };
+  tick();
+}
+function onPoints(world, img, t, w, h) {
+  st.last = world ? { world, t } : null; drawPoints(img, w, h); st.fpsN++;
+  if (t * 1000 - st.fpsT > 1000) { $('fps').textContent = Math.round(st.fpsN * 1000 / (t * 1000 - st.fpsT)) + ' fps'; st.fpsT = t * 1000; st.fpsN = 0; note(); }
+  if (!world) return;
+  const q = sol.solve(world, t); drawPose(q, 0, sol.support);
+  if (st.mode === 'rec') { st.frames.push({ t: t - st.t0, q: Float64Array.from(q), lm: world.map(p => [+p.x.toFixed(4), +p.y.toFixed(4), +p.z.toFixed(4), +(p.visibility ?? 1).toFixed(2)]) });
+    setState('Recording ' + (t - st.t0).toFixed(1) + ' s', 'rec'); if (t - st.t0 > 120) finish(); }
+}
+function applyOpts() { sol.opt.smooth = +$('smooth').value; sol.opt.hands = $('hands').checked; sol.opt.travel = $('travel').checked; }
+for (const k of ['smooth', 'hands', 'travel']) $(k).onchange = applyOpts;
+$('mirror').onchange = () => { const m = $('mirror').checked; $('vwrap').classList.toggle('mir', m); world.scale.x = m ? -1 : 1; if (follow) { const dx = -2 * follow[0]; follow[0] += dx; cam.position.x += dx; orbit.target.x += dx; orbit.update(); } }; world.scale.x = -1;
+$('model').onchange = () => { if (st.mode === 'live' && !st.test) { stop(); start(); } };
+$('cam').onclick = () => st.mode === 'off' ? start() : stop();
+
+// ---------- countdown, calibrate, record ----------
+function countdown(text, then) {
+  const gen = st.gen, big = $('big'); st.mode = 'count'; st.count++; const my = st.count; ui(); let n = 3;
+  const tick = () => { if (gen !== st.gen || st.mode !== 'count' || my !== st.count) { big.hidden = true; return; }
+    if (n === 0) { big.hidden = true; then(); return; } big.hidden = false; big.innerHTML = n + '<small>' + text + '</small>'; n--; setTimeout(tick, 1000); };
+  tick();
+}
+$('cal').onclick = () => countdown('Stand straight, facing the camera', () => { st.mode = 'live'; const okc = st.last && sol.calibrate(st.last.world); ui(); setState(okc ? 'Calibrated' : 'Calibration failed: no body in view', okc ? 'live' : 'err'); if (okc) setTimeout(() => { if (st.mode === 'live') setState('Tracking', 'live'); }, 1500); });
+$('rec').onclick = () => { if (st.mode === 'rec') return finish(); if (st.mode === 'count') { st.mode = 'live'; $('big').hidden = true; ui(); setState('Tracking', 'live'); return; }
+  if (st.mode === 'take') return; countdown('Recording starts', () => { sol.home(); st.frames = []; st.t0 = performance.now() / 1000; st.mode = 'rec'; ui(); }); };
+function finish() {
+  if (st.mode !== 'rec') return; const fr = st.frames; st.frames = null;
+  if (!fr || fr.length < 5) { st.mode = 'live'; ui(); setState('Nothing recorded: no body in view', 'err'); return; }
+  const mv = toMove(fr, FPS, 1), d = new Date(), p = v => String(v).padStart(2, '0');
+  st.take = { mv, raw: fr }; st.mode = 'take'; st.play = false; st.frame = 0; st.in = 0; st.out = mv.T - 1; $('tlBar').max = mv.T - 1;
+  $('name').value = `rec_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; ui(); show(); $('fps').textContent = ''; $('note').textContent = '';
+}
+
+// ---------- reviewing a recording ----------
+let playT = 0;
+function show() { const { mv } = st.take; st.frame = Math.max(0, Math.min(mv.T - 1, st.frame)); drawPose(mv.q, st.frame * 73); $('tlBar').value = st.frame;
+  $('tlTime').textContent = (st.frame / FPS).toFixed(1) + ' / ' + ((mv.T - 1) / FPS).toFixed(1) + ' s'; $('tlPlay').textContent = st.play ? '⏸' : '▶';
+  $('trimTxt').textContent = `${(st.in / FPS).toFixed(1)}–${(st.out / FPS).toFixed(1)} s (${st.out - st.in + 1} frames)`; }
+function stepPlay() { const now = performance.now(); if (now - playT < 1000 / FPS) return; playT += 1000 / FPS; if (now - playT > 200) playT = now; st.frame++; if (st.frame > st.out) st.frame = st.in; show(); }
+function playPause() { if (st.mode !== 'take') return; st.play = !st.play; playT = performance.now(); if (st.play && (st.frame >= st.out || st.frame < st.in)) st.frame = st.in; show(); }
+$('tlPlay').onclick = playPause; $('tlStart').onclick = () => { st.frame = st.in; show(); }; $('tlEnd').onclick = () => { st.frame = st.out; show(); };
+$('tlBar').oninput = () => { st.play = false; st.frame = +$('tlBar').value; show(); };
+$('trimIn').onclick = () => { st.in = Math.min(st.frame, st.out - 1); show(); }; $('trimOut').onclick = () => { st.out = Math.max(st.frame, st.in + 1); show(); };
+$('discard').onclick = () => { st.take = null; st.play = false; st.mode = 'live'; ui(); setState('Tracking', 'live'); };
+const save = (blob, file) => { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); };
+const fileName = () => ($('name').value.trim().replace(/[^\w.-]+/g, '_') || 'rec');
+function trimmed() { const { mv } = st.take, T = st.out - st.in + 1; return { T, q: mv.q.slice(st.in * 73, (st.out + 1) * 73) }; }
+$('dlQ').onclick = async () => { const m = trimmed(); save(new Blob([await encodeQ(m.q, m.T)], { type: 'application/octet-stream' }), fileName() + '.q'); };
+$('dlRaw').onclick = () => save(new Blob([JSON.stringify({ about: 'MediaPipe Pose Landmarker world points of one recording (x, y, z in metres, visibility)', model: st.trackerKind || 'test', frames: st.take.raw.map(f => ({ t: +f.t.toFixed(4), lm: f.lm })) })], { type: 'application/json' }), fileName() + '.tracking.json');
+addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' && e.target.type === 'text') return; const k = e.key.toLowerCase();
+  if (k === ' ') { e.preventDefault(); playPause(); } else if (k === 'r' && !$('rec').disabled) $('rec').click(); else if (st.mode === 'take' && k === 'i') $('trimIn').click(); else if (st.mode === 'take' && k === 'o') $('trimOut').click(); });
+ui();
+window.__rec = { st, sol, S, finish, trimmed, encode: encodeQ };
+</script>
+</body></html>
