@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v17</title>
+<title>EDITOR v18</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -42,8 +42,8 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v17</b><span class="dim" id="file"></span><span class="sp"></span>
-    <button id="gh" title="GitHub key for publishing">Key</button><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
+  <header><b>EDITOR v18</b><span class="dim" id="file"></span><span class="sp"></span>
+    <button id="snapB" title="save this moment for Claude: the box, his body, the orders, the last 20 s of signs (S)">Snapshot</button><button id="gh" title="GitHub key for publishing">Key</button><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Otherwise<br><small>chooser</small></div></div>
     <div id="puppet">
@@ -64,7 +64,7 @@
 </div>
 <div id="split" title="drag to give the editor or the box more room"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=17"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=18"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -397,12 +397,24 @@ function keys(win) {
     e.preventDefault(); };
   for (const w of [window, win]) w.addEventListener('keydown', down);
 }
-let lastAct = null;
+let lastAct = null; const trail = [];   // the last 20 s: time, who drives him, the signs, the tilt
+function snapshot() {
+  const r = v => typeof v === 'number' ? +v.toFixed(3) : v;
+  const box = (() => { try { return F.__box.snap(); } catch (e) { return { error: String(e) }; } })();
+  const js = JSON.stringify({ what: 'editor snapshot', editor: document.title, at: new Date().toISOString(), tilt: { leftRight: +$('roll').value, forwardBack: +$('pitch').value, phoneView: $('lock').checked },
+    active: G.active ? G.active.name : 'chooser', forced: G.force, orders: ordersFile().orders, signsNow: Object.fromEntries(Object.entries(G.signs || {}).map(([k, v]) => [k, r(v)])),
+    switches: G.switches, trailNote: '[seconds, active, head, chest, hips, rightHand, leftHand, rightFoot, leftFoot, lean, speed, tilt] every 0.2 s', trail, chooser: G.report ? G.report() : null, box });
+  const name = 'editor-snapshot-' + new Date().toISOString().slice(11, 19).replace(/:/g, '') + '.json', a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = name; a.click(); $('file').textContent = 'snapshot saved: ' + name;
+}
+$('snapB').onclick = snapshot;
+addEventListener('keydown', e => { if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') snapshot(); });
 function tick() {
   const a = G.active; $('active').textContent = a ? `Order: ${a.name}` : 'Chooser'; $('who').className = a ? 'order' : 'chooser';
   $('whoWhy').textContent = a ? (G.force === a.name ? 'forced by Test · your pose, every frame' : 'your pose, every frame · chooser off') : `the brain decides · ${G.rate || 0} decisions/s`;
   $('sw').textContent = (G.switches || []).slice(-3).map(x => `${x[0]}s → ${x[1]}`).join('   ');
   if (a !== lastAct) { lastAct = a; listOrders(); }
+  { const S = G.signs || {}, f = v => v === undefined ? null : +v.toFixed(3); trail.push([+((performance.now()) / 1000).toFixed(1), a ? a.name : 'chooser', ...['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot', 'lean', 'speed', 'tilt'].map(k => f(S[k]))]); if (trail.length > 100) trail.shift(); }
   const S = G.signs || {}; $('signs').innerHTML = Object.entries(SIGNS).map(([k, [lab, u]]) => `<tr><td>${lab}</td><td>${S[k] === undefined ? '–' : S[k].toFixed(u === 'm' || u === 'm/s' ? 2 : 0)} ${u}</td></tr>`).join('');
   setTimeout(tick, 200);
 }

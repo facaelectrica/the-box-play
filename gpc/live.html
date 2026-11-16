@@ -1914,7 +1914,7 @@ function showState() {
   const t = crack && crack.dead ? 'broken' : kin.state === 'stand' ? 'standing' : kin.state === 'react' ? 'recovering' : kin.state === 'fall' ? 'falling' : 'getting up';
   if (t !== stateShown) { stateShown = t; try { document.getElementById('brainver').textContent = t; } catch (_) {} }
 }
-window.__box = { W, standUp, dragRot, look, lookBtn: () => $('look'), kin: () => kin };   // for the orders editor (gpc/editor.html)
+window.__box = { W, standUp, dragRot, look, lookBtn: () => $('look'), kin: () => kin, snap: () => makeSnap() };   // for the orders editor (gpc/editor.html)
 window.__kin = () => kin; window.__crack = () => crack; window.__crackMs = () => ({ max: crackFrame.max || 0, slow: crackFrame.slow || 0 });
 // ================= start =================
 $('go').onclick = async () => {
