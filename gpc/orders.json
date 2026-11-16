@@ -1,7 +1,127 @@
 {
  "version": 3,
- "saved": "2026-11-16T20:15:55.663Z",
+ "saved": "2026-11-16T20:36:00.724010Z",
  "orders": [
+  {
+   "name": "Get Up",
+   "on": true,
+   "do": {
+    "type": "recording",
+    "moves": [
+     "stand_up_lying_R_002__A472",
+     "stand_up_lying_R_002__A473",
+     "stand_up_lying_R_002__A474",
+     "stand_up_lying_R_002__A475",
+     "stand_up_lying_stomach_R_002__A472",
+     "stand_up_lying_stomach_R_002__A474",
+     "stand_up_lying_stomach_R_002__A473",
+     "stand_up_lying_stomach_R_002__A475"
+    ]
+   },
+   "start": {
+    "all": [
+     {
+      "s": "hips",
+      "c": "<",
+      "v": 0.35
+     },
+     {
+      "s": "head",
+      "c": "<",
+      "v": 0.6
+     },
+     {
+      "s": "speed",
+      "c": "<",
+      "v": 0.5
+     }
+    ],
+    "for": 0.5
+   },
+   "stop": {
+    "all": [
+     {
+      "s": "head",
+      "c": ">",
+      "v": 1.3
+     },
+     {
+      "s": "hips",
+      "c": ">",
+      "v": 0.8
+     }
+    ],
+    "for": 0.3
+   },
+   "steps": [
+    {
+     "pose": {
+      "root_w": 0.9972,
+      "root_x": 0.0456,
+      "root_y": -0.0062,
+      "root_z": -0.0613,
+      "Spine1_x": 0.0403,
+      "Spine1_y": -0.0207,
+      "Spine1_z": 0.006,
+      "Spine2_x": -0.0617,
+      "Spine2_z": -0.002,
+      "Chest_x": 0.2347,
+      "Chest_y": 0.0147,
+      "Chest_z": -0.0413,
+      "Neck1_x": -0.0127,
+      "Neck1_y": -0.0087,
+      "Neck1_z": 0.0463,
+      "Neck2_x": -0.061,
+      "Neck2_y": 0.0353,
+      "Neck2_z": -0.0657,
+      "Head_x": -0.2677,
+      "Head_y": 0.003,
+      "Head_z": -0.0967,
+      "RightShoulder_x": 0.1723,
+      "RightShoulder_y": 0.1017,
+      "RightShoulder_z": 0.2943,
+      "RightArm_x": 0.2267,
+      "RightArm_y": -1.2763,
+      "RightArm_z": 0.793,
+      "RightForeArm_z": 1.249,
+      "RightHand_x": -1.493,
+      "RightHand_y": -0.2727,
+      "RightHand_z": 0.3513,
+      "LeftShoulder_x": 0.2393,
+      "LeftShoulder_y": 0.067,
+      "LeftShoulder_z": -0.1593,
+      "LeftArm_x": 0.391,
+      "LeftArm_y": 0.6793,
+      "LeftArm_z": -0.901,
+      "LeftForeArm_z": -2.08,
+      "LeftHand_x": 0.795,
+      "LeftHand_y": -0.1057,
+      "LeftHand_z": -0.0737,
+      "RightLeg_x": -0.3627,
+      "RightLeg_y": 0.154,
+      "RightLeg_z": -0.227,
+      "RightShin_x": 0.485,
+      "RightFoot_x": -0.1813,
+      "RightFoot_y": -0.068,
+      "RightFoot_z": -0.0827,
+      "RightToeBase_x": 0.029,
+      "RightToeBase_y": 0.025,
+      "RightToeBase_z": 0.0167,
+      "LeftLeg_x": -0.4167,
+      "LeftLeg_y": -0.1047,
+      "LeftLeg_z": -0.022,
+      "LeftShin_x": 0.4497,
+      "LeftFoot_x": -0.1387,
+      "LeftFoot_y": 0.1207,
+      "LeftFoot_z": 0.0673,
+      "LeftToeBase_x": 0.0033,
+      "LeftToeBase_y": -0.0287,
+      "LeftToeBase_z": -0.0347
+     },
+     "time": 1
+    }
+   ]
+  },
   {
    "name": "Idle",
    "on": true,
@@ -534,121 +654,6 @@
       "LeftShin_x": 0.1869,
       "LeftFoot_x": -0.0947,
       "LeftFoot_z": 0.2094
-     },
-     "time": 1
-    }
-   ]
-  },
-  {
-   "name": "Get Up",
-   "on": true,
-   "do": {
-    "type": "recording",
-    "moves": [
-     "stand_up_lying_R_002__A472",
-     "stand_up_lying_R_002__A473",
-     "stand_up_lying_R_002__A474",
-     "stand_up_lying_R_002__A475",
-     "stand_up_lying_stomach_R_002__A472",
-     "stand_up_lying_stomach_R_002__A474",
-     "stand_up_lying_stomach_R_002__A473",
-     "stand_up_lying_stomach_R_002__A475"
-    ]
-   },
-   "start": {
-    "all": [
-     {
-      "s": "hips",
-      "c": "<",
-      "v": 0.21
-     },
-     {
-      "s": "head",
-      "c": "<",
-      "v": 0.37
-     },
-     {
-      "s": "speed",
-      "c": "<",
-      "v": 0.3
-     }
-    ],
-    "for": 0.5
-   },
-   "stop": {
-    "all": [
-     {
-      "s": "head",
-      "c": ">",
-      "v": 1.3
-     }
-    ],
-    "for": 1.3
-   },
-   "steps": [
-    {
-     "pose": {
-      "root_w": 0.9972,
-      "root_x": 0.0456,
-      "root_y": -0.0062,
-      "root_z": -0.0613,
-      "Spine1_x": 0.0403,
-      "Spine1_y": -0.0207,
-      "Spine1_z": 0.006,
-      "Spine2_x": -0.0617,
-      "Spine2_z": -0.002,
-      "Chest_x": 0.2347,
-      "Chest_y": 0.0147,
-      "Chest_z": -0.0413,
-      "Neck1_x": -0.0127,
-      "Neck1_y": -0.0087,
-      "Neck1_z": 0.0463,
-      "Neck2_x": -0.061,
-      "Neck2_y": 0.0353,
-      "Neck2_z": -0.0657,
-      "Head_x": -0.2677,
-      "Head_y": 0.003,
-      "Head_z": -0.0967,
-      "RightShoulder_x": 0.1723,
-      "RightShoulder_y": 0.1017,
-      "RightShoulder_z": 0.2943,
-      "RightArm_x": 0.2267,
-      "RightArm_y": -1.2763,
-      "RightArm_z": 0.793,
-      "RightForeArm_z": 1.249,
-      "RightHand_x": -1.493,
-      "RightHand_y": -0.2727,
-      "RightHand_z": 0.3513,
-      "LeftShoulder_x": 0.2393,
-      "LeftShoulder_y": 0.067,
-      "LeftShoulder_z": -0.1593,
-      "LeftArm_x": 0.391,
-      "LeftArm_y": 0.6793,
-      "LeftArm_z": -0.901,
-      "LeftForeArm_z": -2.08,
-      "LeftHand_x": 0.795,
-      "LeftHand_y": -0.1057,
-      "LeftHand_z": -0.0737,
-      "RightLeg_x": -0.3627,
-      "RightLeg_y": 0.154,
-      "RightLeg_z": -0.227,
-      "RightShin_x": 0.485,
-      "RightFoot_x": -0.1813,
-      "RightFoot_y": -0.068,
-      "RightFoot_z": -0.0827,
-      "RightToeBase_x": 0.029,
-      "RightToeBase_y": 0.025,
-      "RightToeBase_z": 0.0167,
-      "LeftLeg_x": -0.4167,
-      "LeftLeg_y": -0.1047,
-      "LeftLeg_z": -0.022,
-      "LeftShin_x": 0.4497,
-      "LeftFoot_x": -0.1387,
-      "LeftFoot_y": 0.1207,
-      "LeftFoot_z": 0.0673,
-      "LeftToeBase_x": 0.0033,
-      "LeftToeBase_y": -0.0287,
-      "LeftToeBase_z": -0.0347
      },
      "time": 1
     }
