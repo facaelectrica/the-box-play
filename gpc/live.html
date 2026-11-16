@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 20</div><div id="brainver"></div>
+<div id="ver">GPC live 21</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -908,6 +908,25 @@ function balanceView(dt) {
 $('bal').onclick = e => { e.stopPropagation(); balOn = !balOn; $('bal').classList.toggle('on', balOn); $('balTxt').style.display = balOn ? 'block' : 'none'; if (balG) balG.visible = balOn; };
 for (const ev of ['pointerdown', 'pointerup']) $('bal').addEventListener(ev, e => e.stopPropagation());
 
+// (user Nov 16 16:03) the drawn spine stays human. The physics may bend the three spine joints past what people do (the
+// get-ups need it); the picture keeps the hips and the chest exactly where the physics has them and spreads the same
+// total bend over the lower and mid back, the belly lined up with the chest, so only the ball above the hips and the
+// belly are drawn differently. It
+// steps in gradually once any spine hinge passes the range real people use (the library's, below) by up to 8 deg.
+const SPINE_REAL = {"Spine1_x": [-16.4, 47.8], "Spine1_y": [-17.6, 17.9], "Spine1_z": [-24.5, 27.3], "Spine2_x": [-17.2, 19.9], "Spine2_y": [-9.5, 12.3], "Spine2_z": [-16.4, 14.9], "Chest_x": [-15, 53.8], "Chest_y": [-29.8, 24.3], "Chest_z": [-18.6, 13.5]};
+const _sq = { h: new THREE.Quaternion(), c: new THREE.Quaternion(), r: new THREE.Quaternion(), id: new THREE.Quaternion(), a: new THREE.Quaternion(), p: new THREE.Vector3(), v: new THREE.Vector3() };
+window.__spineView = true;
+function spineView() {
+  const d = W.d, m = W.m; let ex = 0;
+  for (const n in SPINE_REAL) { const a = W.act.find(x => x.name === n); if (!a) continue; const v = d.qpos[a.qadr] * 180 / Math.PI, [lo, hi] = SPINE_REAL[n]; ex = Math.max(ex, lo - v, v - hi); }
+  const w = window.__spineView ? Math.max(0, Math.min(1, ex / 8)) : 0; spineView.w = w; if (w <= 0) return;
+  const H = W.bodyId.Hips, C = W.bodyId.Chest, S1 = W.bodyId.Spine1, S2 = W.bodyId.Spine2, Q = (q, b) => q.set(d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]);
+  Q(_sq.h, H); Q(_sq.c, C); _sq.r.copy(_sq.h).invert().multiply(_sq.c); _sq.r.copy(_sq.id.identity().slerp(_sq.r, 1 / 2));   // half of the hips-to-chest turn at the lower back, half at the mid back; the chest lines up with the belly (user 16:08)
+  _sq.p.set(d.xpos[3 * H], d.xpos[3 * H + 1], d.xpos[3 * H + 2]); _sq.a.copy(_sq.h);
+  for (const b of [S1, S2]) { const g = bodyGroup[b];
+    _sq.v.set(m.body_pos[3 * b], m.body_pos[3 * b + 1], m.body_pos[3 * b + 2]).applyQuaternion(_sq.a); _sq.p.add(_sq.v); _sq.a.multiply(_sq.r);   // down the chain: this joint's place, then its turn
+    if (g) { g.position.lerp(_sq.p, w); g.quaternion.slerp(_sq.a, w); } }
+}
 function syncFigure() {
   const d = W.d;
   poseHands(1 / 60);
@@ -916,6 +935,7 @@ function syncFigure() {
     g.position.set(d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]);
     g.quaternion.set(d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]);
   }
+  spineView();
   if (torso) for (const bn of torso.bones) { const b = W.bodyId[bn.name]; bn.position.set(d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]); bn.quaternion.set(d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]); }
   if (dbgMode === 2) updateSkel();
   footShadows();
