@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 21</div><div id="brainver"></div>
+<div id="ver">GPC live 22</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -305,7 +305,7 @@ import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=57';
 import { AnatGuard } from './sim/anat.js?v=58';
 import { PhysBrain } from './sim/physctl.js?v=57';
 import { addPins } from './sim/pins.js?v=57';
-import { rigHand, poseHand } from './sim/fingers.js?v=57';
+import { rigHand, poseHand } from './gpc/fingers.js?v=2';   // (user Nov 16 16:16) the hand's own solid pieces, not cut
 import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=58';
 import * as ort from 'onnxruntime-web';
 if ('serviceWorker' in navigator && !self.crossOriginIsolated && !sessionStorage.getItem('swtry3')) { sessionStorage.setItem('swtry3', '1'); navigator.serviceWorker.register(new URL('gpc/sw.js', document.baseURI).href).then(() => navigator.serviceWorker.ready).then(() => location.reload()); }
