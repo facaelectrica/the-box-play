@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v36</title>
+<title>EDITOR v37</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -36,7 +36,7 @@
   #who{position:absolute;left:10px;top:10px;padding:4px 9px;border-radius:6px;font-size:13px;font-weight:600;pointer-events:none;display:flex;flex-direction:row-reverse;gap:8px;align-items:baseline}
   #who.order{background:#1f3a24;color:#9be3a6;border:1px solid #3f7a4a} #who.chooser{background:#3e2617;color:#ffb27a;border:1px solid #8a4a22}
   #who small{font-weight:400;font-size:11px;opacity:.85}
-  #bar{flex:none;display:grid;gap:3px} .trow{display:grid;grid-template-columns:96px 1fr 40px;gap:8px;align-items:center;font-size:12px;color:#d8cdc2} .trow input{width:100%}
+  #bar{flex:none;display:grid;gap:3px} .trow{display:grid;grid-template-columns:118px 1fr 40px;gap:8px;align-items:center;font-size:12px;color:#d8cdc2} .trow input{width:100%}
   .brow{display:flex;gap:10px;align-items:center;font-size:12px;color:#d8cdc2} #status{font-size:12px;color:#d8cdc2;text-align:center;max-width:100%}
   #active{font-weight:600} .idle{color:#7ddc8a} .none{color:#ff9f7a}
   #help{font-size:11px;color:#a99a8c;text-align:center;line-height:1.6}
@@ -54,51 +54,51 @@
   #tl{margin-top:6px;background:#241d18;border-radius:8px;padding:6px 8px;font-size:12px} .tlTop{display:flex;gap:8px;align-items:center;margin-bottom:4px;min-width:0} .tlTop button{padding:1px 8px;font-size:12px} #tlFrame{font-size:11px;margin-top:2px}
   #tlState{font-weight:600;padding:0 6px;border-radius:4px;background:#3a302a;color:#d8cdc2} #tlState.play{background:#1f3a24;color:#9be3a6} #tlState.err{background:#4a2020;color:#ff9f7a}
   #tlName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .tlRow{display:flex;gap:6px;align-items:center;min-width:0} .tlRow button{padding:3px 9px;min-width:34px} #tlBar{flex:1;min-width:0;width:0;accent-color:#e0a34a} #tlTime{font-variant-numeric:tabular-nums;color:#ffd38a;white-space:nowrap;text-align:right} #tlLoop.on{background:#e0a34a;color:#1b1612}
-  button:disabled{opacity:.4;cursor:default} .nw{white-space:nowrap} body.rec .poseOnly{display:none!important}
+  button:disabled{opacity:.4;cursor:default} button.danger{background:#7a2b22;border-color:#b0483a;color:#fff} button.danger:hover{background:#94352a} .nw{white-space:nowrap} body.rec .poseOnly{display:none!important}
   #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#a99a8c;font-size:13px;pointer-events:none} #empty[hidden]{display:none}
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v36</b><span class="dim" id="file"></span><span class="sp"></span>
-    <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo" class="poseOnly">Undo</button><button id="reset" class="poseOnly">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
+  <header><b>EDITOR v37</b><span class="dim" id="file"></span><span class="sp"></span>
+    <button id="snapB" title="Download the current state for debugging (S)">Snapshot</button><button id="gh" title="GitHub token for publishing and for reading the library">GitHub</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove token</button></span><button id="undo" class="poseOnly" title="Undo (Ctrl+Z)">Undo</button><button id="reset" class="poseOnly">Reset pose</button><button id="load" title="Open an orders file">Open file</button><button id="save" class="pri" title="Save and publish the orders to the game">Save</button></header>
   <div id="main">
-    <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Default<br><small>Chooser</small></div></div>
+    <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ New order</button><div class="ord off" style="margin-top:10px" title="Runs when no order is active">No order<br><small>Chooser</small></div></div>
     <div id="puppet">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:13px">
+      <div style="display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-bottom:6px;font-size:13px;min-width:0">
         <select id="figSel"><option value="female">Female</option><option value="male">Male</option><option value="shapes">Mannequin</option><option value="none">None</option></select>
-        <label class="nw"><input type="checkbox" id="skelOn" checked> Skeleton</label><label class="nw poseOnly" title="Grey figure: the step before, or the standing pose"><input type="checkbox" id="ghostOn" checked> Original</label><span class="sp"></span><button id="frameB" title="Frame the figure (F)">Frame</button><button id="mMove" class="on poseOnly" title="Move (W)">Move</button><button id="mRot" class="poseOnly" title="Rotate (E)">Rotate</button></div>
-      <div id="views"><div class="view" id="v3"><span class="lab" id="hint"></span><div id="empty" hidden>No moves in this order yet.<br>Choose a move type in the Library.</div></div></div>
+        <label class="nw"><input type="checkbox" id="skelOn" checked> Skeleton</label><label class="nw poseOnly" title="Grey figure: the previous step, or the default standing pose"><input type="checkbox" id="ghostOn" checked> Previous step</label><span class="sp"></span><button id="frameB" title="Frame the figure (F)">Frame</button><button id="mMove" class="on poseOnly" title="Move (W)">Move</button><button id="mRot" class="poseOnly" title="Rotate (E)">Rotate</button></div>
+      <div id="views"><div class="view" id="v3"><span class="lab" id="hint"></span><div id="empty" hidden>This order has no moves.<br>Add a move type from the Library.</div></div></div>
       <div id="steps" style="display:flex;gap:4px;align-items:center;margin-top:6px;font-size:12px"></div>
       <div id="tl" hidden><div class="tlTop"><span id="tlState"></span><span id="tlName"></span><span class="sp"></span><button id="tlLoop" title="Loop">Loop</button></div><div class="tlRow"><button id="tlStart" title="To start">⏮</button><button id="tlPlay" title="Play (Space)">▶</button><button id="tlEnd" title="To end">⏭</button><input type="range" id="tlBar" min="0" max="1000" value="0" tabindex="-1"><span id="tlTime">0.0 / 0.0 s</span></div><div id="tlFrame" class="dim"></div></div>
     </div>
     <div id="side">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><input id="oname" style="flex:1;font:inherit;font-weight:600;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:4px 8px">
-        </div><div style="display:flex;gap:4px;margin:-4px 0 10px"><button id="oUp" title="Raise priority">▲</button><button id="oDn" title="Lower priority">▼</button><button id="oTest" title="Force this order">Test</button><span class="sp"></span><button id="oDel" title="Delete order">✕</button></div>
-      <div class="crow" style="margin-bottom:10px"><span style="width:62px">Do</span><select id="oDo"><option value="pose">Pose steps</option><option value="recording">Moves</option></select></div>
+        </div><div style="display:flex;gap:4px;margin:-4px 0 10px"><button id="oUp" title="Raise priority">▲</button><button id="oDn" title="Lower priority">▼</button><button id="oTest" title="Run this order now, ignoring its Start conditions">Test</button><span class="sp"></span><button id="oDel">Delete order</button><span id="oDelAsk" hidden><span class="dim" style="margin-right:6px">Delete this order?</span><button id="oDelYes" class="danger">Delete</button> <button id="oDelNo">Cancel</button></span></div>
+      <div class="crow" style="margin-bottom:10px"><span style="width:62px">Action</span><select id="oDo"><option value="pose">Pose steps</option><option value="recording">Moves</option></select></div>
       <div id="libBox" hidden>
         <div class="pan" id="libPan"><div class="panH"><b>Library</b><span class="sp"></span><button id="libBig" title="Enlarge the list">Expand</button></div>
           <div class="crow"><input id="libQ" placeholder="Search moves" style="flex:1;width:auto;text-align:left;color:#eee"></div>
-          <div class="crow"><select id="libFrom" title="His pose at the first frame" style="flex:1;min-width:0;width:0"><option value="">From any</option><option value="standing">From standing</option><option value="crouching or kneeling">From crouching or kneeling</option><option value="sitting">From sitting</option><option value="bent over">From bent over</option><option value="on all fours">From on all fours</option><option value="lying on back">From lying on back</option><option value="lying on front">From lying on front</option><option value="lying on left side">From lying on left side</option><option value="lying on right side">From lying on right side</option></select><select id="libTo" title="His pose at the last frame" style="flex:1;min-width:0;width:0"><option value="">To any</option><option value="standing">To standing</option><option value="crouching or kneeling">To crouching or kneeling</option><option value="sitting">To sitting</option><option value="bent over">To bent over</option><option value="on all fours">To on all fours</option><option value="lying on back">To lying on back</option><option value="lying on front">To lying on front</option><option value="lying on left side">To lying on left side</option><option value="lying on right side">To lying on right side</option></select></div>
-        <div class="crow"><span id="libN" class="dim" style="flex:1"></span><button id="libAdd" title="Add every take of every type shown (30 takes at most per order)">Add all shown</button></div>
+          <div class="crow"><select id="libFrom" title="Pose at the first frame" style="flex:1;min-width:0;width:0"><option value="">From any</option><option value="standing">From standing</option><option value="crouching or kneeling">From crouching or kneeling</option><option value="sitting">From sitting</option><option value="bent over">From bent over</option><option value="on all fours">From on all fours</option><option value="lying on back">From lying on back</option><option value="lying on front">From lying on front</option><option value="lying on left side">From lying on left side</option><option value="lying on right side">From lying on right side</option></select><select id="libTo" title="Pose at the last frame" style="flex:1;min-width:0;width:0"><option value="">To any</option><option value="standing">To standing</option><option value="crouching or kneeling">To crouching or kneeling</option><option value="sitting">To sitting</option><option value="bent over">To bent over</option><option value="on all fours">To on all fours</option><option value="lying on back">To lying on back</option><option value="lying on front">To lying on front</option><option value="lying on left side">To lying on left side</option><option value="lying on right side">To lying on right side</option></select></div>
+        <div class="crow"><span id="libN" class="dim" style="flex:1"></span><button id="libAdd" title="Add every take of every listed type (up to 30 takes per order)">Add all shown</button></div>
           <div id="libList"></div></div>
         <div class="pan" id="usePan"><div class="panH"><b>Moves in this order</b><span class="sp"></span><span id="libUseN" class="dim"></span></div>
-          <div class="note" style="margin:0 0 6px">When the order starts, the director plays the move whose first frame is closest to his body, and among those, the one that goes least through the walls.</div>
+          <div class="note" style="margin:0 0 6px">When the order starts, the director plays the move whose first frame is closest to the current pose. Among moves that are about equally close, it picks the one that intersects the walls least.</div>
           <div id="libUse"></div></div>
       </div>
-      <div class="crow" style="margin:4px 0 6px"><h3 style="margin:0;flex:1">Start</h3><button id="oMoment" title="Set the Start conditions (and, for a Pose order, the pose) from his body in the box now">From moment</button></div><div id="cStart"></div>
-      <h3>Stop</h3><div id="cStop"></div>
-      <details id="props" class="poseOnly"><summary>Pose joints</summary><table id="tbl"></table></details>
-      <details id="reads"><summary>Live readings</summary><div class="note" style="margin:0 0 4px">His body in the box now, as the Start and Stop conditions read it.</div><table id="signs" class="sg"></table></details>
+      <div class="crow" style="margin:4px 0 6px"><h3 style="margin:0;flex:1">Start conditions</h3><span id="revAsk" hidden><span class="dim" style="margin-right:6px">Revert to the saved version?</span><button id="revYes" class="danger">Revert</button> <button id="revNo">Cancel</button></span><button id="oRevert" title="Discard this order's changes since the last save">Revert</button> <button id="oMoment" title="Set the Start conditions (and, for a Pose order, the pose) from the current state">From moment</button></div><div id="cStart"></div>
+      <h3>Stop conditions</h3><div id="cStop"></div>
+      <details id="props" class="poseOnly"><summary>Edited joints</summary><table id="tbl"></table></details>
+      <details id="reads"><summary>Live readings</summary><div class="note" style="margin:0 0 4px">Current values. Start and Stop conditions are checked against these.</div><table id="signs" class="sg"></table></details>
     </div>
   </div>
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=36"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=37"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
-    <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
-    <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
-    <div class="brow"><button id="level" title="L">Level</button><label><input type="checkbox" id="lock"> Phone view</label><span class="sp"></span><span id="sw" class="dim"></span></div>
+    <div class="trow"><span>Tilt left/right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
+    <div class="trow"><span>Tilt forward/back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
+    <div class="brow"><button id="level" title="Reset the tilt (L)">Level</button><label><input type="checkbox" id="lock"> Phone view</label><span class="sp"></span><span id="sw" class="dim"></span></div>
   </div>
 </div>
 <input id="fileIn" type="file" accept=".json,application/json" style="display:none">
@@ -106,10 +106,10 @@
 <script type="module">
 const $ = id => document.getElementById(id), DEG = 180 / Math.PI;
 const ORIG = { RightArm_y: -1.25, LeftArm_y: 1.25, RightArm_z: -0.2, LeftArm_z: 0.2 };   // the game's standing pose (sim/brain.js BRAIN_STAND)
-const GROUPS = { Heights: ['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot'], Angles: ['lean'], Lying: ['lyingOn'], Speed: ['speed'], Box: ['tilt', 'tiltLR', 'tiltFB'] };
+const GROUPS = { Heights: ['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot'], Angles: ['lean'], Lying: ['lyingOn'], Speed: ['speed'], Tilt: ['tilt', 'tiltLR', 'tiltFB'] };
 const LYING = ['upright', 'back', 'front', 'left side', 'right side'];
-const SIGNS = { lyingOn: ['lying on', ''], head: ['head height', 'm'], chest: ['chest height', 'm'], hips: ['hips height', 'm'], rightHand: ['right hand height', 'm'], leftHand: ['left hand height', 'm'],
-  rightFoot: ['right foot height', 'm'], leftFoot: ['left foot height', 'm'], lean: ['trunk lean', '°'], speed: ['hips speed', 'm/s'], tilt: ['box tilt', '°'], tiltLR: ['tilt left/right', '°'], tiltFB: ['tilt forward/back', '°'] };
+const SIGNS = { lyingOn: ['Lying on', ''], head: ['Head height', 'm'], chest: ['Chest height', 'm'], hips: ['Hips height', 'm'], rightHand: ['Right hand height', 'm'], leftHand: ['Left hand height', 'm'],
+  rightFoot: ['Right foot height', 'm'], leftFoot: ['Left foot height', 'm'], lean: ['Trunk lean', '°'], speed: ['Hips speed', 'm/s'], tilt: ['Tilt', '°'], tiltLR: ['Tilt left/right', '°'], tiltFB: ['Tilt forward/back', '°'] };
 let orders = [], cur = 0, stepK = 0;
 const PV = { cache: new Map(), cur: null };   // move preview: decoded moves, and the one on the timeline
 const fr = $('frame');
@@ -134,7 +134,7 @@ async function boot() {
   F.document.getElementById('go').click();
   B = F.__brainNet; G = F.__gpc; W = F.__box.W; mj = W.mj; m = W.m; d2 = new mj.MjData(m);
   acts = W.act.map(a => ({ name: a.name, qadr: a.qadr, j: mj.mj_name2id(m, mj.mjtObj.mjOBJ_JOINT.value, a.name) }));
-  orders = G.orders; cur = 0; stepK = 0; pose = orders[0].steps[0].pose; listOrders(); showOrder();
+  orders = G.orders; cur = 0; stepK = 0; pose = orders[0].steps[0].pose; markSaved(); listOrders(); showOrder();
   applyPose(); draw(); keys(F); tick();
   $('gh').classList.toggle('on', !!localStorage.getItem('gpc.ghKey'));
   $('mMove').onclick = () => setMode('translate'); $('mRot').onclick = () => setMode('rotate');
@@ -306,11 +306,11 @@ function draw() {
     mm.position.set(...P[n].slice(0, 3)); mm.scale.setScalar(n === sel ? 0.032 : piv.includes(n) ? 0.026 : 0.02);
     mm.material.color.setHex(n === sel ? COL.tgt : piv.includes(n) ? COL.piv : n === hover ? COL.hover : COL.joint); }
   if (sel && !tc.dragging) { proxy.position.set(...P[sel].slice(0, 3)); proxy.quaternion.set(...P[sel].q); }
-  const rows = acts.filter(a => Math.abs((pose[a.name] || 0) - (ORIG[a.name] || 0)) > 0.017).map(a => `<tr><td>${a.name.replace('_', ' ')}</td><td>${((pose[a.name] || 0) * DEG).toFixed(0)} <span class="old" data-j="${a.name}" title="put it back">(${((ORIG[a.name] || 0) * DEG).toFixed(0)})</span></td></tr>`);
-  if (pose.root_w !== undefined) { const ang = 2 * Math.acos(Math.min(1, Math.abs(pose.root_w))) * DEG; if (ang > 1) rows.unshift(`<tr><td>Body tilt</td><td>${ang.toFixed(0)} <span class="old" data-j="__root">(0)</span></td></tr>`); }
+  const rows = acts.filter(a => Math.abs((pose[a.name] || 0) - (ORIG[a.name] || 0)) > 0.017).map(a => `<tr><td>${a.name.replace('_', ' ')}</td><td>${((pose[a.name] || 0) * DEG).toFixed(0)} <span class="old" data-j="${a.name}" title="Reset to default">(${((ORIG[a.name] || 0) * DEG).toFixed(0)})</span></td></tr>`);
+  if (pose.root_w !== undefined) { const ang = 2 * Math.acos(Math.min(1, Math.abs(pose.root_w))) * DEG; if (ang > 1) rows.unshift(`<tr><td>Root rotation</td><td>${ang.toFixed(0)} <span class="old" data-j="__root">(0)</span></td></tr>`); }
   $('tbl').innerHTML = rows.length ? rows.join('') : '<tr><td class="dim">none</td><td></td></tr>';
   for (const o of $('tbl').querySelectorAll('.old')) o.onclick = () => { history.push(Object.assign({}, pose)); const n = o.dataset.j; if (n === '__root') { for (const k of ['root_w', 'root_x', 'root_y', 'root_z']) delete pose[k]; } else if (ORIG[n]) pose[n] = ORIG[n]; else delete pose[n]; applyPose(); draw(); dirty(); };
-  $('hint').textContent = sel ? `${sel} · ${mode() === 'translate' ? (MOVE[sel] ? 'Move' : 'Move unavailable') : 'Rotate'}` : '';
+  $('hint').textContent = sel ? `${sel} · ${mode() === 'translate' ? (MOVE[sel] ? 'Move' : 'Move is not available for this joint') : 'Rotate'}` : '';
 }
 // the gizmo: an invisible stand-in on the selected joint; dragging it poses him
 const proxy = new THREE.Object3D(); scene.add(proxy);
@@ -359,12 +359,12 @@ requestAnimationFrame(loop);
 // fk() moves the drawing so his soles are on the floor line; the IK works in that same frame (handle heights shift
 // together with the target), so a dragged foot can be lifted off the floor and the rest stays put.
 function applyPose() { try { G.setStepPose(orders[cur], stepK, pose); } catch (e) { console.warn(e); } }
-function dirty() { $('file').textContent = '●'; }
+function dirty() { $('file').textContent = '●'; revUI(); }
 $('undo').onclick = () => { if (!history.length) return; pose = history.pop(); applyPose(); draw(); dirty(); };
 $('reset').onclick = () => { history.push(Object.assign({}, pose)); pose = Object.assign({}, ORIG); applyPose(); draw(); dirty(); };
 // ---------- orders: list, select, add, reorder, delete, start/stop conditions ----------
 function listOrders() {
-  $('olist').innerHTML = orders.map((o, k) => `<div class="ord ${k === cur ? 'on' : ''} ${G && G.active === o ? 'act' : ''} ${G && G.force === o.name ? 'test' : ''} ${o.on === false ? 'dis' : ''}" data-k="${k}"><input type="checkbox" data-on="${k}" ${o.on === false ? '' : 'checked'} title="On"> ${esc(o.name)}</div>`).join('');
+  $('olist').innerHTML = orders.map((o, k) => `<div class="ord ${k === cur ? 'on' : ''} ${G && G.active === o ? 'act' : ''} ${G && G.force === o.name ? 'test' : ''} ${o.on === false ? 'dis' : ''}" data-k="${k}"><input type="checkbox" data-on="${k}" ${o.on === false ? '' : 'checked'} title="Enabled"> ${esc(o.name)}</div>`).join('');
   for (const c of $('olist').querySelectorAll('[data-on]')) { c.onclick = e => e.stopPropagation(); c.onchange = () => { orders[+c.dataset.on].on = c.checked; listOrders(); dirty(); }; }
   for (const d of $('olist').querySelectorAll('.ord')) d.onclick = () => { if (PV.cur) pvClose(); cur = +d.dataset.k; stepK = 0; pose = orders[cur].steps[0].pose; history = []; sel = null; listOrders(); showOrder(); draw(); };
 }
@@ -375,7 +375,7 @@ function condUI(box, part, o) {
     (x.s === 'lyingOn' ? `<span style="width:30px;text-align:center">is</span><select data-k="${k}" data-f="v" style="width:96px">${LYING.map(v => `<option ${v === x.v ? 'selected' : ''}>${v}</option>`).join('')}</select><span class="u"></span>`
       : `<select data-k="${k}" data-f="c"><option value="<" ${x.c === '<' ? 'selected' : ''}>&lt;</option><option value=">" ${x.c === '>' ? 'selected' : ''}>&gt;</option></select><input data-k="${k}" data-f="v" type="number" step="0.05" value="${x.v}"><span class="u">${SIGNS[x.s][1]}</span>`) +
     `<button data-k="${k}" data-f="x">✕</button></div>`;
-  box.innerHTML = c.all.map(row).join('') + `<div class="cfor"><button data-f="add">+ condition</button> for <input data-f="for" type="number" step="0.1" value="${c.for}"> s${part === 'stop' && !c.all.length ? '<div>No conditions: it stops when Start is no longer true.</div>' : ''}</div>`;
+  box.innerHTML = c.all.map(row).join('') + `<div class="cfor"><button data-f="add">+ Condition</button> Hold for <input data-f="for" type="number" step="0.1" value="${c.for}"> s${part === 'stop' && !c.all.length ? '<div>No conditions: the order stops when its Start conditions are no longer met.</div>' : ''}</div>`;
   for (const el of box.querySelectorAll('[data-f]')) {
     const f = el.dataset.f, k = +el.dataset.k;
     if (f === 'x') el.onclick = () => { c.all.splice(k, 1); condUI(box, part, o); dirty(); };
@@ -387,21 +387,21 @@ function condUI(box, part, o) {
 }
 function showOrder() {
   const o = orders[cur]; $('oname').value = o.name; if (!o.do) o.do = { type: 'pose' }; $('oDo').value = o.do.type; doUI(); condUI($('cStart'), 'start', o); condUI($('cStop'), 'stop', o); stepsUI();
-  $('oTest').classList.toggle('on', G.force === o.name); $('oDel').disabled = orders.length < 2;
+  $('oTest').classList.toggle('on', G.force === o.name); $('oDel').disabled = orders.length < 2; $('oDel').title = orders.length < 2 ? 'The last order cannot be deleted' : ''; delAsk(false); revAsk(false); revUI();
 }
 $('libBig').onclick = () => { const b = $('libPan').classList.toggle('big'); $('libBig').textContent = b ? 'Shrink' : 'Expand'; $('libBig').title = b ? 'Shrink the list' : 'Enlarge the list'; };
 // Do: Pose (the steps under the puppet) or Recording: a list of moves from the library; when the order starts, the
 // director plays the one whose first frame is closest to his body and that fits the space around him best
 $('oDo').onchange = () => { const o = orders[cur]; o.do = $('oDo').value === 'recording' ? { type: 'recording', moves: [] } : { type: 'pose' }; doUI(); dirty(); };
 const LIB = { rows: null, err: '' }, LIBI = 'https://api.github.com/repos/facaelectrica/the-box-library/contents/index.json.gz';
-async function libIndex() { if (LIB.rows) return LIB.rows; const key = localStorage.getItem('gpc.ghKey'); if (!key) { LIB.err = 'Set a token to open the library'; return null; }
-  try { const r = await fetch(LIBI, { headers: { Authorization: 'Bearer ' + key, Accept: 'application/vnd.github.raw' } }); if (!r.ok) { LIB.err = 'Library: GitHub ' + r.status; return null; }
+async function libIndex() { if (LIB.rows) return LIB.rows; const key = localStorage.getItem('gpc.ghKey'); if (!key) { LIB.err = 'Add a GitHub token to open the library.'; return null; }
+  try { const r = await fetch(LIBI, { headers: { Authorization: 'Bearer ' + key, Accept: 'application/vnd.github.raw' } }); if (!r.ok) { LIB.err = 'Library unavailable (GitHub error ' + r.status + ').'; return null; }
     const J = JSON.parse(await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).text());
     LIB.rows = J.rows.map(v => Object.fromEntries(J.cols.map((c, k) => [c, v[k]]))); LIB.by = Object.fromEntries(LIB.rows.map(x => [x.id, x]));
     for (const x of LIB.rows) x.text = (x.id + ' ' + x.desc + ' ' + x.short + ' ' + x.type + ' ' + x.position + ' ' + x.category).toLowerCase();
     const T = LIB.typeBy = {}; for (const x of LIB.rows) { const k = typeKey(x.id); (x.tk = T[k] || (T[k] = { key: k, short: x.short, desc: x.desc, takes: [] })).takes.push(x); }
     LIB.types = Object.values(T); return LIB.rows; }
-  catch (e) { LIB.err = 'Library: ' + e.message; return null; } }
+  catch (e) { LIB.err = 'Library unavailable: ' + e.message; return null; } }
 const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 const mvLabel = x => x ? cap(x.short) + ' · ' + x.actor : '';
 const mvSec = x => (x.frames / 30).toFixed(1);
@@ -427,20 +427,20 @@ async function libList() { const o = orders[cur], L = await libIndex(); if (orde
   $('libN').textContent = (M.length === NT ? `${NT} types` : `${M.length} of ${NT} types`) + ` · ${nTakes.toLocaleString()} takes` + (M.length > 150 ? ' · first 150 shown' : '');
   const pvId = PV.cur && PV.cur.id;
   $('libList').innerHTML = M.slice(0, 150).map(g => { const k = g.t.key, n = g.takes.filter(x => use.has(x.id)).length, open = libOpen.has(k);
-    return `<div class="ty ${n ? 'in' : ''} ${g.takes.some(x => x.id === pvId) ? 'pv' : ''}" data-k="${esc(k)}" title="${esc(g.t.desc)}"><input type="checkbox" ${n === g.takes.length ? 'checked' : ''} data-ind="${n && n < g.takes.length ? 1 : ''}" title="Use every take of this type in the order"><span class="car">${open ? '▾' : '▸'}</span><span class="n">${esc(cap(g.t.short))}</span><span class="cnt" title="Takes">${g.takes.length}</span><span class="c">${esc(typeInfo(g.takes))}</span></div>` +
-      (open ? g.takes.map((x, j) => `<div class="tk ${use.has(x.id) ? 'in' : ''} ${x.id === pvId ? 'pv' : ''}" data-id="${esc(x.id)}" title="${esc(x.id)}"><input type="checkbox" ${use.has(x.id) ? 'checked' : ''} title="Use this take"><span class="n">Take ${j + 1} · ${esc(x.actor)}</span><span class="c">${esc(x.start === g.takes[0].start && x.end === g.takes[0].end ? '' : x.start + ' → ' + x.end + ' · ')}${mvSec(x)} s · ${(x.space[1] - x.space[0]).toFixed(1)}×${(x.space[3] - x.space[2]).toFixed(1)} m</span></div>`).join('') : ''); }).join('') || '<div class="li dim">No moves match</div>';
+    return `<div class="ty ${n ? 'in' : ''} ${g.takes.some(x => x.id === pvId) ? 'pv' : ''}" data-k="${esc(k)}" title="${esc(g.t.desc)}"><input type="checkbox" ${n === g.takes.length ? 'checked' : ''} data-ind="${n && n < g.takes.length ? 1 : ''}" title="Add all takes of this type to the order"><span class="car">${open ? '▾' : '▸'}</span><span class="n">${esc(cap(g.t.short))}</span><span class="cnt" title="Takes">${g.takes.length}</span><span class="c">${esc(typeInfo(g.takes))}</span></div>` +
+      (open ? g.takes.map((x, j) => `<div class="tk ${use.has(x.id) ? 'in' : ''} ${x.id === pvId ? 'pv' : ''}" data-id="${esc(x.id)}" title="${esc(x.id)}"><input type="checkbox" ${use.has(x.id) ? 'checked' : ''} title="Add this take to the order"><span class="n">Take ${j + 1} · ${esc(x.actor)}</span><span class="c">${esc(x.start === g.takes[0].start && x.end === g.takes[0].end ? '' : x.start + ' → ' + x.end + ' · ')}${mvSec(x)} s · ${(x.space[1] - x.space[0]).toFixed(1)}×${(x.space[3] - x.space[2]).toFixed(1)} m</span></div>`).join('') : ''); }).join('') || '<div class="li dim">No moves match</div>';
   for (const d of $('libList').querySelectorAll('.ty')) { const g = by.get(LIB.typeBy[d.dataset.k]), cb = d.querySelector('input'); cb.indeterminate = !!cb.dataset.ind;
     cb.onclick = e => { e.stopPropagation(); setUse(g.takes.map(x => x.id), cb.checked); };
     d.onclick = () => { const k = d.dataset.k; if (libOpen.has(k)) libOpen.delete(k); else { libOpen.add(k); pvOpen(g.takes[0].id); } libList(); }; }
   for (const d of $('libList').querySelectorAll('.tk')) { const id = d.dataset.id, cb = d.querySelector('input');
     cb.onclick = e => { e.stopPropagation(); setUse([id], cb.checked); }; d.onclick = () => pvOpen(id); } }
 function libUse() { const o = orders[cur], D = o.do, ids = D.moves || [];
-  const old = D.file || D.category ? `<div class="li dim">Old game set: ${esc(D.file ? D.file.replace(/^kin\//, '').replace(/\.bin$/, '') : 'closest in ' + D.category)}</div>` : '';
+  const old = D.file || D.category ? `<div class="li dim">Legacy move set: ${esc(D.file ? D.file.replace(/^kin\//, '').replace(/\.bin$/, '') : 'closest in ' + D.category)}</div>` : '';
   const groups = new Map(); for (const id of ids) { const k = typeKey(id); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(id); }
   $('libUseN').textContent = ids.length ? `${groups.size} ${groups.size === 1 ? 'type' : 'types'} · ${ids.length} ${ids.length === 1 ? 'take' : 'takes'}` : '';
   const pvId = PV.cur && PV.cur.id;
   $('libUse').innerHTML = old + ([...groups.entries()].map(([k, list]) => { const t = LIB.typeBy && LIB.typeBy[k], x = LIB.by && LIB.by[list[0]];
-    return `<div class="ty ${list.includes(pvId) ? 'pv' : ''}" data-k="${esc(k)}" title="${esc(t ? t.desc : k)}"><span class="n">${esc(t ? cap(t.short) : k)}</span><span class="cnt" title="Takes in this order">${list.length}${t ? ' of ' + t.takes.length : ''}</span><span class="x" title="Remove from the order">✕</span><span class="c">${esc(t ? typeInfo(list.map(id => LIB.by[id]).filter(Boolean)) : '')}</span></div>`; }).join('') || (old ? '' : '<div class="li dim">None yet. Tick a type above.</div>'));
+    return `<div class="ty ${list.includes(pvId) ? 'pv' : ''}" data-k="${esc(k)}" title="${esc(t ? t.desc : k)}"><span class="n">${esc(t ? cap(t.short) : k)}</span><span class="cnt" title="Takes in this order">${list.length}${t ? ' of ' + t.takes.length : ''}</span><span class="x" title="Remove from the order">✕</span><span class="c">${esc(t ? typeInfo(list.map(id => LIB.by[id]).filter(Boolean)) : '')}</span></div>`; }).join('') || (old ? '' : '<div class="li dim">No moves yet. Select a move type in the Library.</div>'));
   for (const d of $('libUse').querySelectorAll('.ty')) { const list = groups.get(d.dataset.k); d.querySelector('.x').onclick = e => { e.stopPropagation(); setUse(list, false); }; d.onclick = () => pvOpen(list[0]); } }
 function setUse(list, on) { const o = orders[cur], D = o.do, drop = new Set(list); let ids = (D.moves || []).filter(x => !drop.has(x)); if (on) ids = ids.concat(list);
   o.do = { type: 'recording', moves: ids }; if (!PV.cur && ids.length) pvOpen(ids[0], true); libList(); libUse(); dirty(); }
@@ -448,7 +448,7 @@ function setUse(list, on) { const o = orders[cur], D = o.do, drop = new Set(list
 const MAXTAKES = 30;
 $('libAdd').onclick = () => { const o = orders[cur], ids = new Set(o.do.moves || []); let nt = 0, skip = 0;
   for (const g of libShown) { const add = g.takes.filter(x => !ids.has(x.id)); if (!add.length) continue; if (ids.size + add.length > MAXTAKES) { skip++; continue; } for (const x of add) ids.add(x.id); nt++; }
-  o.do = { type: 'recording', moves: [...ids] }; libList(); libUse(); dirty(); if (skip) $('libN').textContent = `Added ${nt} types. ${skip} more would pass ${MAXTAKES} takes in one order.`; };
+  o.do = { type: 'recording', moves: [...ids] }; libList(); libUse(); dirty(); if (skip) $('libN').textContent = `Added ${nt} types. ${skip} skipped (limit: ${MAXTAKES} takes per order).`; };
 let libT = 0; $('libQ').oninput = () => { clearTimeout(libT); libT = setTimeout(libList, 150); }; $('libFrom').onchange = libList; $('libTo').onchange = libList;
 
 // ---------- move preview: a timeline under the puppet. The order's pose is kept and comes back on close. ----------
@@ -485,7 +485,7 @@ function libMark() { const id = PV.cur && PV.cur.id; for (const d of document.qu
 let pvScrub = null;
 function pvUI() { const P = PV.cur; if (!P) return; const x = LIB.by && LIB.by[P.id], t = x && x.tk, j = t ? t.takes.indexOf(x) + 1 : 0;
   $('tlName').textContent = x ? `${cap(x.short)} · take ${j} of ${t.takes.length} · ${x.actor}` : P.id;
-  $('tlState').textContent = P.err ? 'Could not open: ' + P.err : !P.M ? 'Loading' : P.playing ? 'Playing' : P.t >= (P.M.T - 1) / 30 ? 'Ended' : 'Paused';
+  $('tlState').textContent = P.err ? 'Failed to load move: ' + P.err : !P.M ? 'Loading' : P.playing ? 'Playing' : P.t >= (P.M.T - 1) / 30 ? 'Ended' : 'Paused';
   $('tlState').className = P.err ? 'err' : P.playing ? 'play' : '';
   const ok = !!P.M, dur = ok ? (P.M.T - 1) / 30 : 0; for (const id of ['tlPlay', 'tlBar', 'tlStart', 'tlEnd', 'tlLoop']) $(id).disabled = !ok;
   $('tlPlay').textContent = P.playing ? '❚❚' : '▶'; $('tlPlay').title = P.playing ? 'Pause (Space)' : 'Play (Space)'; $('tlLoop').classList.toggle('on', P.loop);
@@ -503,9 +503,10 @@ $('tlBar').oninput = () => { const P = PV.cur; if (P && P.M) { P.t = +$('tlBar')
 const scrubEnd = () => { if (pvScrub && pvScrub.P === PV.cur) PV.cur.playing = pvScrub.play; pvScrub = null; };
 addEventListener('pointerup', scrubEnd); addEventListener('pointercancel', scrubEnd); addEventListener('blur', scrubEnd);
 // From moment: Start conditions from what the signs read now (trim them), his body now as the pose / the example
-$('oMoment').onclick = () => { const o = orders[cur], S = G.signs, r = v => +v.toFixed(2), c = [];
+$('oMoment').onclick = () => { const o = orders[cur], S = G.signs, r = v => typeof v === 'number' ? +v.toFixed(2) : v, c = [];
   if (S.lyingOn && S.lyingOn !== 'upright') c.push({ s: 'lyingOn', c: '=', v: S.lyingOn });
-  c.push({ s: 'hips', c: '<', v: r(S.hips + 0.15) }); c.push({ s: 'head', c: '<', v: r(S.head + 0.2) });
+  if (S.hips > 0.6) { c.push({ s: 'hips', c: '>', v: r(S.hips - 0.15) }); c.push({ s: 'head', c: '>', v: r(S.head - 0.2) }); }   // up: at least this high
+  else { c.push({ s: 'hips', c: '<', v: r(S.hips + 0.15) }); c.push({ s: 'head', c: '<', v: r(S.head + 0.2) }); }   // down: at most this high
   if (S.lean > 45) c.push({ s: 'lean', c: '>', v: Math.round(S.lean - 25) });
   if (Math.abs(S.tiltLR) > 8) c.push(S.tiltLR > 0 ? { s: 'tiltLR', c: '>', v: Math.round(S.tiltLR - 8) } : { s: 'tiltLR', c: '<', v: Math.round(S.tiltLR + 8) });
   if (Math.abs(S.tiltFB) > 8) c.push(S.tiltFB > 0 ? { s: 'tiltFB', c: '>', v: Math.round(S.tiltFB - 8) } : { s: 'tiltFB', c: '<', v: Math.round(S.tiltFB + 8) });
@@ -513,6 +514,16 @@ $('oMoment').onclick = () => { const o = orders[cur], S = G.signs, r = v => +v.t
   o.start = { all: c, for: 0.5 }; const now = G.poseNow(); o.example = { signs: Object.fromEntries(Object.entries(S).map(([k, v]) => [k, r(v)])), pose: now };
   if (!o.do || o.do.type !== 'recording') { o.steps[stepK].pose = now; pose = now; G.setStepPose(o, stepK, now); }
   showOrder(); draw(); dirty(); };
+// Revert: the order as it was last saved (or loaded); a new order has no saved version
+const SAVED = new WeakMap(), fileForm = o => ordersFile.one(o);
+function markSaved() { for (const o of orders) SAVED.set(o, JSON.stringify(fileForm(o))); revUI(); }
+const revAsk = on => { $('revAsk').hidden = !on; $('oRevert').hidden = on; $('oMoment').hidden = on; };
+function revUI() { const o = orders[cur], sv = o && SAVED.get(o); $('oRevert').disabled = !sv || sv === JSON.stringify(fileForm(o)); $('oRevert').title = !sv ? 'This order has not been saved yet' : "Discard this order's changes since the last save"; }
+$('oRevert').onclick = () => revAsk(true); $('revNo').onclick = () => revAsk(false);
+$('revYes').onclick = () => { revAsk(false); const o = orders[cur], sv = SAVED.get(o); if (!sv) return; const f = JSON.parse(sv);
+  if (PV.cur) pvClose();Object.assign(o, { name: f.name, on: f.on, do: f.do, start: f.start, stop: f.stop, steps: f.steps, example: f.example });
+  for (let k = 0; k < o.steps.length; k++) G.setStepPose(o, k, o.steps[k].pose);
+  stepK = Math.min(stepK, o.steps.length - 1); pose = o.steps[stepK].pose; history = []; listOrders(); showOrder(); draw(); };
 // steps: the poses of an order, in order; the puppet edits the selected one; grey figure = the step before
 function stepsUI() {
   const o = orders[cur]; $('steps').innerHTML = o.steps.map((x, k) => `<button class="stp ${k === stepK ? 'on' : ''}" data-k="${k}">${k + 1}</button>`).join('') +
@@ -527,10 +538,13 @@ $('addO').onclick = () => { const o = { name: 'Order ' + (orders.length + 1), on
   orders.push(o); cur = orders.length - 1; stepK = 0; pose = o.steps[0].pose; history = []; listOrders(); showOrder(); draw(); dirty(); };
 $('oUp').onclick = () => { if (cur < 1) return; [orders[cur - 1], orders[cur]] = [orders[cur], orders[cur - 1]]; cur--; listOrders(); dirty(); };
 $('oDn').onclick = () => { if (cur >= orders.length - 1) return; [orders[cur + 1], orders[cur]] = [orders[cur], orders[cur + 1]]; cur++; listOrders(); dirty(); };
-$('oDel').onclick = () => { if (orders.length < 2) return; const o = orders.splice(cur, 1)[0]; if (G.active === o) G.active = null; if (G.force === o.name) G.force = null; cur = Math.max(0, cur - 1); stepK = 0; pose = orders[cur].steps[0].pose; listOrders(); showOrder(); draw(); dirty(); };
+const delAsk = on => { $('oDel').hidden = on; $('oDelAsk').hidden = !on; };
+$('oDel').onclick = () => { if (orders.length > 1) delAsk(true); }; $('oDelNo').onclick = () => delAsk(false);
+$('oDelYes').onclick = () => { delAsk(false); if (orders.length < 2) return; const o = orders.splice(cur, 1)[0]; if (G.active === o) G.active = null; if (G.force === o.name) G.force = null; cur = Math.max(0, cur - 1); stepK = 0; pose = orders[cur].steps[0].pose; listOrders(); showOrder(); draw(); dirty(); };
 $('oTest').onclick = () => { const o = orders[cur]; G.force = G.force === o.name ? null : o.name; showOrder(); listOrders(); };
 const clean = p => Object.fromEntries(Object.entries(p).filter(([k, v]) => Math.abs(v) > 1e-6 || k === 'root_w').map(([k, v]) => [k, +v.toFixed(4)]));
-function ordersFile() { return { version: 3, saved: new Date().toISOString(), orders: orders.map(o => ({ name: o.name, on: o.on !== false, do: o.do || { type: 'pose' }, start: o.start, stop: o.stop, steps: o.steps.map(x => ({ pose: clean(x.pose), time: x.time ?? 1 })), example: o.example })), otherwise: 'chooser' }; }
+function ordersFile() { return { version: 3, saved: new Date().toISOString(), orders: orders.map(ordersFile.one), otherwise: 'chooser' }; }
+ordersFile.one = o => ({ name: o.name, on: o.on !== false, do: o.do || { type: 'pose' }, start: o.start, stop: o.stop, steps: o.steps.map(x => ({ pose: clean(x.pose), time: x.time ?? 1 })), example: o.example });
 // Save: this browser's game uses the orders at once; with a GitHub key, they are also published (gpc/orders.json on
 // facaelectrica/the-box-play), which every phone's game loads within a minute or two. The key stays in this browser.
 const REPO = 'facaelectrica/the-box-play', PATH = 'gpc/orders.json';
@@ -548,18 +562,18 @@ async function publish(js) {
   const used = [...new Set(orders.flatMap(o => o.do && o.do.moves || []))];
   let have = new Set(); try { have = new Set((await call('contents/gpc/clips?ref=main')).map(f => f.name)); } catch (_) {}
   const add = used.filter(id => !have.has(id + '.q')), tree = [];
-  for (const [k, id] of add.entries()) { $('file').textContent = `Copying moves ${k + 1}/${add.length}`;
+  for (const [k, id] of add.entries()) { $('file').textContent = `Copying moves to the game: ${k + 1} of ${add.length}`;
     const blob = await call('git/blobs', { content: b64(await G.moveRaw(id)), encoding: 'base64' }); tree.push({ path: 'gpc/clips/' + id + '.q', mode: '100644', type: 'blob', sha: blob.sha }); }
   tree.push({ path: PATH, mode: '100644', type: 'blob', content: js });
   const t = await call('git/trees', { base_tree: base.tree.sha, tree });
   const c = await call('git/commits', { message: 'Orders from the editor (' + orders.map(o => o.name).join(', ') + ')' + (add.length ? `, ${add.length} new move${add.length > 1 ? 's' : ''}` : ''), tree: t.sha, parents: [ref.object.sha] });
   await call('git/refs/heads/main', { sha: c.sha }, 'PATCH'); return 'ok';
 }
-$('save').onclick = async () => { const O = ordersFile(), js = JSON.stringify(O, null, 1); localStorage.setItem('gpc.orders', js);
+$('save').onclick = async () => { const O = ordersFile(), js = JSON.stringify(O, null, 1); localStorage.setItem('gpc.orders', js); markSaved();
   if (!localStorage.getItem('gpc.ghKey')) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = 'orders.json'; a.click(); $('file').textContent = ''; return; }
   $('file').textContent = 'Publishing'; const r = await publish(js).catch(e => e.message); $('file').textContent = r === 'ok' ? 'Published' : 'Publish failed: ' + r; if (r === 'ok') setTimeout(() => { if ($('file').textContent === 'Published') $('file').textContent = ''; }, 4000); };
 $('load').onclick = () => $('fileIn').click();
-$('fileIn').onchange = async () => { const f = $('fileIn').files[0]; if (!f) return; try { G.apply(JSON.parse(await f.text())); orders = G.orders; cur = 0; stepK = 0; pose = orders[0].steps[0].pose; history = []; listOrders(); showOrder(); draw(); dirty(); } catch (e) { $('file').textContent = 'Invalid file'; } };
+$('fileIn').onchange = async () => { const f = $('fileIn').files[0]; if (!f) return; try { G.apply(JSON.parse(await f.text())); orders = G.orders; cur = 0; stepK = 0; pose = orders[0].steps[0].pose; history = []; markSaved(); listOrders(); showOrder(); draw(); } catch (e) { $('file').textContent = 'Could not open the file: not a valid orders file'; } };
 
 // ---------- the box: keyboard, live state ----------
 function setTilt() { $('rollV').textContent = $('roll').value + '°'; $('pitchV').textContent = $('pitch').value + '°'; }
@@ -590,12 +604,12 @@ function snapshot() {
     recording: G.rec && G.rec.file ? { move: G.rec.file, frames: G.rec.n, poseGap: G.rec.pose, throughWallsM: G.rec.wall, nextBest: G.rec.others } : null, switches: G.switches, trailNote: '[seconds, active, head, chest, hips, rightHand, leftHand, rightFoot, leftFoot, lean, speed, tilt] every 0.2 s', trail, chooser: G.report ? G.report() : null, box });
   const name = 'editor-snapshot-' + new Date().toISOString().slice(11, 19).replace(/:/g, '') + '.json', a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = name; a.click();
-  navigator.clipboard.writeText(js).then(() => { $('file').textContent = 'Snapshot saved and copied'; }, () => { $('file').textContent = 'Snapshot saved'; });
+  navigator.clipboard.writeText(js).then(() => { $('file').textContent = 'Snapshot saved and copied to the clipboard'; }, () => { $('file').textContent = 'Snapshot saved'; });
 }
 $('snapB').onclick = snapshot;
 addEventListener('keydown', e => { if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') snapshot(); });
 function tick() {
-  const a = G.active, rc = G.rec && G.rec.file && a && G.rec.o === a ? ' · ' + (LIB.by && LIB.by[G.rec.file] ? mvLabel(LIB.by[G.rec.file]) : G.rec.file.replace(/^kin\//, '').replace(/\.bin$/, '')) + (G.rec.wall > 0.05 ? ` · walls ${Math.round(G.rec.wall * 100)} cm` : '') : '';
+  const a = G.active, rc = G.rec && G.rec.file && a && G.rec.o === a ? ' · ' + (LIB.by && LIB.by[G.rec.file] ? mvLabel(LIB.by[G.rec.file]) : G.rec.file.replace(/^kin\//, '').replace(/\.bin$/, '')) + (G.rec.wall > 0.05 ? ` · ${Math.round(G.rec.wall * 100)} cm into walls` : '') : '';
   $('active').textContent = a ? a.name + (a.steps.length > 1 && !rc ? ` ${G.step + 1}/${a.steps.length}` : '') + rc : 'Chooser'; $('who').className = a ? 'order' : 'chooser';
   $('whoWhy').textContent = a ? (G.force === a.name ? 'Forced' : 'Translator') : `${G.rate || 0} picks/s`;
   $('sw').textContent = (G.switches || []).slice(-3).map(x => `${x[0]}s → ${x[1]}`).join('   ');
