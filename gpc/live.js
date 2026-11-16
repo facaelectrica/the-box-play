@@ -178,7 +178,7 @@ export async function attachGPC(brain, ort, say) {
     if (next !== st.active) { st.switches.push([t, next ? next.name : 'chooser', +st.signs.head.toFixed(2)]); if (st.switches.length > 60) st.switches.shift();
       st.active = next; st.step = 0; st.stepT = 0; standFor(next, 0); st.fresh = false; for (const key of [...tm.keys()]) if (key[0] === 'x') tm.delete(key);
       if (st.rec) { brain.react = null; st.rec = null; } if (next && next.do && next.do.type === 'recording') { st.rec = { pending: true }; startRecording(next); } }
-    if (st.active && st.active.do && st.active.do.type === 'recording' && st.rec && !st.rec.pending && !st.rec.failed && !brain.react) { st.rec = { pending: true }; startRecording(st.active); }   // ended, order still holds: another try
+    if (st.active && st.active.do && st.active.do.type === 'recording' && (!st.rec || (!st.rec.pending && !st.rec.failed && !brain.react))) { st.rec = { pending: true }; startRecording(st.active); }   // not started (orders re-applied while it held) or ended while the order still holds: another try
     // steps: on to the next one when he is close to this pose or its time is up
     const o = st.active;
     if (o && !(o.do && o.do.type === 'recording') && o.steps.length > 1 && st.step < o.steps.length - 1) { st.stepT += 1 / 30; const sp = o.steps[st.step];

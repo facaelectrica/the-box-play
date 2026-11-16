@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v30</title>
+<title>EDITOR v31</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -27,7 +27,7 @@
   .cfor{font-size:12px;color:#a99a8c;margin:2px 0 12px} .cfor input{width:46px;font:inherit;font-size:12px;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 4px;text-align:right}
   .sg td{font-size:12px;padding:1px 4px;color:#d8cdc2} .sg td:last-child{text-align:right;color:#ffd38a}
   #props summary{cursor:pointer;font-weight:600;margin:6px 0} #props h4{font-size:12px;color:#a99a8c;margin:10px 0 2px;font-weight:600} .sg .grp td{color:#a99a8c;font-weight:600;padding-top:8px}
-  #libList,#libUse{max-height:220px;overflow:auto;border:1px solid #3a302a;border-radius:6px;margin-bottom:12px} .li{font-size:12px;padding:3px 6px;cursor:pointer;color:#d8cdc2;display:flex;gap:6px} .li:hover{background:#2a221c} .li.on{background:#e0a34a;color:#1b1612} .li .c{color:#8a7d72;margin-left:auto;white-space:nowrap} .li .x{color:#8a7d72;margin-left:6px} .li .x:hover{color:#eee} .li input{margin:0} .lh{font-size:12px;color:#a99a8c;margin:4px 0 2px;font-weight:600} .li.on .c{color:#1b1612}
+  #libList,#libUse{max-height:220px;overflow:auto;border:1px solid #3a302a;border-radius:6px;margin-bottom:12px} .li{font-size:12px;padding:3px 6px;cursor:pointer;color:#d8cdc2;display:flex;gap:6px} .li:hover{background:#2a221c} .li.on{background:#e0a34a;color:#1b1612} .li .c{color:#8a7d72;margin-left:auto;white-space:nowrap} #libList .li,#libUse .li{flex-wrap:wrap;align-items:center} #libList .li .n,#libUse .li .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} #libList .li .c,#libUse .li .c{flex-basis:100%;margin-left:20px;font-size:11px} .li .x{color:#8a7d72;margin-left:6px} .li .x:hover{color:#eee} .li input{margin:0} .lh{font-size:12px;color:#a99a8c;margin:4px 0 2px;font-weight:600} .li.on .c{color:#1b1612}
   .ord{cursor:pointer} .ord.dis{opacity:.45} .ord input{vertical-align:-2px;margin:0 2px 0 0} .ord.act::after{content:" ●";color:#7ddc8a} .on.test{outline:2px solid #ff9f43}
   .sent input{width:58px;font:inherit;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 5px;text-align:center}
   .note{font-size:12px;color:#a99a8c;margin:6px 0 14px} #oTest.on{background:#ff9f43;color:#1b1612}
@@ -44,7 +44,7 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v30</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v31</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Default<br><small>Chooser</small></div></div>
@@ -62,7 +62,7 @@
       <div class="crow" style="margin-bottom:10px"><span style="width:62px">Do</span><select id="oDo"><option value="pose">Pose</option><option value="recording">Recording</option></select></div>
       <div id="libBox" hidden>
         <div class="crow"><input id="libQ" placeholder="Search" style="flex:1;width:auto;text-align:left;color:#eee"></div>
-        <div class="crow"><select id="libFrom" title="His pose at the first frame" style="flex:1"><option value="">From any</option><option value="standing">From standing</option><option value="crouching or kneeling">From crouching or kneeling</option><option value="sitting">From sitting</option><option value="bent over">From bent over</option><option value="on all fours">From on all fours</option><option value="lying on back">From lying on back</option><option value="lying on front">From lying on front</option><option value="lying on left side">From lying on left side</option><option value="lying on right side">From lying on right side</option></select><select id="libTo" title="His pose at the last frame" style="flex:1"><option value="">To any</option><option value="standing">To standing</option><option value="crouching or kneeling">To crouching or kneeling</option><option value="sitting">To sitting</option><option value="bent over">To bent over</option><option value="on all fours">To on all fours</option><option value="lying on back">To lying on back</option><option value="lying on front">To lying on front</option><option value="lying on left side">To lying on left side</option><option value="lying on right side">To lying on right side</option></select></div>
+        <div class="crow"><select id="libFrom" title="His pose at the first frame" style="flex:1;min-width:0;width:0"><option value="">From any</option><option value="standing">From standing</option><option value="crouching or kneeling">From crouching or kneeling</option><option value="sitting">From sitting</option><option value="bent over">From bent over</option><option value="on all fours">From on all fours</option><option value="lying on back">From lying on back</option><option value="lying on front">From lying on front</option><option value="lying on left side">From lying on left side</option><option value="lying on right side">From lying on right side</option></select><select id="libTo" title="His pose at the last frame" style="flex:1;min-width:0;width:0"><option value="">To any</option><option value="standing">To standing</option><option value="crouching or kneeling">To crouching or kneeling</option><option value="sitting">To sitting</option><option value="bent over">To bent over</option><option value="on all fours">To on all fours</option><option value="lying on back">To lying on back</option><option value="lying on front">To lying on front</option><option value="lying on left side">To lying on left side</option><option value="lying on right side">To lying on right side</option></select></div>
         <div class="crow"><span id="libN" class="dim" style="flex:1"></span><button id="libAdd" title="Add every move shown to this order (30 at most)">Add shown</button></div>
         <div id="libList"></div>
         <h4 class="lh">In this order <span id="libUseN" class="dim"></span></h4>
@@ -79,7 +79,7 @@
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=30"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=31"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -389,13 +389,13 @@ async function libList() { const o = orders[cur], L = await libIndex(); if (orde
   const words = $('libQ').value.toLowerCase().split(/\s+/).filter(Boolean), f = $('libFrom').value, t = $('libTo').value, use = new Set(o.do.moves || []);
   const M = L.filter(x => (!f || x.start === f) && (!t || x.end === t) && words.every(w => x.text.includes(w)));
   libShown = M; $('libN').textContent = M.length.toLocaleString() + (M.length === 1 ? ' move' : ' moves') + (M.length > 200 ? ' (first 200 shown)' : '');
-  $('libList').innerHTML = M.slice(0, 200).map(x => `<div class="li ${use.has(x.id) ? 'on' : ''}" data-id="${esc(x.id)}" title="${esc(x.desc)}"><input type="checkbox" ${use.has(x.id) ? 'checked' : ''}>${esc(mvLabel(x))}<span class="c">${esc(mvInfo(x))}</span></div>`).join('') || '<div class="li dim">No moves</div>';
+  $('libList').innerHTML = M.slice(0, 200).map(x => `<div class="li ${use.has(x.id) ? 'on' : ''}" data-id="${esc(x.id)}" title="${esc(x.desc)}"><input type="checkbox" ${use.has(x.id) ? 'checked' : ''}><span class="n">${esc(mvLabel(x))}</span><span class="c">${esc(mvInfo(x))}</span></div>`).join('') || '<div class="li dim">No moves</div>';
   for (const d of $('libList').querySelectorAll('[data-id]')) { const id = d.dataset.id, cb = d.querySelector('input');
     cb.onclick = e => { e.stopPropagation(); setUse(id, cb.checked); }; d.onclick = () => previewMove(id); } }
 function libUse() { const o = orders[cur], D = o.do, ids = D.moves || [];
   const old = D.file || D.category ? `<div class="li dim">Old game set: ${esc(D.file ? D.file.replace(/^kin\//, '').replace(/\.bin$/, '') : 'closest in ' + D.category)}</div>` : '';
   $('libUseN').textContent = ids.length ? ids.length + (ids.length === 1 ? ' move' : ' moves') : '';
-  $('libUse').innerHTML = old + (ids.map(id => { const x = LIB.by && LIB.by[id]; return `<div class="li" data-id="${esc(id)}" title="${esc(x ? x.desc : id)}">${esc(x ? mvLabel(x) : id)}<span class="c">${esc(mvInfo(x))}</span><span class="x" title="Remove">✕</span></div>`; }).join('') || (old ? '' : '<div class="li dim">None. Tick moves above.</div>'));
+  $('libUse').innerHTML = old + (ids.map(id => { const x = LIB.by && LIB.by[id]; return `<div class="li" data-id="${esc(id)}" title="${esc(x ? x.desc : id)}"><span class="n">${esc(x ? mvLabel(x) : id)}</span><span class="x" title="Remove">✕</span><span class="c">${esc(mvInfo(x))}</span></div>`; }).join('') || (old ? '' : '<div class="li dim">None. Tick moves above.</div>'));
   for (const d of $('libUse').querySelectorAll('[data-id]')) { const id = d.dataset.id; d.querySelector('.x').onclick = e => { e.stopPropagation(); setUse(id, false); }; d.onclick = () => previewMove(id); } }
 function setUse(id, on) { const o = orders[cur], D = o.do; let ids = (D.moves || []).filter(x => x !== id); if (on) ids.push(id);
   o.do = { type: 'recording', moves: ids }; libList(); libUse(); dirty(); }
