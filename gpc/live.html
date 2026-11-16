@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 22</div><div id="brainver"></div>
+<div id="ver">GPC live 23</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -1687,6 +1687,28 @@ function makeSnap() {
     camera: { yaw: +look.yaw.toFixed(3), pitch: +look.pitch.toFixed(3), dist: +look.dist.toFixed(3), target: [look.tgt.x, look.tgt.y, look.tgt.z].map(v => +v.toFixed(3)), box: !!look.box },
     balance: bal && bal.last ? Object.fromEntries(Object.entries(bal.last).filter(([k, v]) => typeof v !== 'function').map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(4) : v])) : null,
     hist: hist.map(h => Array.from(h, (v, i) => +v.toFixed(i ? 4 : 3))), errors: ERRS.slice(),
+    // (user Nov 16 16:32) what the brain is asked to do right now: for every body part, where the recording (or the
+    // standing pose) wants it one tick ahead and where it is, in the box's own frame (m: x across, y into the box from
+    // the glass, z up from the box's middle); how far a target lies outside the box; joints at their stops; muscles at
+    // full strength; what he touches
+    brainNow: (() => { try {
+      const B = window.__brainNet; if (!B) return null; const Gq = B.G, Gi = [-Gq[0], -Gq[1], -Gq[2], Gq[3]], t = [0, 0, 0], bx = W.box, rr = v => +v.toFixed(3);
+      const inBox = (A, i) => { qrot(Gi, 0, A[i], A[i + 1], A[i + 2], t, 0); return [t[0], t[1], t[2]]; };
+      const outside = p => Math.max(Math.abs(p[0]) - bx.w / 2, -p[1], p[1] - bx.D, p[2] - bx.h / 2, -bx.h / 2 - p[2], 0);
+      const parts = []; let worst = 0;
+      for (let b = 0; b < 23; b++) { const tg = inBox(B.ref.pos, 3 * b), at = inBox(B.pos, 3 * b), off = Math.hypot(tg[0] - at[0], tg[1] - at[1], tg[2] - at[2]); worst = Math.max(worst, off);
+        parts.push({ part: mj.mj_id2name(W.m, mj.mjtObj.mjOBJ_BODY.value, B.bodyId[b]), target: tg.map(rr), at: at.map(rr), offM: rr(off), targetOutsideBoxM: rr(outside(tg)) }); }
+      const X = B.react, R = window.__gpc && window.__gpc.rec;
+      const m = W.m, d = W.d, stops = [], strong = [];
+      for (let j = 1; j < m.njnt; j++) { if (!m.jnt_limited[j]) continue; const v = d.qpos[m.jnt_qposadr[j]], lo = m.jnt_range[2 * j], hi = m.jnt_range[2 * j + 1];
+        if (v < lo + 0.02 || v > hi - 0.02) stops.push([mj.mj_id2name(m, mj.mjtObj.mjOBJ_JOINT.value, j), +(v * 180 / Math.PI).toFixed(1), +((v < lo + 0.02 ? lo : hi) * 180 / Math.PI).toFixed(1)]); }
+      W.act.forEach((a, i) => { const f = d.actuator_force[i], c = m.actuator_forcerange[2 * i + 1]; if (m.actuator_forcelimited[i] && c > 0 && Math.abs(f) > 0.95 * c) strong.push([a.name, +f.toFixed(0)]); });
+      const touch = []; for (let k = 0; k < d.ncon; k++) { const c = d.contact.get ? d.contact.get(k) : d.contact[k]; if (!c) continue; const b1 = m.geom_bodyid[c.geom1], b2 = m.geom_bodyid[c.geom2];
+        touch.push([mj.mj_id2name(m, mj.mjtObj.mjOBJ_BODY.value, b1), mj.mj_id2name(m, mj.mjtObj.mjOBJ_BODY.value, b2), +(c.dist * 100).toFixed(1)]); }
+      return { following: X ? { move: R && R.file || null, frame: +(X.t * X.fps).toFixed(1), frames: X.n } : 'standing pose', worstOffM: +worst.toFixed(3),
+        partsNote: 'target = where the brain is asked to put the part one tick ahead; at = where it is; box frame, metres', parts,
+        jointsAtStop: stops, jointsAtStopNote: '[joint, angle deg, the stop deg]', musclesAtFull: strong, touching: touch, touchingNote: '[part, part or wall, gap cm (negative = pressed in)]' };
+    } catch (e) { return { err: String(e) }; } })(),
     // (GPC live 14) what pushes his joints right now: the muscles (MuJoCo actuators) and the joint-envelope stops
     forces: (() => { try {
       const f = W.d.actuator_force, top = W.act.map((a, i) => [a.name, +f[i].toFixed(1)]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 8);
@@ -1702,8 +1724,9 @@ function makeSnap() {
 $('snap').onclick = async e => {
   e.stopPropagation();
   const js = JSON.stringify(makeSnap()), name = 'box-snapshot-' + new Date().toISOString().slice(11, 19).replace(/:/g, '') + '.json';
-  const file = new File([js], name, { type: 'application/json' });
-  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Box snapshot' }); note('Snapshot shared', 1500); return; } } catch (err) { if (err && err.name === 'AbortError') return; }
+  const file = new File([js], name, { type: 'application/json' }), png = shot(), pic = png ? new File([await (await fetch(png)).blob()], name.replace('.json', '.png'), { type: 'image/png' }) : null;
+  try { if (pic) { const a = document.createElement('a'); a.href = URL.createObjectURL(pic); a.download = pic.name; document.body.appendChild(a); a.click(); a.remove(); } } catch (_) {}
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: pic ? [file, pic] : [file], title: 'Box snapshot' }); note('Snapshot shared', 1500); return; } } catch (err) { if (err && err.name === 'AbortError') return; }
   const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove();
   try { await navigator.clipboard.writeText(js); } catch (_) {}
   note('Snapshot saved to Downloads (also copied): attach it in the chat', 2600);
@@ -1994,7 +2017,9 @@ function showState() {
   const t = crack && crack.dead ? 'broken' : kin.state === 'stand' ? 'standing' : kin.state === 'react' ? 'recovering' : kin.state === 'fall' ? 'falling' : 'getting up';
   if (t !== stateShown) { stateShown = t; try { document.getElementById('brainver').textContent = t; } catch (_) {} }
 }
-window.__box = { W, standUp, dragRot, look, lookBtn: () => $('look'), kin: () => kin, snap: () => makeSnap() };   // for the orders editor (gpc/editor.html)
+// (user Nov 16 16:32) the picture as it is now, as a PNG (drawn again first: the canvas keeps no copy otherwise)
+function shot() { try { renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); } catch (e) { return null; } }
+window.__box = { W, standUp, dragRot, look, lookBtn: () => $('look'), kin: () => kin, snap: () => makeSnap(), shot };   // for the orders editor (gpc/editor.html)
 window.__kin = () => kin; window.__crack = () => crack; window.__crackMs = () => ({ max: crackFrame.max || 0, slow: crackFrame.slow || 0 });
 // ================= start =================
 $('go').onclick = async () => {
