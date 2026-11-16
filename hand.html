@@ -1837,8 +1837,8 @@ function playRecording(dt) {
   P.t += dt;
   const u = P.t % (L + 1.5), x = Math.min(u, L) * 30, i = Math.min(P.n - 2, Math.floor(x)), w = x - i;   // play, hold 1.5 s, again
   // along the floor's diagonal: from near the back-left corner toward the front-right one
-  const bw = W.box.w, bD = W.box.D, sx = -bw / 2 + 0.27, sy = bD - 0.27;
-  P.yaw = Math.atan2(0.22 - sy, bw / 2 - 0.22 - sx) - P.f0; P.q = [0, 0, Math.sin(P.yaw / 2), Math.cos(P.yaw / 2)];
+  const RAW = /[?&]raw/.test(location.search), bw = W.box.w, bD = W.box.D, sx = RAW ? P.x0 : -bw / 2 + 0.27, sy = RAW ? P.y0 : bD - 0.27;   // raw: recorded inside the box, played where it happened
+  P.yaw = RAW ? 0 : Math.atan2(0.22 - sy, bw / 2 - 0.22 - sx) - P.f0; P.q = [0, 0, Math.sin(P.yaw / 2), Math.cos(P.yaw / 2)];
   const a = P.buf.subarray(i * F + 299, i * F + 372), b = P.buf.subarray((i + 1) * F + 299, (i + 1) * F + 372);
   for (let k = 7; k < 73; k++) d.qpos[k] = a[k] + (b[k] - a[k]) * w;
   const t = [0, 0, 0]; qrot(P.q, 0, a[0] + (b[0] - a[0]) * w - P.x0, a[1] + (b[1] - a[1]) * w - P.y0, 0, t, 0);
