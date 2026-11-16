@@ -2,8 +2,23 @@
 // WebAssembly SIMD kernel for every matrix (k/gemv.c), the small float steps (attention over <= 9 positions, layer
 // norm, GELU, the dice) in plain JS. his body (343) -> 8 picks -> 40 codes.
 const L = 6, D = 1024, H = 4, HD = 256, V = 59049, BASE = 1 << 20;
-export async function makeEngine({ wasm, layers, head, f32, manifest, emb, embScale }) {
-  const { instance } = await WebAssembly.instantiate(wasm), { gemv, memory } = instance.exports;
+// threads > 1 (needs a cross-origin-isolated page): the same kernel in helper workers on one shared memory; every matrix's
+// rows are split between them (helper.js). wasmMt = the shared-memory build of the kernel.
+export async function makeEngine({ wasm, wasmMt, helperURL, threads = 1, layers, head, f32, manifest, emb, embScale }) {
+  let gemv, memory, par = null;
+  if (threads > 1 && wasmMt && typeof SharedArrayBuffer !== 'undefined') {
+    memory = new WebAssembly.Memory({ initial: 2560, maximum: 4096, shared: true });
+    const mod = await WebAssembly.compile(wasmMt); gemv = (await WebAssembly.instantiate(mod, { env: { memory } })).exports.gemv;
+    const ctl = new Int32Array(new SharedArrayBuffer(64)), ws = [];   // 0 generation, 1 done, 2 ptr, 3 x, 4 y, 5 rows, 6 cols, 7 parts
+    await Promise.all(Array.from({ length: threads - 1 }, (_, i) => new Promise((ok, no) => { const w = new Worker(helperURL, { type: 'module' }); w.onmessage = () => ok(); w.onerror = e => no(new Error('helper: ' + (e.message || e))); w.postMessage({ mod, memory, ctl, idx: i + 1 }); ws.push(w); })));
+    const one = gemv;
+    par = (ptr, X, Y, rows, cols) => {
+      ctl[2] = ptr; ctl[3] = X; ctl[4] = Y; ctl[5] = rows; ctl[6] = cols; ctl[7] = threads; Atomics.store(ctl, 1, 0); Atomics.add(ctl, 0, 1); Atomics.notify(ctl, 0);
+      const per = (Math.floor(rows / threads) + 1) & ~1; one(ptr, X, Y, Math.min(per, rows), cols);
+      let d; while ((d = Atomics.load(ctl, 1)) < threads - 1) Atomics.wait(ctl, 1, d, 2);
+    };
+    gemv = par;
+  } else { const inst = (await WebAssembly.instantiate(wasm)).instance; gemv = inst.exports.gemv; memory = inst.exports.memory; threads = 1; }
   const mem = new Uint8Array(memory.buffer), off = { 'layers.bin': BASE, 'head.bin': BASE + layers.length };
   mem.set(layers, off['layers.bin']); mem.set(head, off['head.bin']);
   const X = BASE + layers.length + head.length + 64 & ~15, Y = X + 4096 * 2 + 64;      // scratch: x (int16), y (int32, up to V)
@@ -62,5 +77,5 @@ export async function makeEngine({ wasm, layers, head, f32, manifest, emb, embSc
     const codes = new Float32Array(40); for (let k = 0; k < 8; k++) { let t = toks[k]; for (let i = 0; i < 5; i++) { codes[5 * k + i] = t % 9 - 4; t = Math.floor(t / 9); } }
     return { codes, toks };
   }
-  return { decide };
+  return { decide, threads };
 }
