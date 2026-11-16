@@ -112,7 +112,8 @@ export async function attachGPC(brain, ort, say) {
   st.move = id => MV[id] || (MV[id] = st.moveRaw(id).then(decodeQ).then(dec => expandQ(brain.W.mj, brain.W.m, dec, brain.bodyId, BODY_NAMES)).catch(e => { delete MV[id]; throw e; }));
   const prefetch = () => { for (const o of st.orders) if (o.do && o.do.moves) for (const id of o.do.moves) st.move(id).catch(() => {}); };
   // which listed move to play: the closest first frame to his body now (shape of the hips, then the joints), and how
-  // far it would take his body through the walls from where he is (every listed move is still allowed: the least bad)
+  // far it would take his body through the walls from where he is (no move is ruled out for lack of room: in a small
+  // box most get-ups touch a wall, and he still has to try)
   async function pickMove(o) {
     const me = shapeOf(brain.rot, 0), d = brain.W.d, P = brain.pos, yaw = hdg(brain.rot, 0), out = [];
     for (const id of o.do.moves) { let buf; try { buf = await st.move(id); } catch (_) { continue; }
@@ -120,8 +121,11 @@ export async function attachGPC(brain, ort, say) {
       for (const a of brain.W.act) { h += Math.abs(d.qpos[a.qadr] - buf[299 + a.qadr]); k++; }
       const pose = Math.hypot(me[0] - s0[0], me[1] - s0[1], me[2] - s0[2]) + 0.3 * h / k;
       const ov = overflow(buf, n, { G: brain.G, xy: [P[0], P[1]], yaw, h0: hdg(buf, 3), mid: [buf[0], buf[1]] }, brain.W.box, brain.ground);
-      out.push({ id, buf, n, pose: +pose.toFixed(3), wall: +ov.worst.toFixed(2), score: pose + 2 * ov.worst }); }
-    out.sort((a, b) => a.score - b.score); return out;
+      out.push({ id, buf, n, pose: +pose.toFixed(3), wall: +ov.worst.toFixed(2) }); }
+    // the start pose comes first (a move he is not in cannot be followed); among moves within 0.15 of the best start,
+    // the one that goes least through the walls
+    const best = Math.min(...out.map(x => x.pose));
+    out.sort((a, b) => ((a.pose > best + 0.15) - (b.pose > best + 0.15)) || (a.pose > best + 0.15 ? a.pose - b.pose : a.wall - b.wall || a.pose - b.pose)); return out;
   }
   async function startRecording(o) {
     const D = o.do || {}; let file = D.file;
