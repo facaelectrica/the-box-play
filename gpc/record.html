@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RECORD v16</title><link rel="icon" href="../icon-192.png">
+<title>MOTIONS v17</title><link rel="icon" href="../icon-192.png">
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #3a302a} header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
@@ -23,9 +23,10 @@
   #note{font-size:12px;color:#ffb27a}
   #tlBar{flex:1;min-width:120px;accent-color:#e0a34a} #tlTime,#trimTxt{font-variant-numeric:tabular-nums;color:#ffd38a;white-space:nowrap;font-size:12px} #name{width:230px}
   #take[hidden]{display:none}
+  body.embed header a{display:none}   /* inside the editor's Motions tab: the editor is one tab away */
 </style></head>
 <body>
-<header><b>RECORD v16</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
+<header><b>MOTIONS v17</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
 <div id="views">
   <div class="view"><span class="lab">Camera</span><div id="vwrap" class="mir"><video id="video" playsinline muted></video><canvas id="over"></canvas></div>
     <div id="msg">Start the camera, step back until your whole body is in view, then calibrate.</div><div id="big" hidden></div><div id="recDot" hidden>REC</div></div>
@@ -68,12 +69,13 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { lookFromGLTF } from '../sim/look.js';
 import { readBody, fk, M } from './mocap/skel.js?v=1';
-import { makeSolver, toMove } from './mocap/solve.js?v=16';
-import { fakePoints } from './mocap/synth.js?v=16';
+import { makeSolver, toMove } from './mocap/solve.js?v=17';
+import { fakePoints } from './mocap/synth.js?v=17';
 import { encodeQ } from './mocap/encq.js?v=1';
 import { decodeQ } from './libq.js?v=1';
-import { loadHMR, bodyRotations, boxOf, KP, KP_EDGES } from './mocap/hmr.js?v=16';
+import { loadHMR, bodyRotations, boxOf, KP, KP_EDGES } from './mocap/hmr.js?v=17';
 const $ = id => document.getElementById(id);
+if (new URLSearchParams(location.search).has('embed')) document.body.classList.add('embed');
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3', MODEL = k => `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${k}/float16/latest/pose_landmarker_${k}.task`;
 const HOLISTIC = 'https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task';
 const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/', HMR_MODEL = 'https://huggingface.co/momolesang/InstantHMR/resolve/main/instanthmr-medium.onnx';
@@ -95,7 +97,7 @@ const UP = new THREE.Vector3(0, 1, 0), va = new THREE.Vector3(), vb = new THREE.
 // his figures, as in the editor and the game: one piece per body, the trunk pieces bending across the spine joints
 const fig = new THREE.Group(); world.add(fig); const figG = {}, gl = {}; let torso = null, FIGKIND = null;
 const SHELL = new THREE.MeshStandardMaterial({ color: 0xebe5da, roughness: 0.38 }), JOINT = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.48, metalness: 0.15, side: THREE.DoubleSide });
-const FIGFILE = { female: '../body/bodychan.glb', male: '../body/bodykun.glb' }, TORSO = ['Hips', 'Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head'];
+const FIGFILE = { female: '../body/bodychan_v2.glb', male: '../body/bodykun.glb' }, TORSO = ['Hips', 'Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head'];
 const marks = [0, 1].map(() => { const r = new THREE.Mesh(new THREE.RingGeometry(0.09, 0.11, 32), new THREE.MeshBasicMaterial({ color: 0x7ddc8a, side: THREE.DoubleSide })); r.visible = false; world.add(r); return r; });   // green ring: a foot held on the floor
 async function buildFig(kind) {
   FIGKIND = kind; fig.clear(); for (const k in figG) delete figG[k]; torso = null; if (kind === 'none') { showSkel(); return; }

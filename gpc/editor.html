@@ -1,8 +1,10 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v50</title>
+<title>EDITOR v51</title>
 <style>
-  *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
+  *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  #tabs{flex:none;display:flex;gap:3px;align-items:flex-end;padding:6px 12px 0;background:#120f0c;border-bottom:1px solid #3a302a} #tabs button{border-radius:8px 8px 0 0;border-bottom:0;padding:5px 16px;background:#1b1612;color:#a99a8c} #tabs button.on{background:#e0a34a;color:#1b1612;border-color:#e0a34a;font-weight:600}
+  #ordersTab{flex:1;min-height:0;display:flex} #motionsTab{flex:1;min-height:0;width:100%;border:0} #ordersTab[hidden],#motionsTab[hidden]{display:none}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
   #right{display:flex;flex-direction:column;padding:8px;gap:6px;background:#120f0c;flex:none;width:44vw;min-width:260px;overflow:hidden}
   #split{flex:none;width:7px;cursor:col-resize;background:#2a221c;border-left:1px solid #3a302a;border-right:1px solid #3a302a} #split:hover,#split.on{background:#e0a34a}
@@ -58,8 +60,10 @@
   #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#a99a8c;font-size:13px;pointer-events:none} #empty[hidden]{display:none}
 </style></head>
 <body>
+<div id="tabs"><button id="tabOrders" class="on" title="Orders: the director's rules">Orders</button><button id="tabMotions" title="Motions: record a move with the camera">Motions</button></div>
+<div id="ordersTab">
 <div id="left">
-  <header><b>EDITOR v50</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v51</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Download the current state for debugging (S)">Snapshot</button><button id="gh" title="GitHub token for publishing and for reading the library">GitHub</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove token</button></span><button id="undo" class="poseOnly" title="Undo (Ctrl+Z)">Undo</button><button id="reset" class="poseOnly">Reset pose</button><button id="load" title="Open an orders file">Open file</button><button id="save" class="pri" title="Save and publish the orders to the game">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ New order</button><div class="ord off" style="margin-top:10px" title="Runs when no order is active">No order<br><small>Chooser</small></div></div>
@@ -94,13 +98,15 @@
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=50"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=51"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>Tilt left/right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>Tilt forward/back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
     <div class="brow"><button id="level" title="Reset the tilt (L)">Level</button><label><input type="checkbox" id="lock"> Phone view</label><span class="sp"></span><span id="sw" class="dim"></span></div>
   </div>
 </div>
+</div>
+<iframe id="motionsTab" hidden allow="camera; microphone" title="Motions"></iframe>
 <input id="fileIn" type="file" accept=".json,application/json" style="display:none">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
@@ -632,5 +638,10 @@ function tick() {
     $('signs').innerHTML = Object.entries(GROUPS).map(([g, ks]) => `<tr class="grp"><td colspan="2">${g}</td></tr>` + ks.map(k => `<tr><td>${SIGNS[k][0]}</td><td>${fmt(k, SIGNS[k][1])}</td></tr>`).join('')).join(''); }
   setTimeout(tick, 200);
 }
+// ---------- tabs: Orders (this editor) and Motions (recording a move with the camera: gpc/record.html in a frame) ----------
+{ const show = t => { const m = t === 'motions', mf = $('motionsTab'); $('ordersTab').hidden = m; mf.hidden = !m; $('tabOrders').classList.toggle('on', !m); $('tabMotions').classList.toggle('on', m);
+    if (m) { if (!mf.getAttribute('src')) mf.src = 'record.html?embed&v=17'; mf.focus(); }   // loaded the first time it is opened; the keyboard goes to the visible tab
+    else { fit(); draw(); } };
+  $('tabOrders').onclick = () => show('orders'); $('tabMotions').onclick = () => show('motions'); }
 </script>
 </body></html>
