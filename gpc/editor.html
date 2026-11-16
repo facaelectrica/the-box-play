@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v14</title>
+<title>EDITOR v15</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -39,7 +39,7 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v14</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v15</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Otherwise<br><small>chooser</small></div></div>
@@ -61,7 +61,7 @@
 </div>
 <div id="split" title="drag to give the editor or the box more room"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor"></iframe></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=15"></iframe></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
