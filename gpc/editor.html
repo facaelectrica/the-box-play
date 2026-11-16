@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v32</title>
+<title>EDITOR v33</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -44,7 +44,7 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v32</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v33</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Default<br><small>Chooser</small></div></div>
@@ -79,7 +79,7 @@
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=32"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=33"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -389,7 +389,7 @@ async function libList() { const o = orders[cur], L = await libIndex(); if (orde
   const words = $('libQ').value.toLowerCase().split(/\s+/).filter(Boolean), f = $('libFrom').value, t = $('libTo').value, use = new Set(o.do.moves || []);
   const M = L.filter(x => (!f || x.start === f) && (!t || x.end === t) && words.every(w => x.text.includes(w)));
   // best matches first: the words in the move's name, then in its short description, then anywhere
-  if (words.length) { const rank = x => { const n = (x.id + ' ' + x.short).toLowerCase(); return words.every(w => x.id.toLowerCase().includes(w)) ? 0 : words.every(w => n.includes(w)) ? 1 : 2; };
+  if (words.length) { const rank = x => { const n = (x.id + ' ' + x.short).toLowerCase(); const id = x.id.toLowerCase(); return id.startsWith(words[0]) && words.every(w => id.includes(w)) ? 0 : words.every(w => id.includes(w)) ? 1 : words.every(w => n.includes(w)) ? 2 : 3; };
     for (const x of M) x._r = rank(x); M.sort((a, b) => a._r - b._r); }
   libShown = M; $('libN').textContent = M.length === L.length ? L.length.toLocaleString() + ' moves' : `${M.length.toLocaleString()} of ${L.length.toLocaleString()} moves` + (M.length > 200 ? ', first 200 shown' : '');
   $('libList').innerHTML = M.slice(0, 200).map(x => `<div class="li ${use.has(x.id) ? 'on' : ''}" data-id="${esc(x.id)}" title="${esc(x.desc)}"><input type="checkbox" ${use.has(x.id) ? 'checked' : ''}><span class="n">${esc(mvLabel(x))}</span><span class="c">${esc(mvInfo(x))}</span></div>`).join('') || '<div class="li dim">No moves</div>';
