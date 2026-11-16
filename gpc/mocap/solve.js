@@ -94,9 +94,10 @@ export function makeSolver(S, opt = {}) {
         tgt[id[d.A]] = aim(a, f, rest(d.FA), Z0); let Rf = aim(b, f, rest(d.H), Z0);
         if (o.hands && see(d.pk, d.ix)) { const dir = V.sub(V.mid(P[d.ix], P[d.pk]), P[d.wr]), nrm = V.mul(V.cross(dir, V.sub(P[d.ix], P[d.pk])), -d.s);
           if (ok3(dir) && ok3(V.perp(nrm, V.norm(dir)))) { const Rh = aim(dir, nrm, [d.s, 0, 0], Z0), qh = M.toQuat(M.mul(M.T(Rf), Rh));
+            // palm down to palm up is half a turn of the forearm, so the twist may reach 160 degrees
             let tw = 2 * Math.atan2(qh[1], qh[0]); if (tw > Math.PI) tw -= 2 * Math.PI; if (tw < -Math.PI) tw += 2 * Math.PI;   // the hand's turn around the forearm goes into the forearm
             tw = mem.tw[si] + Math.max(-0.35, Math.min(0.35, tw - mem.tw[si] - 2 * Math.PI * Math.round((tw - mem.tw[si]) / (2 * Math.PI))));   // no sudden turns: the hand points are noisy
-            tw = Math.max(-2.8, Math.min(2.8, tw)); mem.tw[si] = tw;   // palm down to palm up is half a turn of the forearm Rf = M.mul(Rf, M.euler(tw, 0, 0)); tgt[id[d.H]] = Rh; } }
+            tw = Math.max(-2.8, Math.min(2.8, tw)); mem.tw[si] = tw; Rf = M.mul(Rf, M.euler(tw, 0, 0)); tgt[id[d.H]] = Rh; } }
         else Rf = M.mul(Rf, M.euler(mem.tw[si], 0, 0));
         tgt[id[d.FA]] = Rf; }
       if (wl > 0) { const a = V.norm(V.sub(P[d.kn], P[d.hip])), b = V.norm(V.sub(P[d.an], P[d.kn])), foot = see(d.he, d.to), fwd = foot ? V.sub(P[d.to], P[d.he]) : Fp;
