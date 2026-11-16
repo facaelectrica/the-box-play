@@ -44,12 +44,13 @@ export async function attachGPC(brain, ort, say) {
   // to this one or after its time; the last step holds.
   const IDLE = { name: 'Idle', on: true, strength: 'control', start: { all: [{ s: 'head', c: '>', v: 1.30 }, { s: 'hips', c: '>', v: 0.80 }], for: 0.2 }, stop: { all: [{ s: 'head', c: '<', v: 1.05 }], for: 0.3 },
     steps: [{ pose: { RightArm_y: -1.25, LeftArm_y: 1.25, RightArm_z: -0.2, LeftArm_z: 0.2 }, time: 1 }] };
-  st.orders = [IDLE]; st.active = DANCE ? null : IDLE; st.step = 0; st.stepT = 0; st.force = null; const tm = new Map();
+  IDLE.do = { type: 'pose' }; st.orders = [IDLE]; st.active = DANCE ? null : IDLE; st.step = 0; st.stepT = 0; st.force = null; const tm = new Map();
   const v1 = O => { const o = O.orders.find(x => x.name === 'Idle'), w = o.when || {};   // the editor's first file format
     return { version: 2, orders: [{ name: 'Idle', start: { all: [{ s: 'head', c: '>', v: w.upHeadAbove ?? 1.3 }, { s: 'hips', c: '>', v: w.upHipsAbove ?? 0.8 }], for: w.upFor ?? 0.2 }, stop: { all: [{ s: 'head', c: '<', v: w.downHeadBelow ?? 1.05 }], for: w.downFor ?? 0.3 }, pose: o.do.pose }] }; };
-  const norm = o => { if (!o.steps) o.steps = [{ pose: o.pose || {}, time: 1 }]; delete o.pose; if (o.on === undefined) o.on = true; if (!o.strength) o.strength = 'control'; for (const st_ of o.steps) st_._stand = null; return o; };
+  const norm = o => { if (!o.do) o.do = { type: 'pose' }; if (!o.steps) o.steps = [{ pose: o.pose || {}, time: 1 }]; delete o.pose; if (o.on === undefined) o.on = true; if (!o.strength) o.strength = 'control'; for (const st_ of o.steps) st_._stand = null; return o; };
   st.apply = O => { if (!O || !O.orders) return false; if (!O.version || O.version < 2) O = v1(O);
     st.orders = O.orders.map(norm); tm.clear();
+    if (st.rec) { brain.react = null; st.rec = null; }
     st.active = DANCE ? null : (st.orders.find(o => st.active && o.name === st.active.name) || null); st.step = 0; st.stepT = 0; standFor(st.active, 0); st.ordersFile = O; return true; };
   st.setStepPose = (o, k, pose) => { const sp = o.steps[k]; sp.pose = pose; sp._stand = null; if (st.active === o && st.step === k) standFor(o, k); };
   st.setPose = (o, pose) => st.setStepPose(o, 0, pose);
@@ -81,6 +82,40 @@ export async function attachGPC(brain, ort, say) {
     out.root_w = o[3]; out.root_x = o[0]; out.root_y = o[1]; out.root_z = o[2]; return out; };
   // how far his joints are from a step's pose (mean over the hinges, radians)
   function poseGap(pose) { const d = brain.W.d; let s = 0, n = 0; for (const a of brain.W.act) { s += Math.abs(d.qpos[a.qadr] - (pose[a.name] || 0)); n++; } return s / n; }
+  // ---------- Do: Recording (a real person's movement from the library, performed by the brain under physics) ----------
+  // do = { type: 'recording', file } or { type: 'recording', category } (the recording whose first frame is closest to
+  // his body now). The recording is anchored at his hips and heading; when it ends and the order still holds, the
+  // director picks again (a new try).
+  const LIB = { list: null, bufs: {} };
+  st.library = async () => { if (!LIB.list) { try { const k = await (await fetch(here + '../body/clips/kin/kin.json')).json(), L = [];
+      for (const [c, v] of Object.entries(k.getups || {})) for (const x of v) L.push({ file: x.file, cat: 'getup-' + c, label: x.file.replace(/^kin\//, '').replace(/\.bin$/, '') });
+      for (const x of k.reacts || []) L.push({ file: x.file, cat: 'recovery-' + (x.kind || ''), label: x.file.replace(/^kin\//, '').replace(/\.bin$/, '') + (x.src ? ' · ' + x.src : '') });
+      for (const x of k.idles || []) L.push({ file: x.file, cat: 'idle', label: (x.label || x.file) });
+      for (const x of k.rests || []) L.push({ file: x.file, cat: 'rest-' + (x.kind || ''), label: x.file.replace(/^kin\//, '').replace(/\.bin$/, '') });
+      LIB.list = L; } catch (e) { LIB.list = []; } } return LIB.list; };
+  // each recording's first-frame shape, read once (only the first frame is fetched)
+  st.starts = async L => { await Promise.all(L.filter(x => !x.s0).map(async x => { try { const r = await fetch(here + '../body/clips/' + x.file, { headers: { Range: 'bytes=0-1503' } }), b = new Float32Array((await r.arrayBuffer()).slice(0, 1504)); x.s0 = shapeOf(b, 3); } catch (_) { x.s0 = [0, 0, 1]; } })); };
+  st.clip = async f => LIB.bufs[f] || (LIB.bufs[f] = new Float32Array(await (await fetch(here + '../body/clips/' + f)).arrayBuffer()));
+  const hdg = (q, i) => { const t = [0, 0, 0]; qrot(q, i, 1, 0, 0, t, 0); return Math.atan2(t[1], t[0]); };
+  // a body shape that does not depend on where he faces: the hips' three axes, how much each points up
+  const shapeOf = (q, i) => { const a = [0, 0, 0], b = [0, 0, 0], c = [0, 0, 0]; qrot(q, i, 1, 0, 0, a, 0); qrot(q, i, 0, 1, 0, b, 0); qrot(q, i, 0, 0, 1, c, 0); return [a[2], b[2], c[2]]; };
+  async function startRecording(o) {
+    const D = o.do || {}; let file = D.file;
+    if (!file && D.category) {
+      const L = (await st.library()).filter(x => x.cat === D.category || x.cat.startsWith(D.category + '-') || (D.category === 'getup' && x.cat.startsWith('getup-'))), me = shapeOf(brain.rot, 0), d = brain.W.d;
+      let best = null; await st.starts(L);
+      const near = L.map(x => ({ x, e: Math.hypot(me[0] - x.s0[0], me[1] - x.s0[1], me[2] - x.s0[2]) })).sort((a, b) => a.e - b.e).slice(0, 6);
+      for (const { x, e: e0 } of near) { const b = await st.clip(x.file); let e = e0, n = 0, h = 0;
+        for (const a of brain.W.act) { h += Math.abs(d.qpos[a.qadr] - b[299 + a.qadr]); n++; } e += 0.3 * h / n; if (!best || e < best.e) best = { e, file: x.file }; }
+      file = best && best.file;
+    }
+    if (!file || st.active !== o) return;
+    const buf = await st.clip(file); if (st.active !== o) return;
+    const n = Math.floor(buf.length / 376), P = brain.pos;
+    brain.react = { buf, n, end: n - 1, fps: 30, mid: [buf[0], buf[1]], h0: hdg(buf, 3), t: 0, xy: [P[0], P[1]], yaw: hdg(brain.rot, 0) };
+    if (brain.blendStart) brain.blendStart();
+    st.rec = { file, n, o }; st.fresh = false;
+  }
   // the signs: heights above the floor (m), lean of his trunk from upright (deg), speed of his hips (m/s), box tilt (deg)
   const BI = { head: 6, chest: 3, hips: 0, rightHand: 10, leftHand: 14, rightFoot: 17, leftFoot: 21 };
   st.signs = {};
@@ -90,9 +125,11 @@ export async function attachGPC(brain, ort, say) {
     const R = brain.rot, q = 4 * 3; S.lean = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * (R[q] * R[q] + R[q + 1] * R[q + 1])))) * 180 / Math.PI;
     const V = brain.vel; S.speed = Math.hypot(V[0], V[1], V[2]);
     const G = brain.W.m.opt.gravity, gn = Math.hypot(G[0], G[1], G[2]) || 1; S.tilt = Math.acos(Math.max(-1, Math.min(1, -G[2] / gn))) * 180 / Math.PI;
+    { const R2 = brain.rot, q2 = 4 * 3, f = [0, 0, 0], l = [0, 0, 0]; qrot(R2, q2, 0, -1, 0, f, 0); qrot(R2, q2, 1, 0, 0, l, 0);
+      S.lyingOn = S.lean < 50 ? 'upright' : f[2] > 0.5 ? 'back' : f[2] < -0.5 ? 'front' : l[2] > 0 ? 'right side' : 'left side'; }
     S.tiltLR = Math.asin(Math.max(-1, Math.min(1, -G[0] / gn))) * 180 / Math.PI; S.tiltFB = Math.asin(Math.max(-1, Math.min(1, G[1] / gn))) * 180 / Math.PI;
   }
-  const holds = c => c && c.all && c.all.length ? c.all.every(x => { const v = st.signs[x.s]; return v !== undefined && (x.c === '<' ? v < x.v : v > x.v); }) : false;
+  const holds = c => c && c.all && c.all.length ? c.all.every(x => { const v = st.signs[x.s]; return v !== undefined && (x.c === '=' ? v === x.v : x.c === '<' ? v < x.v : v > x.v); }) : false;
   function held(key, ok, secs) { const n = ok ? (tm.get(key) || 0) + 1 : 0; tm.set(key, n); return n >= Math.max(1, Math.round((secs || 0) * 30)); }
   function direct() {
     readSigns(); const t = +((performance.now() - st.t0) / 1000).toFixed(1);
@@ -103,10 +140,12 @@ export async function attachGPC(brain, ort, say) {
     const k = startOK.findIndex(Boolean); if (k >= 0 && (next === null || k < st.orders.indexOf(next))) next = st.orders[k];
     if (st.force) next = st.orders.find(o => o.name === st.force) || next;
     if (next !== st.active) { st.switches.push([t, next ? next.name : 'chooser', +st.signs.head.toFixed(2)]); if (st.switches.length > 60) st.switches.shift();
-      st.active = next; st.step = 0; st.stepT = 0; standFor(next, 0); st.fresh = false; for (const key of [...tm.keys()]) if (key[0] === 'x') tm.delete(key); }
+      st.active = next; st.step = 0; st.stepT = 0; standFor(next, 0); st.fresh = false; for (const key of [...tm.keys()]) if (key[0] === 'x') tm.delete(key);
+      if (st.rec) { brain.react = null; st.rec = null; } if (next && next.do && next.do.type === 'recording') { st.rec = { pending: true }; startRecording(next); } }
+    if (st.active && st.active.do && st.active.do.type === 'recording' && st.rec && !st.rec.pending && !brain.react) { st.rec = { pending: true }; startRecording(st.active); }   // ended, order still holds: another try
     // steps: on to the next one when he is close to this pose or its time is up
     const o = st.active;
-    if (o && o.steps.length > 1 && st.step < o.steps.length - 1) { st.stepT += 1 / 30; const sp = o.steps[st.step];
+    if (o && !(o.do && o.do.type === 'recording') && o.steps.length > 1 && st.step < o.steps.length - 1) { st.stepT += 1 / 30; const sp = o.steps[st.step];
       if (poseGap(sp.pose) < (sp.close ?? 0.12) || st.stepT > (sp.time ?? 1)) { st.step++; st.stepT = 0; standFor(o, st.step); } }
     const mode = !o ? 'getup' : o.strength === 'guide' ? 'guide' : 'idle'; if (mode !== st.mode) { st.mode = mode; st.fresh = false; }
   }

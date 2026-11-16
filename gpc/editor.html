@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v25</title>
+<title>EDITOR v27</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -26,6 +26,8 @@
   .crow input{width:56px;color:#ffd38a;text-align:right} .crow .u{color:#8a7d72;width:24px} .crow button{padding:1px 6px}
   .cfor{font-size:12px;color:#a99a8c;margin:2px 0 12px} .cfor input{width:46px;font:inherit;font-size:12px;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 4px;text-align:right}
   .sg td{font-size:12px;padding:1px 4px;color:#d8cdc2} .sg td:last-child{text-align:right;color:#ffd38a}
+  #props summary{cursor:pointer;font-weight:600;margin:6px 0} #props h4{font-size:12px;color:#a99a8c;margin:10px 0 2px;font-weight:600} .sg .grp td{color:#a99a8c;font-weight:600;padding-top:8px}
+  #libList{max-height:220px;overflow:auto;border:1px solid #3a302a;border-radius:6px;margin-bottom:12px} .li{font-size:12px;padding:3px 6px;cursor:pointer;color:#d8cdc2;display:flex;gap:6px} .li:hover{background:#2a221c} .li.on{background:#e0a34a;color:#1b1612} .li .c{color:#8a7d72;margin-left:auto}
   .ord{cursor:pointer} .ord.dis{opacity:.45} .ord input{vertical-align:-2px;margin:0 2px 0 0} .ord.act::after{content:" ●";color:#7ddc8a} .on.test{outline:2px solid #ff9f43}
   .sent input{width:58px;font:inherit;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 5px;text-align:center}
   .note{font-size:12px;color:#a99a8c;margin:6px 0 14px} #oTest.on{background:#ff9f43;color:#1b1612}
@@ -42,7 +44,7 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v25</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v27</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Default<br><small>Chooser</small></div></div>
@@ -56,17 +58,25 @@
     <div id="side">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><input id="oname" style="flex:1;font:inherit;font-weight:600;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:4px 8px">
         </div><div style="display:flex;gap:4px;margin:-4px 0 10px"><button id="oUp" title="Raise priority">▲</button><button id="oDn" title="Lower priority">▼</button><button id="oTest" title="Force this order">Test</button><span class="sp"></span><button id="oDel" title="Delete order">✕</button></div>
-      <div class="crow" style="margin-bottom:10px"><span style="width:62px">Strength</span><select id="oStr"><option value="control">Control</option><option value="guide">Guide</option></select></div>
+      <div class="crow"><span style="width:62px">Strength</span><select id="oStr"><option value="control">Control</option><option value="guide">Guide</option></select><span class="sp"></span><button id="oMoment" title="Start conditions and pose from his body now">From moment</button></div>
+      <div class="crow" style="margin-bottom:10px"><span style="width:62px">Do</span><select id="oDo"><option value="pose">Pose</option><option value="recording">Recording</option></select></div>
+      <div id="libBox" hidden>
+        <div class="crow"><input id="libQ" placeholder="Search" style="flex:1;width:auto;text-align:left;color:#eee"><select id="libCat"><option value="getup">Get-ups</option><option value="getup-back">Get-ups: back</option><option value="getup-front">Get-ups: front</option><option value="getup-side">Get-ups: side</option><option value="getup-sit">Get-ups: sitting</option><option value="getup-more">Get-ups: other</option><option value="recovery">Recoveries</option><option value="idle">Idles</option><option value="rest">Rests</option></select></div>
+        <div class="crow"><span id="libNow" class="dim" style="flex:1"></span><button id="libClosest" title="The recording in this category closest to his body when the order starts">Closest in category</button></div>
+        <div id="libList"></div>
+      </div>
       <h3>Start</h3><div id="cStart"></div>
       <h3>Stop</h3><div id="cStop"></div>
-      <h3>Changed joints</h3><table id="tbl"></table>
-      <h3 style="margin-top:14px">Signs</h3><table id="signs" class="sg"></table>
+      <details id="props"><summary>Pose properties</summary>
+        <h4>Joints</h4><table id="tbl"></table>
+        <table id="signs" class="sg"></table>
+      </details>
     </div>
   </div>
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=25"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=27"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -78,7 +88,9 @@
 <script type="module">
 const $ = id => document.getElementById(id), DEG = 180 / Math.PI;
 const ORIG = { RightArm_y: -1.25, LeftArm_y: 1.25, RightArm_z: -0.2, LeftArm_z: 0.2 };   // the game's standing pose (sim/brain.js BRAIN_STAND)
-const SIGNS = { head: ['head height', 'm'], chest: ['chest height', 'm'], hips: ['hips height', 'm'], rightHand: ['right hand height', 'm'], leftHand: ['left hand height', 'm'],
+const GROUPS = { Heights: ['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot'], Angles: ['lean'], Lying: ['lyingOn'], Speed: ['speed'], Box: ['tilt', 'tiltLR', 'tiltFB'] };
+const LYING = ['upright', 'back', 'front', 'left side', 'right side'];
+const SIGNS = { lyingOn: ['lying on', ''], head: ['head height', 'm'], chest: ['chest height', 'm'], hips: ['hips height', 'm'], rightHand: ['right hand height', 'm'], leftHand: ['left hand height', 'm'],
   rightFoot: ['right foot height', 'm'], leftFoot: ['left foot height', 'm'], lean: ['trunk lean', '°'], speed: ['hips speed', 'm/s'], tilt: ['box tilt', '°'], tiltLR: ['tilt left/right', '°'], tiltFB: ['tilt forward/back', '°'] };
 let orders = [], cur = 0, stepK = 0;
 const fr = $('frame');
@@ -335,23 +347,51 @@ function listOrders() {
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 function condUI(box, part, o) {
   const c = o[part] || (o[part] = { all: [], for: part === 'start' ? 0.2 : 0.3 });
-  const row = (x, k) => `<div class="crow"><select data-k="${k}" data-f="s">${Object.entries(SIGNS).map(([id, [lab]]) => `<option value="${id}" ${id === x.s ? 'selected' : ''}>${lab}</option>`).join('')}</select>
-    <select data-k="${k}" data-f="c"><option value="<" ${x.c === '<' ? 'selected' : ''}>&lt;</option><option value=">" ${x.c === '>' ? 'selected' : ''}>&gt;</option></select>
-    <input data-k="${k}" data-f="v" type="number" step="0.05" value="${x.v}"><span class="u">${SIGNS[x.s][1]}</span><button data-k="${k}" data-f="x">✕</button></div>`;
+  const row = (x, k) => `<div class="crow"><select data-k="${k}" data-f="s">${Object.entries(SIGNS).map(([id, [lab]]) => `<option value="${id}" ${id === x.s ? 'selected' : ''}>${lab}</option>`).join('')}</select>` +
+    (x.s === 'lyingOn' ? `<span style="width:30px;text-align:center">is</span><select data-k="${k}" data-f="v" style="width:96px">${LYING.map(v => `<option ${v === x.v ? 'selected' : ''}>${v}</option>`).join('')}</select><span class="u"></span>`
+      : `<select data-k="${k}" data-f="c"><option value="<" ${x.c === '<' ? 'selected' : ''}>&lt;</option><option value=">" ${x.c === '>' ? 'selected' : ''}>&gt;</option></select><input data-k="${k}" data-f="v" type="number" step="0.05" value="${x.v}"><span class="u">${SIGNS[x.s][1]}</span>`) +
+    `<button data-k="${k}" data-f="x">✕</button></div>`;
   box.innerHTML = c.all.map(row).join('') + `<div class="cfor"><button data-f="add">+ condition</button> for <input data-f="for" type="number" step="0.1" value="${c.for}"> s${part === 'stop' && !c.all.length ? ' · none: stops when Start is no longer true' : ''}</div>`;
   for (const el of box.querySelectorAll('[data-f]')) {
     const f = el.dataset.f, k = +el.dataset.k;
     if (f === 'x') el.onclick = () => { c.all.splice(k, 1); condUI(box, part, o); dirty(); };
     else if (f === 'add') el.onclick = () => { c.all.push({ s: 'head', c: '<', v: 1.0 }); condUI(box, part, o); dirty(); };
     else if (f === 'for') el.oninput = () => { const v = parseFloat(el.value); if (isFinite(v)) { c.for = v; dirty(); } };
-    else el.oninput = el.onchange = () => { const x = c.all[k]; x[f] = f === 'v' ? parseFloat(el.value) : el.value; if (f === 's') condUI(box, part, o); dirty(); };
+    else el.oninput = el.onchange = () => { const x = c.all[k]; x[f] = f === 'v' && x.s !== 'lyingOn' ? parseFloat(el.value) : el.value;
+      if (f === 's') { if (x.s === 'lyingOn') { x.c = '='; x.v = 'back'; } else if (x.c === '=' || typeof x.v === 'string') { x.c = '<'; x.v = 1; } condUI(box, part, o); } dirty(); };
   }
 }
 function showOrder() {
-  const o = orders[cur]; $('oname').value = o.name; $('oStr').value = o.strength || 'control'; condUI($('cStart'), 'start', o); condUI($('cStop'), 'stop', o); stepsUI();
+  const o = orders[cur]; $('oname').value = o.name; $('oStr').value = o.strength || 'control'; if (!o.do) o.do = { type: 'pose' }; $('oDo').value = o.do.type; doUI(); condUI($('cStart'), 'start', o); condUI($('cStop'), 'stop', o); stepsUI();
   $('oTest').classList.toggle('on', G.force === o.name); $('oDel').disabled = orders.length < 2;
 }
 $('oStr').onchange = () => { orders[cur].strength = $('oStr').value; dirty(); };
+// Do: Pose (the steps under the puppet) or Recording (from the library: one recording, or the closest in a category)
+$('oDo').onchange = () => { const o = orders[cur]; o.do = $('oDo').value === 'recording' ? { type: 'recording', category: 'getup' } : { type: 'pose' }; doUI(); dirty(); };
+function doUI() { const o = orders[cur], rec = o.do && o.do.type === 'recording'; $('libBox').hidden = !rec; $('steps').style.display = rec ? 'none' : 'flex';
+  if (rec) { $('libNow').textContent = o.do.file ? o.do.file.replace(/^kin\//, '').replace(/\.bin$/, '') : 'Closest: ' + ($('libCat').selectedOptions[0] || {}).textContent; if (o.do.category) $('libCat').value = o.do.category; libList(); } }
+async function libList() { const o = orders[cur], q = $('libQ').value.toLowerCase(), cat = $('libCat').value, L = (await G.library()).filter(x => (x.cat === cat || x.cat.startsWith(cat + '-')) && (!q || x.label.toLowerCase().includes(q)));
+  $('libList').innerHTML = L.map(x => `<div class="li ${o.do.file === x.file ? 'on' : ''}" data-f="${esc(x.file)}">${esc(x.label)}<span class="c">${esc(x.cat)}</span></div>`).join('') || '<div class="li dim">No recordings</div>';
+  for (const d of $('libList').querySelectorAll('[data-f]')) d.onclick = () => { o.do = { type: 'recording', file: d.dataset.f }; doUI(); preview(d.dataset.f); dirty(); }; }
+$('libQ').oninput = libList; $('libCat').onchange = () => { const o = orders[cur]; if (!o.do.file) o.do.category = $('libCat').value; doUI(); };
+$('libClosest').onclick = () => { orders[cur].do = { type: 'recording', category: $('libCat').value }; doUI(); dirty(); };
+// preview: the recording plays on the puppet (the order's pose is kept and comes back after)
+let prev = null;
+async function preview(f) { const b = await G.clip(f), n = Math.floor(b.length / 376); if (prev) cancelAnimationFrame(prev.raf); const keep = pose, t0 = performance.now();
+  const step = () => { const i = Math.floor((performance.now() - t0) / 1000 * 30); if (i >= n) { pose = keep; prev = null; draw(); return; }
+    const q = b.subarray(i * 376 + 299, i * 376 + 372), p = { root_w: q[3], root_x: q[4], root_y: q[5], root_z: q[6] }; for (const a of acts) p[a.name] = q[a.qadr]; pose = p; draw(); prev.raf = requestAnimationFrame(step); };
+  prev = { raf: requestAnimationFrame(step) }; }
+// From moment: Start conditions from what the signs read now (trim them), his body now as the pose / the example
+$('oMoment').onclick = () => { const o = orders[cur], S = G.signs, r = v => +v.toFixed(2), c = [];
+  if (S.lyingOn && S.lyingOn !== 'upright') c.push({ s: 'lyingOn', c: '=', v: S.lyingOn });
+  c.push({ s: 'hips', c: '<', v: r(S.hips + 0.15) }); c.push({ s: 'head', c: '<', v: r(S.head + 0.2) });
+  if (S.lean > 45) c.push({ s: 'lean', c: '>', v: Math.round(S.lean - 25) });
+  if (Math.abs(S.tiltLR) > 8) c.push(S.tiltLR > 0 ? { s: 'tiltLR', c: '>', v: Math.round(S.tiltLR - 8) } : { s: 'tiltLR', c: '<', v: Math.round(S.tiltLR + 8) });
+  if (Math.abs(S.tiltFB) > 8) c.push(S.tiltFB > 0 ? { s: 'tiltFB', c: '>', v: Math.round(S.tiltFB - 8) } : { s: 'tiltFB', c: '<', v: Math.round(S.tiltFB + 8) });
+  if (S.speed < 0.3) c.push({ s: 'speed', c: '<', v: 0.3 });
+  o.start = { all: c, for: 0.5 }; const now = G.poseNow(); o.example = { signs: Object.fromEntries(Object.entries(S).map(([k, v]) => [k, r(v)])), pose: now };
+  if (!o.do || o.do.type !== 'recording') { o.steps[stepK].pose = now; pose = now; G.setStepPose(o, stepK, now); }
+  showOrder(); draw(); dirty(); };
 // steps: the poses of an order, in order; the puppet edits the selected one; grey figure = the step before
 function stepsUI() {
   const o = orders[cur]; $('steps').innerHTML = o.steps.map((x, k) => `<button class="stp ${k === stepK ? 'on' : ''}" data-k="${k}">${k + 1}</button>`).join('') +
@@ -369,7 +409,7 @@ $('oDn').onclick = () => { if (cur >= orders.length - 1) return; [orders[cur + 1
 $('oDel').onclick = () => { if (orders.length < 2) return; const o = orders.splice(cur, 1)[0]; if (G.active === o) G.active = null; if (G.force === o.name) G.force = null; cur = Math.max(0, cur - 1); stepK = 0; pose = orders[cur].steps[0].pose; listOrders(); showOrder(); draw(); dirty(); };
 $('oTest').onclick = () => { const o = orders[cur]; G.force = G.force === o.name ? null : o.name; showOrder(); listOrders(); };
 const clean = p => Object.fromEntries(Object.entries(p).filter(([k, v]) => Math.abs(v) > 1e-6 || k === 'root_w').map(([k, v]) => [k, +v.toFixed(4)]));
-function ordersFile() { return { version: 3, saved: new Date().toISOString(), orders: orders.map(o => ({ name: o.name, on: o.on !== false, strength: o.strength || 'control', start: o.start, stop: o.stop, steps: o.steps.map(x => ({ pose: clean(x.pose), time: x.time ?? 1 })), example: o.example })), otherwise: 'chooser' }; }
+function ordersFile() { return { version: 3, saved: new Date().toISOString(), orders: orders.map(o => ({ name: o.name, on: o.on !== false, strength: o.strength || 'control', do: o.do || { type: 'pose' }, start: o.start, stop: o.stop, steps: o.steps.map(x => ({ pose: clean(x.pose), time: x.time ?? 1 })), example: o.example })), otherwise: 'chooser' }; }
 // Save: this browser's game uses the orders at once; with a GitHub key, they are also published (gpc/orders.json on
 // facaelectrica/the-box-play), which every phone's game loads within a minute or two. The key stays in this browser.
 const REPO = 'facaelectrica/the-box-play', PATH = 'gpc/orders.json';
@@ -424,12 +464,14 @@ function snapshot() {
 $('snapB').onclick = snapshot;
 addEventListener('keydown', e => { if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') snapshot(); });
 function tick() {
-  const a = G.active; $('active').textContent = a ? a.name + (a.steps.length > 1 ? ` ${G.step + 1}/${a.steps.length}` : '') : 'Chooser'; $('who').className = a ? 'order' : 'chooser';
+  const a = G.active, rc = G.rec && G.rec.file && a && G.rec.o === a ? ' · ' + G.rec.file.replace(/^kin\//, '').replace(/\.bin$/, '') : '';
+  $('active').textContent = a ? a.name + (a.steps.length > 1 && !rc ? ` ${G.step + 1}/${a.steps.length}` : '') + rc : 'Chooser'; $('who').className = a ? 'order' : 'chooser';
   $('whoWhy').textContent = a ? (G.force === a.name ? 'Forced' : a.strength === 'guide' ? 'Guide' : 'Control') : `${G.rate || 0} picks/s`;
   $('sw').textContent = (G.switches || []).slice(-3).map(x => `${x[0]}s → ${x[1]}`).join('   ');
   if (a !== lastAct) { lastAct = a; listOrders(); }
   { const S = G.signs || {}, f = v => v === undefined ? null : +v.toFixed(3); trail.push([+((performance.now()) / 1000).toFixed(1), a ? a.name : 'chooser', ...['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot', 'lean', 'speed', 'tilt'].map(k => f(S[k]))]); if (trail.length > 100) trail.shift(); }
-  const S = G.signs || {}; $('signs').innerHTML = Object.entries(SIGNS).map(([k, [lab, u]]) => `<tr><td>${lab}</td><td>${S[k] === undefined ? '–' : S[k].toFixed(u === 'm' || u === 'm/s' ? 2 : 0)} ${u}</td></tr>`).join('');
+  if ($('props').open) { const S = G.signs || {}, fmt = (k, u) => S[k] === undefined ? '–' : typeof S[k] === 'string' ? S[k] : S[k].toFixed(u === 'm' || u === 'm/s' ? 2 : 0) + ' ' + u;
+    $('signs').innerHTML = Object.entries(GROUPS).map(([g, ks]) => `<tr class="grp"><td colspan="2">${g}</td></tr>` + ks.map(k => `<tr><td>${SIGNS[k][0]}</td><td>${fmt(k, SIGNS[k][1])}</td></tr>`).join('')).join(''); }
   setTimeout(tick, 200);
 }
 </script>
