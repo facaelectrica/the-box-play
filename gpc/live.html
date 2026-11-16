@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 16</div><div id="brainver"></div>
+<div id="ver">GPC live 17</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -1145,7 +1145,7 @@ const el = renderer.domElement;
 if (EDITOR) {
   el.addEventListener('contextmenu', e => e.preventDefault());
   el.addEventListener('pointerdown', e => {
-    if (!roomView() || (e.button === 0 && !e.shiftKey && figureAt(e.clientX, e.clientY))) return;
+    if (look.on || !roomView() || (e.button === 0 && !e.shiftKey && figureAt(e.clientX, e.clientY))) return;   // paused: the pause's own look-around takes the mouse
     RV.drag = { pan: e.button !== 0 || e.shiftKey, x: e.clientX, y: e.clientY, t: performance.now(), yaw: RV.yaw, pitch: RV.pitch, p: RV.pan.clone() };
     try { el.setPointerCapture(e.pointerId); } catch (_) {} e.stopImmediatePropagation(); e.preventDefault();
   }, true);
@@ -1159,8 +1159,8 @@ if (EDITOR) {
   const endRV = e => { if (window.__box && RV.drag) { const D0 = RV.drag; RV.drag = null; e.stopImmediatePropagation();
     if (e.type === 'pointerup' && performance.now() - D0.t < 300 && Math.hypot(e.clientX - D0.x, e.clientY - D0.y) < 24) doubleTap(); } };
   el.addEventListener('pointerup', endRV, true); el.addEventListener('pointercancel', endRV, true);
-  el.addEventListener('wheel', e => { if (!roomView()) return; RV.zoom = clamp(RV.zoom * Math.exp(e.deltaY * 0.0012), 0.12, 3); e.preventDefault(); e.stopImmediatePropagation(); }, { capture: true, passive: false });
-  addEventListener('keydown', e => { if ((e.key === 'f' || e.key === 'F') && roomView()) { RV.yaw = 0; RV.pitch = 0.12; RV.zoom = 1; RV.pan.set(0, 0, 0); } });
+  el.addEventListener('wheel', e => { if (look.on || !roomView()) return; RV.zoom = clamp(RV.zoom * Math.exp(e.deltaY * 0.0012), 0.12, 3); e.preventDefault(); e.stopImmediatePropagation(); }, { capture: true, passive: false });
+  addEventListener('keydown', e => { if ((e.key === 'f' || e.key === 'F') && roomView() && !look.on) { RV.yaw = 0; RV.pitch = 0.12; RV.zoom = 1; RV.pan.set(0, 0, 0); } });
 }
 el.addEventListener('pointerdown', e => {
   if (look.on) return;
