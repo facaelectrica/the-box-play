@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v19</title>
+<title>EDITOR v20</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -31,7 +31,7 @@
   .note{font-size:12px;color:#a99a8c;margin:6px 0 14px} #oTest.on{background:#ff9f43;color:#1b1612}
   #frame{border:0;border-radius:14px;background:#000}
   #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative}
-  #who{position:absolute;left:10px;top:10px;padding:6px 10px;border-radius:8px;font-size:13px;font-weight:600;pointer-events:none;display:flex;flex-direction:column;gap:1px}
+  #who{position:absolute;left:10px;top:10px;padding:4px 9px;border-radius:6px;font-size:13px;font-weight:600;pointer-events:none;display:flex;flex-direction:row-reverse;gap:8px;align-items:baseline}
   #who.order{background:#1f3a24;color:#9be3a6;border:1px solid #3f7a4a} #who.chooser{background:#3e2617;color:#ffb27a;border:1px solid #8a4a22}
   #who small{font-weight:400;font-size:11px;opacity:.85}
   #bar{flex:none;display:grid;gap:3px} .trow{display:grid;grid-template-columns:96px 1fr 40px;gap:8px;align-items:center;font-size:12px;color:#d8cdc2} .trow input{width:100%}
@@ -42,19 +42,19 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v19</b><span class="dim" id="file"></span><span class="sp"></span>
-    <button id="snapB" title="save this moment for Claude: the box, his body, the orders, the last 20 s of signs (S)">Snapshot</button><button id="gh" title="GitHub key for publishing">Key</button><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
+  <header><b>EDITOR v20</b><span class="dim" id="file"></span><span class="sp"></span>
+    <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Otherwise<br><small>chooser</small></div></div>
     <div id="puppet">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:13px">
         <select id="figSel"><option value="female">Female</option><option value="male">Male</option><option value="shapes">Mannequin</option><option value="none">None</option></select>
-        <label><input type="checkbox" id="skelOn" checked> Skeleton</label><label><input type="checkbox" id="ghostOn" checked> Original</label><span class="sp"></span><button id="mMove" class="on" title="W">Move</button><button id="mRot" title="E">Rotate</button></div>
+        <label><input type="checkbox" id="skelOn" checked> Skeleton</label><label><input type="checkbox" id="ghostOn" checked> Original</label><span class="sp"></span><button id="mMove" class="on" title="Move (W)">Move</button><button id="mRot" title="Rotate (E)">Rotate</button></div>
       <div id="views"><div class="view" id="v3"><span class="lab" id="hint"></span></div></div>
     </div>
     <div id="side">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><input id="oname" style="flex:1;font:inherit;font-weight:600;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:4px 8px">
-        </div><div style="display:flex;gap:4px;margin:-4px 0 10px"><button id="oUp" title="higher priority">▲</button><button id="oDn" title="lower priority">▼</button><button id="oTest" title="force this order in the box">Test</button><span class="sp"></span><button id="oDel" title="delete">✕</button></div>
+        </div><div style="display:flex;gap:4px;margin:-4px 0 10px"><button id="oUp" title="Raise priority">▲</button><button id="oDn" title="Lower priority">▼</button><button id="oTest" title="Force this order">Test</button><span class="sp"></span><button id="oDel" title="Delete order">✕</button></div>
       <h3>Start</h3><div id="cStart"></div>
       <h3>Stop</h3><div id="cStop"></div>
       <h3>Changed joints</h3><table id="tbl"></table>
@@ -62,13 +62,13 @@
     </div>
   </div>
 </div>
-<div id="split" title="drag to give the editor or the box more room"></div>
+<div id="split"></div>
 <div id="right">
   <div id="stage"><iframe id="frame" src="live.html?editor&v=19"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
-    <div class="brow"><button id="level" title="L">Level</button><label title="the view a player has: the camera moves with the phone"><input type="checkbox" id="lock"> Phone view</label><span class="sp"></span><span id="sw" class="dim"></span></div>
+    <div class="brow"><button id="level" title="L">Level</button><label><input type="checkbox" id="lock"> Phone view</label><span class="sp"></span><span id="sw" class="dim"></span></div>
   </div>
 </div>
 <input id="fileIn" type="file" accept=".json,application/json" style="display:none">
@@ -95,7 +95,7 @@ fit(); addEventListener('resize', () => { fit(); draw(); });
 // ---------- wait for the box to load, press its Start ----------
 let F, B, G, W, mj, m, d2, acts, pose, history = [];
 async function boot() {
-  for (;;) { await new Promise(r => setTimeout(r, 500)); F = fr.contentWindow; try { if (F.__box && F.__brainNet && F.__gpc && F.__gpc.orders && F.document.getElementById('go') && !F.document.getElementById('go').disabled) break; } catch (_) {} $('file').textContent = 'loading…'; }
+  for (;;) { await new Promise(r => setTimeout(r, 500)); F = fr.contentWindow; try { if (F.__box && F.__brainNet && F.__gpc && F.__gpc.orders && F.document.getElementById('go') && !F.document.getElementById('go').disabled) break; } catch (_) {} $('file').textContent = 'Loading'; }
   $('file').textContent = '';
   const de = F.document.documentElement; de.requestFullscreen = undefined; de.webkitRequestFullscreen = undefined;   // the box stays in its frame
   F.document.getElementById('go').click();
@@ -270,7 +270,7 @@ function draw() {
   const rows = acts.filter(a => Math.abs((pose[a.name] || 0) - (ORIG[a.name] || 0)) > 0.017).map(a => `<tr><td>${a.name.replace('_', ' ')}</td><td>${((pose[a.name] || 0) * DEG).toFixed(0)} <span class="old" data-j="${a.name}" title="put it back">(${((ORIG[a.name] || 0) * DEG).toFixed(0)})</span></td></tr>`);
   $('tbl').innerHTML = rows.length ? rows.join('') : '<tr><td class="dim">none</td><td></td></tr>';
   for (const o of $('tbl').querySelectorAll('.old')) o.onclick = () => { history.push(Object.assign({}, pose)); const n = o.dataset.j; if (ORIG[n]) pose[n] = ORIG[n]; else delete pose[n]; applyPose(); draw(); dirty(); };
-  $('hint').textContent = sel ? `${sel} · ${mode() === 'translate' ? (MOVE[sel] ? 'move (W)' : 'move: not for this joint') : 'rotate (E)'}` : '';
+  $('hint').textContent = sel ? `${sel} · ${mode() === 'translate' ? (MOVE[sel] ? 'Move' : 'Move unavailable') : 'Rotate'}` : '';
 }
 // the gizmo: an invisible stand-in on the selected joint; dragging it poses him
 const proxy = new THREE.Object3D(); scene.add(proxy);
@@ -358,8 +358,9 @@ function ordersFile() { return { version: 2, saved: new Date().toISOString(), or
 // Save: this browser's game uses the orders at once; with a GitHub key, they are also published (gpc/orders.json on
 // facaelectrica/the-box-play), which every phone's game loads within a minute or two. The key stays in this browser.
 const REPO = 'facaelectrica/the-box-play', PATH = 'gpc/orders.json';
-$('gh').onclick = () => { const k = prompt('GitHub key (fine-grained, only the-box-play, Contents: read and write). Empty to remove.', localStorage.getItem('gpc.ghKey') ? '(saved)' : '');
-  if (k === null || k === '(saved)') return; if (k.trim()) localStorage.setItem('gpc.ghKey', k.trim()); else localStorage.removeItem('gpc.ghKey'); $('gh').classList.toggle('on', !!localStorage.getItem('gpc.ghKey')); };
+$('gh').onclick = () => { $('tokBox').hidden = !$('tokBox').hidden; $('tokIn').value = ''; $('tokIn').placeholder = localStorage.getItem('gpc.ghKey') ? 'Token set' : 'GitHub token'; if (!$('tokBox').hidden) $('tokIn').focus(); };
+$('tokSet').onclick = () => { const k = $('tokIn').value.trim(); if (k) localStorage.setItem('gpc.ghKey', k); $('tokBox').hidden = true; $('gh').classList.toggle('on', !!localStorage.getItem('gpc.ghKey')); };
+$('tokDel').onclick = () => { localStorage.removeItem('gpc.ghKey'); $('tokBox').hidden = true; $('gh').classList.remove('on'); };
 async function publish(js) {
   const key = localStorage.getItem('gpc.ghKey'); if (!key) return 'no key';
   const H = { Authorization: 'Bearer ' + key, Accept: 'application/vnd.github+json' }, url = `https://api.github.com/repos/${REPO}/contents/${PATH}`;
@@ -370,9 +371,9 @@ async function publish(js) {
 }
 $('save').onclick = async () => { const O = ordersFile(), js = JSON.stringify(O, null, 1); localStorage.setItem('gpc.orders', js);
   if (!localStorage.getItem('gpc.ghKey')) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = 'orders.json'; a.click(); $('file').textContent = ''; return; }
-  $('file').textContent = 'publishing…'; const r = await publish(js).catch(e => 'error'); $('file').textContent = r === 'ok' ? 'published' : '✕ ' + r; if (r === 'ok') setTimeout(() => { if ($('file').textContent === 'published') $('file').textContent = ''; }, 4000); };
+  $('file').textContent = 'Publishing'; const r = await publish(js).catch(e => 'error'); $('file').textContent = r === 'ok' ? 'Published' : 'Publish failed: ' + r; if (r === 'ok') setTimeout(() => { if ($('file').textContent === 'Published') $('file').textContent = ''; }, 4000); };
 $('load').onclick = () => $('fileIn').click();
-$('fileIn').onchange = async () => { const f = $('fileIn').files[0]; if (!f) return; try { G.apply(JSON.parse(await f.text())); orders = G.orders; cur = 0; pose = orders[0].pose; history = []; listOrders(); showOrder(); draw(); dirty(); } catch (e) { $('file').textContent = '✕ file'; } };
+$('fileIn').onchange = async () => { const f = $('fileIn').files[0]; if (!f) return; try { G.apply(JSON.parse(await f.text())); orders = G.orders; cur = 0; pose = orders[0].pose; history = []; listOrders(); showOrder(); draw(); dirty(); } catch (e) { $('file').textContent = 'Invalid file'; } };
 
 // ---------- the box: keyboard, live state ----------
 function setTilt() { $('rollV').textContent = $('roll').value + '°'; $('pitchV').textContent = $('pitch').value + '°'; }
@@ -402,13 +403,13 @@ function snapshot() {
     active: G.active ? G.active.name : 'chooser', forced: G.force, orders: ordersFile().orders, signsNow: Object.fromEntries(Object.entries(G.signs || {}).map(([k, v]) => [k, r(v)])),
     switches: G.switches, trailNote: '[seconds, active, head, chest, hips, rightHand, leftHand, rightFoot, leftFoot, lean, speed, tilt] every 0.2 s', trail, chooser: G.report ? G.report() : null, box });
   const name = 'editor-snapshot-' + new Date().toISOString().slice(11, 19).replace(/:/g, '') + '.json', a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = name; a.click(); $('file').textContent = 'snapshot saved: ' + name;
+  a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = name; a.click(); $('file').textContent = 'Snapshot saved';
 }
 $('snapB').onclick = snapshot;
 addEventListener('keydown', e => { if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') snapshot(); });
 function tick() {
-  const a = G.active; $('active').textContent = a ? `Order: ${a.name}` : 'Chooser'; $('who').className = a ? 'order' : 'chooser';
-  $('whoWhy').textContent = a ? (G.force === a.name ? 'forced by Test · your pose, every frame' : 'your pose, every frame · chooser off') : `the brain decides · ${G.rate || 0} decisions/s`;
+  const a = G.active; $('active').textContent = a ? a.name : 'Chooser'; $('who').className = a ? 'order' : 'chooser';
+  $('whoWhy').textContent = a ? (G.force === a.name ? 'Forced' : 'Order') : `${G.rate || 0} picks/s`;
   $('sw').textContent = (G.switches || []).slice(-3).map(x => `${x[0]}s → ${x[1]}`).join('   ');
   if (a !== lastAct) { lastAct = a; listOrders(); }
   { const S = G.signs || {}, f = v => v === undefined ? null : +v.toFixed(3); trail.push([+((performance.now()) / 1000).toFixed(1), a ? a.name : 'chooser', ...['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot', 'lean', 'speed', 'tilt'].map(k => f(S[k]))]); if (trail.length > 100) trail.shift(); }
