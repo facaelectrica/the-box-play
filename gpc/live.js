@@ -94,8 +94,8 @@ export async function attachGPC(brain, ort, say) {
       for (const x of k.rests || []) L.push({ file: x.file, cat: 'rest-' + (x.kind || ''), label: x.file.replace(/^kin\//, '').replace(/\.bin$/, '') });
       LIB.list = L; } catch (e) { LIB.list = []; } } return LIB.list; };
   // each recording's first-frame shape, read once (only the first frame is fetched)
-  st.starts = async L => { await Promise.all(L.filter(x => !x.s0).map(async x => { try { const r = await fetch(here + '../body/clips/' + x.file, { headers: { Range: 'bytes=0-1503' } }), b = new Float32Array((await r.arrayBuffer()).slice(0, 1504)); x.s0 = shapeOf(b, 3); } catch (_) { x.s0 = [0, 0, 1]; } })); };
-  st.clip = async f => LIB.bufs[f] || (LIB.bufs[f] = new Float32Array(await (await fetch(here + '../body/clips/' + f)).arrayBuffer()));
+  st.starts = async L => { await Promise.all(L.filter(x => !x.s0).map(async x => { try { const r = await fetch(here + '../body/clips/' + x.file + '?first', { headers: { Range: 'bytes=0-1503' } }), b = new Float32Array((await r.arrayBuffer()).slice(0, 1504)); x.s0 = shapeOf(b, 3); } catch (_) { x.s0 = [0, 0, 1]; } })); };
+  st.clip = async f => { if (LIB.bufs[f] && LIB.bufs[f].length >= 376 * 10) return LIB.bufs[f]; const b = new Float32Array(await (await fetch(here + '../body/clips/' + f, { cache: 'no-cache' })).arrayBuffer()); return (LIB.bufs[f] = b); };
   const hdg = (q, i) => { const t = [0, 0, 0]; qrot(q, i, 1, 0, 0, t, 0); return Math.atan2(t[1], t[0]); };
   // a body shape that does not depend on where he faces: the hips' three axes, how much each points up
   const shapeOf = (q, i) => { const a = [0, 0, 0], b = [0, 0, 0], c = [0, 0, 0]; qrot(q, i, 1, 0, 0, a, 0); qrot(q, i, 0, 1, 0, b, 0); qrot(q, i, 0, 0, 1, c, 0); return [a[2], b[2], c[2]]; };
@@ -110,7 +110,7 @@ export async function attachGPC(brain, ort, say) {
       file = best && best.file;
     }
     if (!file || st.active !== o) return;
-    const buf = await st.clip(file); if (st.active !== o) return;
+    const buf = await st.clip(file); if (st.active !== o || buf.length < 376 * 10) { st.rec = { failed: file }; return; }
     const n = Math.floor(buf.length / 376), P = brain.pos;
     brain.react = { buf, n, end: n - 1, fps: 30, mid: [buf[0], buf[1]], h0: hdg(buf, 3), t: 0, xy: [P[0], P[1]], yaw: hdg(brain.rot, 0) };
     if (brain.blendStart) brain.blendStart();
@@ -142,7 +142,7 @@ export async function attachGPC(brain, ort, say) {
     if (next !== st.active) { st.switches.push([t, next ? next.name : 'chooser', +st.signs.head.toFixed(2)]); if (st.switches.length > 60) st.switches.shift();
       st.active = next; st.step = 0; st.stepT = 0; standFor(next, 0); st.fresh = false; for (const key of [...tm.keys()]) if (key[0] === 'x') tm.delete(key);
       if (st.rec) { brain.react = null; st.rec = null; } if (next && next.do && next.do.type === 'recording') { st.rec = { pending: true }; startRecording(next); } }
-    if (st.active && st.active.do && st.active.do.type === 'recording' && st.rec && !st.rec.pending && !brain.react) { st.rec = { pending: true }; startRecording(st.active); }   // ended, order still holds: another try
+    if (st.active && st.active.do && st.active.do.type === 'recording' && st.rec && !st.rec.pending && !st.rec.failed && !brain.react) { st.rec = { pending: true }; startRecording(st.active); }   // ended, order still holds: another try
     // steps: on to the next one when he is close to this pose or its time is up
     const o = st.active;
     if (o && !(o.do && o.do.type === 'recording') && o.steps.length > 1 && st.step < o.steps.length - 1) { st.stepT += 1 / 30; const sp = o.steps[st.step];
