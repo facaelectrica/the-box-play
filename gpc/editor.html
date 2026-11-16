@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v33</title>
+<title>EDITOR v34</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -44,7 +44,7 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v33</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v34</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Default<br><small>Chooser</small></div></div>
@@ -79,7 +79,7 @@
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=33"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=34"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -329,7 +329,7 @@ ren.domElement.addEventListener('pointerdown', e => { if (!d2 || e.button !== 0 
 ren.domElement.addEventListener('pointerup', e => { if (!down || tc.dragging) { down = null; return; } const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4; down = null; if (moved) return;
   const n = pick(e); sel = n; if (n) tc.attach(proxy); else tc.detach(); draw(); });
 ren.domElement.addEventListener('pointermove', e => { if (tc.dragging || down) return; const n = pick(e); if (n !== hover) { hover = n; ren.domElement.style.cursor = n ? 'pointer' : 'grab'; draw(); } });
-window.__ed = { twoBone, fkRaw, solve, tc, proxy, select: n => { sel = n; tc.attach(proxy); draw(); }, setMode, pose: () => pose, fk: () => fk(pose) };   // for checks
+window.__ed = { twoBone, fkRaw, solve, tc, proxy, select: n => { sel = n; tc.attach(proxy); draw(); }, setMode, pose: () => pose, fk: () => fk(pose), previewMove: id => previewMove(id) };   // for checks
 addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   if (e.key === 'w' || e.key === 'W') setMode('translate'); else if (e.key === 'e' || e.key === 'E') setMode('rotate');
   else if (e.key === 'Escape') { sel = null; tc.detach(); draw(); } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') { $('undo').click(); e.preventDefault(); } });
