@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RECORD v1</title><link rel="icon" href="../icon-192.png">
+<title>RECORD v2</title><link rel="icon" href="../icon-192.png">
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #3a302a} header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
@@ -25,7 +25,7 @@
   #take[hidden]{display:none}
 </style></head>
 <body>
-<header><b>RECORD v1</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
+<header><b>RECORD v2</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
 <div id="views">
   <div class="view"><span class="lab">Camera</span><div id="vwrap" class="mir"><video id="video" playsinline muted></video><canvas id="over"></canvas></div>
     <div id="msg">Start the camera, step back until your whole body is in view, then calibrate.</div><div id="big" hidden></div><div id="recDot" hidden>REC</div></div>
@@ -61,8 +61,8 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { readBody, fk } from './mocap/skel.js?v=1';
-import { makeSolver, toMove } from './mocap/solve.js?v=1';
-import { fakePoints } from './mocap/synth.js?v=1';
+import { makeSolver, toMove } from './mocap/solve.js?v=2';
+import { fakePoints } from './mocap/synth.js?v=2';
 import { encodeQ } from './mocap/encq.js?v=1';
 import { decodeQ } from './libq.js?v=1';
 const $ = id => document.getElementById(id);
@@ -83,10 +83,10 @@ for (let b = 0; b < 23; b++) { const j = new THREE.Mesh(sph, matJ); j.scale.setS
   if (b) { const m = new THREE.Mesh(cyl, matB); world.add(m); bones.push(m); } else bones.push(null); }
 const UP = new THREE.Vector3(0, 1, 0), va = new THREE.Vector3(), vb = new THREE.Vector3();
 let follow = null;
-function drawPose(q, o = 0, support = -1) {
+function drawPose(q, o = 0, held = []) {
   const K = fk(S, q, o), hx = K.p[0][0] * world.scale.x, hy = K.p[0][1];
   if (follow) { const dx = (hx - follow[0]) * 0.15, dy = (hy - follow[1]) * 0.15; follow[0] += dx; follow[1] += dy; cam.position.x += dx; cam.position.y += dy; orbit.target.x += dx; orbit.target.y += dy; orbit.update(); } else follow = [0, 0];   // the view follows the hips
-  for (let b = 0; b < 23; b++) { const p = K.p[b]; joints[b].position.set(p[0], p[1], p[2] + (S.names[b] === 'Head' ? 0.08 : 0)); joints[b].material = b === support ? matF : matJ;
+  for (let b = 0; b < 23; b++) { const p = K.p[b]; joints[b].position.set(p[0], p[1], p[2] + (S.names[b] === 'Head' ? 0.08 : 0)); joints[b].material = held.includes(b) ? matF : matJ;   // green: a foot held on the floor
     if (b) { const a = K.p[S.parent[b]]; va.set(a[0], a[1], a[2]); vb.set(p[0], p[1], p[2]); const d = vb.clone().sub(va), l = d.length() || 1e-4;
       bones[b].position.copy(va).addScaledVector(d, 0.5); bones[b].scale.set(0.02, l, 0.02); bones[b].quaternion.setFromUnitVectors(UP, d.divideScalar(l)); } }
 }
@@ -168,7 +168,7 @@ function onPoints(world, img, t, w, h) {
   st.last = world ? { world, t } : null; drawPoints(img, w, h); st.fpsN++;
   if (t * 1000 - st.fpsT > 1000) { $('fps').textContent = Math.round(st.fpsN * 1000 / (t * 1000 - st.fpsT)) + ' fps'; st.fpsT = t * 1000; st.fpsN = 0; note(); }
   if (!world) return;
-  const q = sol.solve(world, t); drawPose(q, 0, sol.support);
+  const q = sol.solve(world, t); drawPose(q, 0, sol.held);
   if (st.mode === 'rec') { st.frames.push({ t: t - st.t0, q: Float64Array.from(q), lm: world.map(p => [+p.x.toFixed(4), +p.y.toFixed(4), +p.z.toFixed(4), +(p.visibility ?? 1).toFixed(2)]) });
     setState('Recording ' + (t - st.t0).toFixed(1) + ' s', 'rec'); if (t - st.t0 > 120) finish(); }
 }

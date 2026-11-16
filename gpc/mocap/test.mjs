@@ -11,16 +11,18 @@ if (di > 0) {   // poses and this file's body positions, for the MuJoCo comparis
   const d = await load(pick[0]), fr = [0, 10, 50, d.T - 1].map(t => ({ q: Array.from(d.q.slice(t * 73, t * 73 + 73)), p: fk(S, d.q, t * 73).p }));
   fs.writeFileSync(process.argv[di + 1], JSON.stringify({ names: S.names, fr })); process.exit(0); }
 const LIMBS = ['RightForeArm', 'RightHand', 'LeftForeArm', 'LeftHand', 'RightShin', 'RightFoot', 'LeftShin', 'LeftFoot', 'Head'];
-let trav = 0, travLen = 0, zErr = 0; let n = 0, sum = 0, worst = 0, worstAt = '', sumL = 0, nL = 0, jump = 0, encWorst = 0, wraps = 0, big = 0; const per = {};
+const TW = ['RightLeg', 'RightShin', 'LeftLeg', 'LeftShin', 'RightArm', 'RightForeArm', 'LeftArm', 'LeftForeArm'], rot = {}; let slide = 0, heldN = 0, trav = 0, travLen = 0, zErr = 0; let n = 0, sum = 0, worst = 0, worstAt = '', sumL = 0, nL = 0, jump = 0, encWorst = 0, wraps = 0, big = 0; const per = {};
 for (const f of pick) {
-  const d = await load(f), sol = makeSolver(S, { smooth: 0 }), frames = []; let prev = null;
+  const d = await load(f), sol = makeSolver(S, { smooth: 0 }), frames = []; let prev = null, pk = null, ph = [];
   for (let t = 0; t < d.T; t++) {
     const o = t * 73, out = sol.solve(fakePoints(S, d.q, o), t / 30); frames.push({ t: t / 30, q: out });
+    { const held = sol.held, Kn = fk(S, out); for (const b of held) if (ph.includes(b)) { slide = Math.max(slide, Math.hypot(Kn.p[b][0] - pk.p[b][0], Kn.p[b][1] - pk.p[b][1]) * 100); heldN++; } pk = Kn; ph = held; }
     const A = fk(S, d.q, o), B = fk(S, out), ca = [0, 1, 2].map(k => (A.p[S.id.RightLeg][k] + A.p[S.id.LeftLeg][k]) / 2), cb = [0, 1, 2].map(k => (B.p[S.id.RightLeg][k] + B.p[S.id.LeftLeg][k]) / 2);
     for (let b = 1; b < 23; b++) { const e = Math.hypot(...[0, 1, 2].map(k => (A.p[b][k] - ca[k]) - (B.p[b][k] - cb[k]))) * 100;
       n++; sum += e; per[S.names[b]] = Math.max(per[S.names[b]] || 0, e); if (e > worst) { worst = e; worstAt = f + ' frame ' + t + ' ' + S.names[b]; }
       if (LIMBS.includes(S.names[b])) { sumL += e; nL++; } }
     { const e = Math.hypot((out[0] - frames[0].q[0]) - (d.q[o] - d.q[0]), (out[1] - frames[0].q[1]) - (d.q[o + 1] - d.q[1])) * 100; if (e > trav) { trav = e; travLen = Math.hypot(d.q[o] - d.q[0], d.q[o + 1] - d.q[1]) * 100; } zErr = Math.max(zErr, Math.abs(out[2] - d.q[o + 2]) * 100); }
+    for (const nm of TW) { const b = S.id[nm], R = M.mul(M.T(A.R[b]), B.R[b]), ang = Math.acos(Math.max(-1, Math.min(1, (R[0] + R[4] + R[8] - 1) / 2))) * 180 / Math.PI; (rot[nm] = rot[nm] || []).push(ang); }
     if (prev) for (let c = 7; c < 73; c++) { let dd = Math.abs(out[c] - prev[c]); if (dd > Math.PI) { dd = Math.abs(dd - 2 * Math.PI); wraps++; } jump = Math.max(jump, dd); }; prev = out;
   }
   const mv = toMove(frames, 30, 0); for (let i = 0; i < mv.T; i++) { const A = fk(S, frames[i].q), B = fk(S, mv.q, i * 73); for (let b = 0; b < 23; b++) big = Math.max(big, Math.hypot(...[0, 1, 2].map(k => A.p[b][k] - B.p[b][k])) * 100); }
@@ -31,6 +33,8 @@ console.log(`${pick.length} moves, ${n / 22} frames`);
 console.log(`joint position after the round trip (centred between the hip joints): mean ${(sum / n).toFixed(2)} cm, elbows/wrists/knees/ankles/head mean ${(sumL / nL).toFixed(2)} cm, worst ${worst.toFixed(1)} cm (${worstAt})`);
 console.log('worst per joint (cm): ' + Object.entries(per).map(([k, v]) => k + ' ' + v.toFixed(1)).join(', '));
 console.log(`hips travel across the floor, against the library move: worst ${trav.toFixed(1)} cm off (at a point ${travLen.toFixed(0)} cm from the start); hips height worst ${zErr.toFixed(1)} cm off`);
+console.log('bone rotation against the library move, deg (median / 95% / worst): ' + TW.map(nm => { const a = rot[nm].sort((x, y) => x - y); return `${nm} ${a[a.length >> 1].toFixed(0)}/${a[Math.floor(a.length * 0.95)].toFixed(0)}/${a.at(-1).toFixed(0)}`; }).join(', '));
+console.log(`held feet: ${heldN} foot-frames, worst slide in one frame ${slide.toFixed(2)} cm`);
 console.log(`largest one-frame hinge change: ${(jump * 180 / Math.PI).toFixed(0)} deg; passes through +-180: ${wraps}`);
 console.log(`finished move against the solver's own frames: worst ${big.toFixed(3)} cm`);
 console.log(`.q written and read back: worst difference ${encWorst.toFixed(4)} (cm for position, deg for hinges)`);

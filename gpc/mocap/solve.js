@@ -1,8 +1,8 @@
 // Camera tracking -> his pose. Input: the 33 body points of MediaPipe's Pose Landmarker ("world" points: metres, centred
 // on the hips, x to the image's right, y down, z away from the camera). Output: the game's 73 numbers for each frame.
 // Every bone is aimed along the tracked limb; the twist of an upper arm or thigh comes from the plane its elbow or
-// knee bends in. Points the camera cannot see keep the joint's last angles. The hips travel by keeping the
-// standing foot still on the floor, because the tracked points carry no position in the room.
+// knee bends in. Points the camera cannot see keep the joint's last angles. The hips travel by keeping each foot
+// still while it is on the floor, because the tracked points carry no position in the room.
 import { M, V, fk, standPose } from './skel.js?v=1';
 
 export const LM = { nose: 0, lEar: 7, rEar: 8, lSh: 11, rSh: 12, lEl: 13, rEl: 14, lWr: 15, rWr: 16, lPk: 17, rPk: 18, lIx: 19, rIx: 20,
@@ -27,7 +27,7 @@ export function makeSolver(S, opt = {}) {
     { s: 1, sh: LM.lSh, el: LM.lEl, wr: LM.lWr, pk: LM.lPk, ix: LM.lIx, hip: LM.lHip, kn: LM.lKn, an: LM.lAn, he: LM.lHe, to: LM.lTo, A: 'LeftArm', FA: 'LeftForeArm', H: 'LeftHand', SH: 'LeftShoulder', LG: 'LeftLeg', SN: 'LeftShin', FT: 'LeftFoot', TB: 'LeftToeBase' } ];
   const RAD = S.names.map(n => /Toe/.test(n) ? 0.025 : /Foot/.test(n) ? 0.075 : n === 'Head' ? 0.11 : /Hand|ForeArm/.test(n) ? 0.04 : 0.08);   // rough distance from a joint to the skin
   let q, cal, headCal, filt, tPrev, mem, root;
-  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0] }; root = { xy: [0, 0], foot: -1, lock: null, z: null }; }
+  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0] }; root = { xy: [0, 0], lock: [null, null], on: [false, false] }; }
   reset();
 
   // tracked points -> the game's axes (x to his left, y behind him, z up), steadied
@@ -58,7 +58,7 @@ export function makeSolver(S, opt = {}) {
     const rel = M.mul(M.T(Rp), Rc); tgt[0] = Rp; tgt[id.Spine1] = M.mul(Rp, M.part(rel, 1 / 3)); tgt[id.Spine2] = M.mul(Rp, M.part(rel, 2 / 3)); tgt[id.Chest] = Rc;
     if (see(LM.nose, LM.lEar, LM.rEar)) { const Rh = M.mul(headOf(P), M.T(headCal));
       if (Rh.every(Number.isFinite)) { const rh = M.mul(M.T(Rc), Rh); tgt[id.Neck1] = M.mul(Rc, M.part(rh, 1 / 3)); tgt[id.Neck2] = M.mul(Rc, M.part(rh, 2 / 3)); tgt[id.Head] = Rh; } }
-    const Fc = [-Rc[1], -Rc[4], -Rc[7]], Zc = [Rc[2], Rc[5], Rc[8]], Fp = [-Rp[1], -Rp[4], -Rp[7]];
+    const Fc = [-Rc[1], -Rc[4], -Rc[7]], Zc = [Rc[2], Rc[5], Rc[8]], Fp = [-Rp[1], -Rp[4], -Rp[7]], Xp = [Rp[0], Rp[3], Rp[6]];
     // the side axis an elbow or knee bends around: from the bend itself when it is bent enough, otherwise the last
     // one, drifting to the natural one (elbows and knees bend forward)
     const bendAxis = (key, a, b, sgn, nat, strict) => { const n = V.cross(a, b), sn = V.len(n); let w = clamp01((sn - 0.15) / 0.35), dir = V.mul(n, sgn / (sn || 1));
@@ -78,7 +78,8 @@ export function makeSolver(S, opt = {}) {
         else Rf = M.mul(Rf, M.euler(mem.tw[si], 0, 0));
         tgt[id[d.FA]] = Rf; }
       if (see(d.hip, d.kn, d.an)) { const a = V.norm(V.sub(P[d.kn], P[d.hip])), b = V.norm(V.sub(P[d.an], P[d.kn])), foot = see(d.he, d.to), fwd = foot ? V.sub(P[d.to], P[d.he]) : Fp;
-        const f = bendAxis(d.LG, a, b, 1, V.cross(ok3(V.perp(fwd, a)) ? fwd : Fp, a), true);
+        const upF = foot ? V.perp(V.sub(P[d.an], P[d.he]), V.norm(fwd)) : null, latF = upF && ok3(upF) ? V.norm(V.cross(upF, fwd)) : [0, 0, 0];
+        const f = bendAxis(d.LG, a, b, 1, V.add(Xp, latF), true);   // a knee's axis lies along the hips' and the foot's sideways axes
         tgt[id[d.LG]] = aim(a, f, rest(d.SN), X0); tgt[id[d.SN]] = aim(b, f, rest(d.FT), X0);
         if (foot && ok3(fwd)) { const up = V.perp(V.sub(P[d.an], P[d.he]), V.norm(fwd)); if (ok3(up)) tgt[id[d.FT]] = aim(fwd, up, [0, -1, 0], Z0); } }
     });
@@ -89,18 +90,32 @@ export function makeSolver(S, opt = {}) {
     for (let b = 1; b < nb; b++) { const h = 7 + 3 * (b - 1), pa = Rw[S.parent[b]], near = [q[h], q[h + 1], q[h + 2]];
       if (tgt[b]) { const e = M.toEuler(M.mul(M.T(pa), tgt[b]), near); out[h] = e[0]; out[h + 1] = e[1]; out[h + 2] = e[2]; Rw[b] = tgt[b]; }
       else Rw[b] = M.mul(pa, M.euler(near[0], near[1], near[2])); }
-    // the hips in the room: the lowest part of the body rests on the floor; the lower foot, while on the floor, stays where it is
-    out[0] = 0; out[1] = 0; out[2] = 0; const K = fk(S, out), fr = id.RightFoot, fl = id.LeftFoot; let low = 1e9;
+    // The hips in the room. The lowest part of the body rests on the floor. Each foot is held where it is while it
+    // is on the floor; the hips go where the held feet put them, and each held leg is then bent to reach its spot
+    // exactly (two-bone IK around the same bend axis), so a standing foot cannot slide.
+    const euler = b => { const h = 7 + 3 * (b - 1), e = M.toEuler(M.mul(M.T(Rw[S.parent[b]]), Rw[b]), [q[h], q[h + 1], q[h + 2]]); out[h] = e[0]; out[h + 1] = e[1]; out[h + 2] = e[2]; };
+    out[0] = 0; out[1] = 0; out[2] = 0; const K = fk(S, out); let low = 1e9;
     for (let b = 0; b < nb; b++) low = Math.min(low, K.p[b][2] - RAD[b]);
-    const zr = K.p[fr][2] - RAD[fr], zl = K.p[fl][2] - RAD[fl]; let foot = root.foot;
-    if (Math.min(zr, zl) - low > 0.04) foot = -1; else if (foot < 0) foot = zr <= zl ? fr : fl; else if (foot === fr && zl < zr - 0.02) foot = fl; else if (foot === fl && zr < zl - 0.02) foot = fr;
-    if (o.travel && foot >= 0) { if (foot !== root.foot || !root.lock) root.lock = [root.xy[0] + K.p[foot][0], root.xy[1] + K.p[foot][1]];
-      root.xy = [root.lock[0] - K.p[foot][0], root.lock[1] - K.p[foot][1]]; } else root.lock = null;
-    root.foot = foot; out[0] = root.xy[0]; out[1] = root.xy[1]; out[2] = -low;
+    SIDE.forEach((d, i) => { const ft = id[d.FT], tb = id[d.TB], h = Math.min(K.p[ft][2] - RAD[ft], K.p[tb][2] - RAD[tb]) - low;
+      const shinUp = K.p[id[d.SN]][2] - K.p[ft][2] > 0.2;   // the knee well above the ankle: a foot he stands on, not a leg lying on the floor
+      root.on[i] = o.travel && !!tgt[id[d.LG]] && shinUp && (root.on[i] ? h < 0.07 : h < 0.035); if (!root.on[i]) root.lock[i] = null; });
+    let sx = 0, sy = 0, held = 0; SIDE.forEach((d, i) => { const L = root.lock[i]; if (L) { sx += L[0] - K.p[id[d.FT]][0]; sy += L[1] - K.p[id[d.FT]][1]; held++; } });
+    if (held) root.xy = [sx / held, sy / held];
+    SIDE.forEach((d, i) => { if (!root.on[i]) return; const p = K.p[id[d.FT]], at = [root.xy[0] + p[0], root.xy[1] + p[1]], L = root.lock[i];
+      if (!L) root.lock[i] = at;   // a foot that has just landed is held where it landed
+      else { const e = Math.hypot(at[0] - L[0], at[1] - L[1]), k = e > 0.25 ? 1 : clamp01((e - 0.06) / 0.15) * 0.3; L[0] += (at[0] - L[0]) * k; L[1] += (at[1] - L[1]) * k; } });   // a foot dragged along the floor takes its spot with it
+    out[0] = root.xy[0]; out[1] = root.xy[1]; out[2] = -low;
+    SIDE.forEach((d, i) => { const L = root.lock[i], f0 = mem.fw[d.LG]; if (!L || !f0) return;
+      const lg = id[d.LG], sn = id[d.SN], ft = id[d.FT], H = [root.xy[0] + K.p[lg][0], root.xy[1] + K.p[lg][1], K.p[lg][2] - low], Tg = [L[0], L[1], K.p[ft][2] - low];
+      const L1 = V.len(S.off[sn]), L2 = V.len(S.off[ft]), D = V.sub(Tg, H), dl = V.len(D); if (dl < 1e-4) return;
+      const dd = Math.max(Math.abs(L1 - L2) + 1e-3, Math.min(L1 + L2 - 1e-3, dl)), u = V.mul(D, 1 / dl), fp = V.perp(f0, u); if (!ok3(fp)) return;
+      const f = V.norm(fp), p = V.cross(u, f), ca = (L1 * L1 + dd * dd - L2 * L2) / (2 * L1 * dd), sa = Math.sqrt(Math.max(0, 1 - ca * ca));
+      const a = V.add(V.mul(u, ca), V.mul(p, sa)), kn = V.add(H, V.mul(a, L1)), bdir = V.norm(V.sub(V.add(H, V.mul(u, dd)), kn));
+      Rw[lg] = aim(a, f, rest(d.SN), X0); Rw[sn] = aim(bdir, f, rest(d.FT), X0); euler(lg); euler(sn); euler(ft); });
     q = out; return out;
   }
-  const home = () => { root.xy = [0, 0]; root.lock = null; root.foot = -1; };   // the hips back over the origin (a new recording starts here)
-  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get support() { return root.foot; } };
+  const home = () => { root.xy = [0, 0]; root.lock = [null, null]; };   // the hips back over the origin (a new recording starts here)
+  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get held() { return SIDE.filter((d, i) => root.lock[i]).map(d => id[d.FT]); } };
 }
 
 // A finished recording: frames taken at the camera's own times -> 30 frames a second, lightly smoothed.
