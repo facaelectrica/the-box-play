@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v22</title>
+<title>EDITOR v23</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -42,7 +42,7 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v22</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v23</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Default<br><small>Chooser</small></div></div>
@@ -403,7 +403,8 @@ function snapshot() {
     active: G.active ? G.active.name : 'chooser', forced: G.force, orders: ordersFile().orders, signsNow: Object.fromEntries(Object.entries(G.signs || {}).map(([k, v]) => [k, r(v)])),
     switches: G.switches, trailNote: '[seconds, active, head, chest, hips, rightHand, leftHand, rightFoot, leftFoot, lean, speed, tilt] every 0.2 s', trail, chooser: G.report ? G.report() : null, box });
   const name = 'editor-snapshot-' + new Date().toISOString().slice(11, 19).replace(/:/g, '') + '.json', a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = name; a.click(); $('file').textContent = 'Snapshot saved';
+  a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = name; a.click();
+  navigator.clipboard.writeText(js).then(() => { $('file').textContent = 'Snapshot saved and copied'; }, () => { $('file').textContent = 'Snapshot saved'; });
 }
 $('snapB').onclick = snapshot;
 addEventListener('keydown', e => { if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') snapshot(); });
