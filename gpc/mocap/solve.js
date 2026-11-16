@@ -38,7 +38,7 @@ export function makeSolver(S, opt = {}) {
   // tracked points -> the game's axes (x to his left, y behind him, z up), steadied
   function points(lm, t) {
     const dt = tPrev === null ? 0 : t - tPrev; tPrev = t;
-    if (!filt) filt = Array.from({ length: 33 }, (_, i) => { const hand = i >= 17 && i <= 22, c = (hand ? 0.6 : 1.4) / o.smooth; return [new Euro(c, 0.6), new Euro(c, 0.6), new Euro(c, 0.6)]; });
+    if (!filt) filt = Array.from({ length: 33 }, (_, i) => { const hand = i >= 17 && i <= 22, c = (hand ? 1.0 : 1.4) / o.smooth, bt = hand ? 1.5 : 0.6; return [new Euro(c, bt), new Euro(c, bt), new Euro(c, bt)]; });   // hand points: steadied when still, but quick wrist moves pass
     const P = new Array(33), vis = new Array(33);
     for (let i = 0; i < 33; i++) { const l = lm[i] || { x: 0, y: 0, z: 0, visibility: 0 }, g = [l.x, l.z, -l.y];
       P[i] = o.smooth > 0 ? [filt[i][0].step(g[0], dt), filt[i][1].step(g[1], dt), filt[i][2].step(g[2], dt)] : g; vis[i] = l.visibility === undefined ? 1 : l.visibility; }
@@ -88,15 +88,15 @@ export function makeSolver(S, opt = {}) {
       let f = V.perp(V.add(V.mul(dir, w), V.mul(base, 1 - w)), a); if (!ok3(f)) f = base; f = V.norm(f); mem.fw[key] = f; return f; };
     SIDE.forEach((d, si) => {
       tgt[id[d.SH]] = Rc;
-      const wa = trust(vis, [d.sh, d.el, d.wr]), wl = trust(vis, [d.hip, d.kn, d.an]); wt[id[d.A]] = wt[id[d.FA]] = wa; wt[id[d.H]] = 0.6 * Math.min(wa, trust(vis, [d.pk, d.ix]));   // the wrist always eases to its target: the hand points are the noisiest wt[id[d.LG]] = wt[id[d.SN]] = wt[id[d.FT]] = wl;
+      const wa = trust(vis, [d.sh, d.el, d.wr]), wl = trust(vis, [d.hip, d.kn, d.an]); wt[id[d.A]] = wt[id[d.FA]] = wa; wt[id[d.H]] = 0.8 * Math.min(wa, trust(vis, [d.pk, d.ix]));   // the wrist always eases to its target: the hand points are the noisiest wt[id[d.LG]] = wt[id[d.SN]] = wt[id[d.FT]] = wl;
       if (wa > 0) { const a = V.norm(V.sub(P[d.el], P[d.sh])), b = V.norm(V.sub(P[d.wr], P[d.el])), sgn = -d.s;
         const f = bendAxis(d.A, a, b, sgn, V.add(V.mul(V.cross(a, Fc), sgn), V.mul(Zc, 0.3)), false);
         tgt[id[d.A]] = aim(a, f, rest(d.FA), Z0); let Rf = aim(b, f, rest(d.H), Z0);
         if (o.hands && see(d.pk, d.ix)) { const dir = V.sub(V.mid(P[d.ix], P[d.pk]), P[d.wr]), nrm = V.mul(V.cross(dir, V.sub(P[d.ix], P[d.pk])), -d.s);
           if (ok3(dir) && ok3(V.perp(nrm, V.norm(dir)))) { const Rh = aim(dir, nrm, [d.s, 0, 0], Z0), qh = M.toQuat(M.mul(M.T(Rf), Rh));
             let tw = 2 * Math.atan2(qh[1], qh[0]); if (tw > Math.PI) tw -= 2 * Math.PI; if (tw < -Math.PI) tw += 2 * Math.PI;   // the hand's turn around the forearm goes into the forearm
-            tw = mem.tw[si] + Math.max(-0.25, Math.min(0.25, tw - mem.tw[si] - 2 * Math.PI * Math.round((tw - mem.tw[si]) / (2 * Math.PI))));   // no sudden turns: the hand points are noisy
-            tw = Math.max(-1.6, Math.min(1.6, tw)); mem.tw[si] = tw; Rf = M.mul(Rf, M.euler(tw, 0, 0)); tgt[id[d.H]] = Rh; } }
+            tw = mem.tw[si] + Math.max(-0.35, Math.min(0.35, tw - mem.tw[si] - 2 * Math.PI * Math.round((tw - mem.tw[si]) / (2 * Math.PI))));   // no sudden turns: the hand points are noisy
+            tw = Math.max(-2.8, Math.min(2.8, tw)); mem.tw[si] = tw;   // palm down to palm up is half a turn of the forearm Rf = M.mul(Rf, M.euler(tw, 0, 0)); tgt[id[d.H]] = Rh; } }
         else Rf = M.mul(Rf, M.euler(mem.tw[si], 0, 0));
         tgt[id[d.FA]] = Rf; }
       if (wl > 0) { const a = V.norm(V.sub(P[d.kn], P[d.hip])), b = V.norm(V.sub(P[d.an], P[d.kn])), foot = see(d.he, d.to), fwd = foot ? V.sub(P[d.to], P[d.he]) : Fp;
