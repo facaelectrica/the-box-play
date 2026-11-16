@@ -1,0 +1,173 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Director's orders · editor</title>
+<style>
+  *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
+  #left{flex:1;min-width:0;display:flex;flex-direction:column;border-right:1px solid #3a302a}
+  #right{display:flex;flex-direction:column;align-items:center;padding:12px;gap:8px;background:#120f0c}
+  header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #3a302a}
+  header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
+  button{font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:8px;padding:6px 10px;cursor:pointer}
+  button:hover{background:#352b23} button.pri{background:#e0a34a;color:#1b1612;border-color:#e0a34a}
+  #main{flex:1;display:grid;grid-template-columns:130px minmax(0,1fr) 300px;min-height:0}
+  #orders{border-right:1px solid #3a302a;padding:10px}
+  .ord{padding:7px 9px;border-radius:8px;margin-bottom:4px} .ord.on{background:#e0a34a;color:#1b1612;font-weight:600} .ord.off{color:#6f6359}
+  #puppet{padding:10px;display:flex;flex-direction:column;min-height:0}
+  #views{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px;min-height:0}
+  .view{position:relative;background:#241d18;border-radius:10px;min-height:0} .view canvas{width:100%;height:100%;display:block;cursor:grab}
+  .view .lab{position:absolute;left:10px;top:6px;font-size:12px;color:#a99a8c}
+  #side{border-left:1px solid #3a302a;padding:12px;overflow:auto}
+  h3{margin:4px 0 6px;font-size:14px} .sent{line-height:2.1;color:#d8cdc2}
+  .sent input{width:58px;font:inherit;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 5px;text-align:center}
+  .note{font-size:12px;color:#a99a8c;margin:6px 0 14px}
+  #frame{border:0;border-radius:18px;background:#000} #status{font-size:12px;color:#d8cdc2;text-align:center;max-width:100%}
+  #active{font-weight:600} .idle{color:#7ddc8a} .none{color:#ff9f7a}
+  #help{font-size:11px;color:#a99a8c;text-align:center;line-height:1.6}
+  #tbl{font-size:12px;width:100%;border-collapse:collapse} #tbl td{padding:1px 4px;border-bottom:1px solid #2e2620} #tbl td:last-child{text-align:right;color:#ffd38a}
+</style></head>
+<body>
+<div id="left">
+  <header><b>Director's orders</b><span class="dim" id="file">loading the box…</span><span class="sp"></span>
+    <button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open file</button><button id="save" class="pri">Save for the game</button></header>
+  <div id="main">
+    <div id="orders"><div class="ord on">Idle</div><div class="ord off">Down<br><small>(no order: the chooser decides)</small></div></div>
+    <div id="puppet">
+      <div class="dim" style="margin-bottom:6px">Do: move toward this pose, every frame. Drag a dot to change it; he follows at once. Faint lines: the original pose.</div>
+      <div id="views"><div class="view"><span class="lab">front</span><canvas id="cf"></canvas></div><div class="view"><span class="lab">side (he faces right)</span><canvas id="cs"></canvas></div></div>
+    </div>
+    <div id="side">
+      <h3>When</h3>
+      <div class="sent">Idle applies unless he is down.<br>
+        He counts as <b>down</b> when his head is lower than <input id="downHeadBelow" type="number" step="0.05"> m for <input id="downFor" type="number" step="0.1"> s.<br>
+        He counts as <b>up</b> again when his head is higher than <input id="upHeadAbove" type="number" step="0.05"> m and his hips higher than <input id="upHipsAbove" type="number" step="0.05"> m for <input id="upFor" type="number" step="0.1"> s.</div>
+      <div class="note">This is exactly the rule the game uses today. Heights are above the floor; standing, his head is about 1.55 m and his hips about 0.98 m. Changes apply at once.</div>
+      <h3>Do</h3>
+      <div class="sent">Move toward the pose on the left, every frame. The chooser is off.<br>While he is down, no order applies and the chooser decides.</div>
+      <div class="note">Joints changed from the original pose (degrees):</div>
+      <table id="tbl"></table>
+      <h3 style="margin-top:16px">Live</h3>
+      <div class="note" id="live">–</div>
+    </div>
+  </div>
+</div>
+<div id="right">
+  <iframe id="frame" src="live.html?editor"></iframe>
+  <div id="status">Active order: <span id="active">–</span></div>
+  <div id="help">Mouse: drag him to push · drag elsewhere to tilt the box · double-click to reset<br>Keys: arrows hold a tilt · R reset · space pause / play</div>
+</div>
+<input id="fileIn" type="file" accept=".json,application/json" style="display:none">
+<script type="module">
+const $ = id => document.getElementById(id), DEG = 180 / Math.PI;
+const ORIG = { RightArm_y: -1.25, LeftArm_y: 1.25, RightArm_z: -0.2, LeftArm_z: 0.2 };   // the game's standing pose (sim/brain.js BRAIN_STAND)
+const RULES0 = { downHeadBelow: 1.05, downFor: 0.3, upHeadAbove: 1.30, upHipsAbove: 0.80, upFor: 0.2 };
+const fr = $('frame');
+function fit() { const h = innerHeight - 110, w = Math.round(h * 412 / 915); fr.style.height = h + 'px'; fr.style.width = w + 'px'; }
+fit(); addEventListener('resize', () => { fit(); draw(); });
+
+// ---------- wait for the box to load, press its Start ----------
+let F, B, G, W, mj, m, d2, acts, pose, history = [];
+async function boot() {
+  for (;;) { await new Promise(r => setTimeout(r, 500)); F = fr.contentWindow; try { if (F.__box && F.__brainNet && F.__gpc && F.document.getElementById('go') && !F.document.getElementById('go').disabled) break; } catch (_) {} $('file').textContent = 'loading the box (first time: about 200 MB)…'; }
+  F.document.getElementById('go').click();
+  B = F.__brainNet; G = F.__gpc; W = F.__box.W; mj = W.mj; m = W.m; d2 = new mj.MjData(m);
+  acts = W.act.map(a => ({ name: a.name, qadr: a.qadr, j: mj.mj_name2id(m, mj.mjtObj.mjOBJ_JOINT.value, a.name) }));
+  const saved = (() => { try { return JSON.parse(localStorage.getItem('gpc.orders') || 'null'); } catch (_) { return null; } })();
+  const o = saved && saved.orders && saved.orders.find(x => x.name === 'Idle');
+  pose = Object.assign({}, o && o.do && o.do.pose ? o.do.pose : ORIG);
+  Object.assign(G.rules, RULES0, o && o.when ? o.when : {});
+  for (const k in RULES0) { $(k).value = G.rules[k]; $(k).oninput = () => { const v = parseFloat($(k).value); if (isFinite(v)) { G.rules[k] = v; dirty(); } }; }
+  $('file').textContent = saved ? 'orders from your last save' : 'the game\'s current orders';
+  applyPose(); draw(); keys(F); tick();
+}
+boot();
+
+// ---------- the pose: forward kinematics on a scratch copy of his body ----------
+const BODIES = ['Hips', 'Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightLeg', 'RightShin', 'RightFoot', 'RightToeBase', 'LeftLeg', 'LeftShin', 'LeftFoot', 'LeftToeBase'];
+function fk(p) {
+  d2.qpos.fill(0); d2.qpos[3] = 1; for (const a of acts) d2.qpos[a.qadr] = p[a.name] || 0;
+  mj.mj_kinematics(m, d2); const out = {};
+  for (const n of BODIES) { const id = W.bodyId[n]; out[n] = [d2.xpos[3 * id], d2.xpos[3 * id + 1], d2.xpos[3 * id + 2], m.body_parentid[id]]; out[n].id = id; }
+  let lo = 1e9; for (const n of ['RightToeBase', 'LeftToeBase', 'RightFoot', 'LeftFoot']) lo = Math.min(lo, out[n][2]);
+  for (const n of BODIES) out[n][2] -= lo - 0.05;   // stand him on the floor in the drawing
+  return out;
+}
+const HANDLES = { Head: ['Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head'], RightHand: ['RightShoulder', 'RightArm', 'RightForeArm'], LeftHand: ['LeftShoulder', 'LeftArm', 'LeftForeArm'],
+  RightFoot: ['RightLeg', 'RightShin'], LeftFoot: ['LeftLeg', 'LeftShin'] };
+const clampA = (a, v) => (a.j >= 0 && m.jnt_limited[a.j]) ? Math.max(m.jnt_range[2 * a.j], Math.min(m.jnt_range[2 * a.j + 1], v)) : v;
+// drag: move one body toward a target in the view's two axes (damped least squares, numeric Jacobian, human joint limits)
+function ik(handle, axes, target) {
+  const chain = acts.filter(a => HANDLES[handle].some(b => a.name.startsWith(b + '_')));
+  for (let it = 0; it < 12; it++) {
+    const P0 = fk(pose)[handle], e = axes.map((ax, i) => target[i] - P0[ax]);
+    if (Math.hypot(...e) < 0.002) break;
+    const J = chain.map(a => { const s = pose[a.name] || 0; pose[a.name] = s + 1e-3; const P = fk(pose)[handle]; pose[a.name] = s; return axes.map(ax => (P[ax] - P0[ax]) / 1e-3); });
+    const lam = 0.02, A = [[lam, 0], [0, lam]];
+    for (const r of J) { A[0][0] += r[0] * r[0]; A[0][1] += r[0] * r[1]; A[1][0] += r[1] * r[0]; A[1][1] += r[1] * r[1]; }
+    const det = A[0][0] * A[1][1] - A[0][1] * A[1][0], y = [(A[1][1] * e[0] - A[0][1] * e[1]) / det, (A[0][0] * e[1] - A[1][0] * e[0]) / det];
+    chain.forEach((a, i) => { pose[a.name] = clampA(a, (pose[a.name] || 0) + J[i][0] * y[0] + J[i][1] * y[1]); });
+  }
+}
+
+// ---------- drawing: front (x to the right, z up) and side (his forward = -y to the right) ----------
+const views = [{ c: $('cf'), h: p => p[0], ax: [0, 2], sgn: 1 }, { c: $('cs'), h: p => -p[1], ax: [1, 2], sgn: -1 }];
+function frame(v) { const c = v.c, r = c.getBoundingClientRect(), dpr = devicePixelRatio || 1; c.width = r.width * dpr; c.height = r.height * dpr; const s = Math.min(r.width / 1.3, r.height / 2.0) * dpr; return { s, cx: c.width / 2, base: c.height - 24 * dpr, dpr }; }
+const toS = (v, f, p) => [f.cx + v.h(p) * f.s, f.base - p[2] * f.s];
+function drawFig(ctx, v, f, P, col, w, dots) {
+  ctx.strokeStyle = col; ctx.lineWidth = w * f.dpr; ctx.lineCap = 'round';
+  for (const n of BODIES) { const p = P[n], par = BODIES.find(k => P[k].id === p[3]); if (!par) continue; const a = toS(v, f, p), b = toS(v, f, P[par]); ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke(); }
+  const hd = toS(v, f, P.Head); ctx.beginPath(); ctx.arc(hd[0], hd[1] - 0.06 * f.s, 0.09 * f.s, 0, 7); ctx.stroke();
+  if (dots) for (const n in HANDLES) { const q = toS(v, f, P[n]); ctx.fillStyle = drag && drag.handle === n ? '#ffd38a' : '#378ADD'; ctx.beginPath(); ctx.arc(q[0], q[1], 7 * f.dpr, 0, 7); ctx.fill(); }
+}
+function draw() {
+  if (!d2) return; const P = fk(pose), P0 = fk(ORIG);
+  for (const v of views) { const f = frame(v), ctx = v.c.getContext('2d'); ctx.clearRect(0, 0, v.c.width, v.c.height);
+    ctx.strokeStyle = '#5a4a3e'; ctx.lineWidth = f.dpr; ctx.beginPath(); ctx.moveTo(0, f.base + 0.05 * f.s); ctx.lineTo(v.c.width, f.base + 0.05 * f.s); ctx.stroke();
+    drawFig(ctx, v, f, P0, 'rgba(255,255,255,.18)', 2, false); drawFig(ctx, v, f, P, '#eee', 3.5, true); v.f = f; }
+  const rows = acts.filter(a => Math.abs((pose[a.name] || 0) - (ORIG[a.name] || 0)) > 0.017).map(a => `<tr><td>${a.name.replace('_', ' ')}</td><td>${((pose[a.name] || 0) * DEG).toFixed(0)} (was ${((ORIG[a.name] || 0) * DEG).toFixed(0)})</td></tr>`);
+  $('tbl').innerHTML = rows.length ? rows.join('') : '<tr><td class="dim">none</td><td></td></tr>';
+}
+let drag = null, lastApply = 0;
+for (const v of views) {
+  v.c.addEventListener('pointerdown', e => { if (!d2) return; const P = fk(pose), r = v.c.getBoundingClientRect(), x = (e.clientX - r.left) * v.f.dpr, y = (e.clientY - r.top) * v.f.dpr; let best = null;
+    for (const n in HANDLES) { const q = toS(v, v.f, P[n]), dd = Math.hypot(q[0] - x, q[1] - y); if (dd < 18 * v.f.dpr && (!best || dd < best.d)) best = { n, d: dd }; }
+    if (!best) return; history.push(Object.assign({}, pose)); drag = { handle: best.n, v }; v.c.setPointerCapture(e.pointerId); draw(); });
+  v.c.addEventListener('pointermove', e => { if (!drag || drag.v !== v) return; const r = v.c.getBoundingClientRect(), f = v.f, x = (e.clientX - r.left) * f.dpr, y = (e.clientY - r.top) * f.dpr;
+    const along = (x - f.cx) / f.s, up = (f.base - y) / f.s;
+    ik(drag.handle, v.ax, [v.ax[0] === 0 ? along : -along, up]); draw();
+    if (performance.now() - lastApply > 60) { applyPose(); lastApply = performance.now(); } });
+  v.c.addEventListener('pointerup', () => { if (drag) { drag = null; applyPose(); draw(); dirty(); } });
+}
+// fk() moves the drawing so his soles are on the floor line; the IK works in that same frame (handle heights shift
+// together with the target), so a dragged foot can be lifted off the floor and the rest stays put.
+function applyPose() { try { B.setStandPose(pose); } catch (e) { console.warn(e); } }
+function dirty() { $('file').textContent = 'changed, not saved'; }
+$('undo').onclick = () => { if (!history.length) return; pose = history.pop(); applyPose(); draw(); dirty(); };
+$('reset').onclick = () => { history.push(Object.assign({}, pose)); pose = Object.assign({}, ORIG); applyPose(); draw(); dirty(); };
+function ordersFile() { return { version: 1, saved: new Date().toISOString(), orders: [{ name: 'Idle', when: Object.assign({}, G.rules), do: { pose: Object.fromEntries(Object.entries(pose).filter(([k, v]) => Math.abs(v) > 1e-6).map(([k, v]) => [k, +v.toFixed(4)])) } }], otherwise: 'chooser' }; }
+$('save').onclick = () => { const O = ordersFile(), js = JSON.stringify(O, null, 1); localStorage.setItem('gpc.orders', js);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = 'orders.json'; a.click();
+  $('file').textContent = 'saved: the game in this browser uses it now; orders.json downloaded'; };
+$('load').onclick = () => $('fileIn').click();
+$('fileIn').onchange = async () => { const f = $('fileIn').files[0]; if (!f) return; try { const O = JSON.parse(await f.text()), o = O.orders.find(x => x.name === 'Idle');
+  history.push(Object.assign({}, pose)); pose = Object.assign({}, o.do.pose); Object.assign(G.rules, o.when); for (const k in RULES0) $(k).value = G.rules[k]; applyPose(); draw(); $('file').textContent = 'opened ' + f.name + ' (not saved yet)'; } catch (e) { $('file').textContent = 'could not read that file'; } };
+
+// ---------- the box: keyboard, live state ----------
+function keys(win) {
+  const held = new Set(), T = 25 / DEG;
+  const upd = () => { const r = F.__box.dragRot; r.roll = (held.has('ArrowRight') ? T : 0) - (held.has('ArrowLeft') ? T : 0); r.pitch = (held.has('ArrowDown') ? T : 0) - (held.has('ArrowUp') ? T : 0); };
+  const down = e => { if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.key.startsWith('Arrow')) { held.add(e.key); upd(); e.preventDefault(); }
+    else if (e.key === 'r' || e.key === 'R') { F.__box.standUp(); }
+    else if (e.key === ' ') { F.__box.lookBtn().click(); e.preventDefault(); } };
+  const up = e => { if (e.key.startsWith('Arrow')) { held.delete(e.key); upd(); } };
+  for (const w of [window, win]) { w.addEventListener('keydown', down); w.addEventListener('keyup', up); }
+}
+function tick() {
+  const s = G, on = s.mode === 'idle';
+  $('active').textContent = on ? 'Idle' : s.mode === 'getup' ? 'none: he is down, the chooser decides' : s.mode;
+  $('active').className = on ? 'idle' : 'none';
+  $('live').innerHTML = `head ${(s.head || 0).toFixed(2)} m · hips ${(s.hips || 0).toFixed(2)} m<br>${s.mode === 'getup' ? `chooser: ${s.rate || 0} decisions a second` : 'chooser off'}<br>switches: ${(s.switches || []).slice(-4).map(x => `${x[1]} at ${x[0]} s`).join(', ') || 'none yet'}`;
+  setTimeout(tick, 200);
+}
+</script>
+</body></html>

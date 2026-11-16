@@ -34,14 +34,21 @@ export async function attachGPC(brain, ort, say) {
   // The switch goes by his body (head and hips height). ?dance = the big brain alone, as in live 9.
   const Q = new URLSearchParams(location.search), DANCE = Q.has('dance'), BETA = +(Q.get('nudge') ?? 0.3);
   st.mode = DANCE ? 'dance' : 'idle'; st.switches = []; let lowN = 0, upN = 0, last = 0; st.fresh = false;
+  // the director's rule for the idle order (editor: gpc/editor.html; game: orders saved there). Ticks are 30 a second.
+  st.rules = { downHeadBelow: 1.05, downFor: 0.3, upHeadAbove: 1.30, upHipsAbove: 0.80, upFor: 0.2 };
+  st.order = 'idle';
+  // an orders file (version 1): one order, 'Idle' - a pose (hinge angles by name) and the rule above
+  st.apply = O => { const o = O && O.orders && O.orders.find(x => x.name === 'Idle'); if (!o) return false;
+    if (o.do && o.do.pose) brain.setStandPose(o.do.pose); if (o.when) Object.assign(st.rules, o.when); st.ordersFile = O; return true; };
+  try { const saved = JSON.parse(localStorage.getItem('gpc.orders') || 'null'); if (saved) st.apply(saved); else fetch(here + 'orders.json?t=' + Date.now()).then(r => r.ok ? r.json() : null).then(O => O && st.apply(O)).catch(() => {}); } catch (_) {}
   brain.session = { run: async feeds => {
     const all = feeds.obs.data, o = new Float32Array(all.subarray(0, 343)), head = o[0] + o[18], hips = o[0];
     st.ticks++; st.head = head; st.hips = hips;
     const want = DANCE ? null : (await enc.run({ block: new ort.Tensor('float32', new Float32Array(all.subarray(343, 895)), [1, 552]) })).codes.data;
     if (!DANCE) {
-      lowN = head < 1.05 ? lowN + 1 : 0; upN = head > 1.3 && hips > 0.8 ? upN + 1 : 0;
-      if (st.mode === 'idle' && lowN >= 9) { st.mode = 'getup'; st.fresh = false; st.switches.push([+((performance.now() - st.t0) / 1000).toFixed(1), 'down', +head.toFixed(2)]); }
-      else if (st.mode === 'getup' && upN >= 6) { st.mode = 'idle'; st.switches.push([+((performance.now() - st.t0) / 1000).toFixed(1), 'up', +head.toFixed(2)]); }
+      const R = st.rules; lowN = head < R.downHeadBelow ? lowN + 1 : 0; upN = head > R.upHeadAbove && hips > R.upHipsAbove ? upN + 1 : 0;
+      if (st.mode === 'idle' && lowN >= Math.round(R.downFor * 30)) { st.mode = 'getup'; st.fresh = false; st.switches.push([+((performance.now() - st.t0) / 1000).toFixed(1), 'down', +head.toFixed(2)]); }
+      else if (st.mode === 'getup' && upN >= Math.round(R.upFor * 30)) { st.mode = 'idle'; st.switches.push([+((performance.now() - st.t0) / 1000).toFixed(1), 'up', +head.toFixed(2)]); }
       if (st.switches.length > 60) st.switches.shift();
     }
     if (st.mode !== 'idle' && st.ready && !st.busy) {
