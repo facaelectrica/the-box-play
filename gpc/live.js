@@ -8,7 +8,7 @@ export async function attachGPC(brain, ort, say) {
   const ask = +(new URLSearchParams(location.search).get('cores') || 0);
   let threads = iso ? (ask ? Math.max(1, Math.min(ask, 4)) : Math.max(1, Math.min(3, cores - 1))) : 1;
   let fps = 0, fN = 0, fT = performance.now(); const raf = () => { fN++; const n = performance.now(); if (n - fT >= 1000) { fps = fN * 1000 / (n - fT); fN = 0; fT = n; } requestAnimationFrame(raf); }; requestAnimationFrame(raf);
-  const w = new Worker(here + 'worker.js?v=10', { type: 'module' }), tracker = brain.session, st = { codes: null, busy: false, ms: 0, picks: 0, ticks: 0, sinceT: performance.now(), since: 0, rate: 0, err: null, loaded: {}, ready: false, threads };
+  const w = new Worker(here + 'worker.js?v=11', { type: 'module' }), tracker = brain.session, st = { codes: null, busy: false, ms: 0, picks: 0, ticks: 0, sinceT: performance.now(), since: 0, rate: 0, err: null, loaded: {}, ready: false, threads };
   const TOTAL = 195.9e6;
   w.onmessage = e => {
     const m = e.data;
@@ -37,18 +37,17 @@ export async function attachGPC(brain, ort, say) {
   const Q = new URLSearchParams(location.search), DANCE = Q.has('dance'), BETA = +(Q.get('nudge') ?? 0.3);
   st.mode = DANCE ? 'dance' : 'idle'; st.switches = []; let last = 0; st.fresh = false;
   // ---------- the director: a list of orders (written in gpc/editor.html) ----------
-  // Order: on, start, stop, strength, steps. Start: all its conditions true for `for` s; stop likewise (none: when the
+  // Order: on, start, stop, steps or moves. Start: all its conditions true for `for` s; stop likewise (none: when the
   // start is no longer true). The first order in the list (switched on) whose start holds is given; while it is given,
   // only an order above it can take over. No order given: the chooser decides, free. Checked 30 times a second.
-  // Strength: control = the translator drives him toward the step's pose every tick (chooser off); guide = the chooser
-  // drives him, its choices tilted toward the step's pose. Steps: poses in order; the next step comes when he is close
+  // While an order is given, the translator drives him toward its pose or move every tick (the chooser is off). Steps: poses in order; the next step comes when he is close
   // to this one or after its time; the last step holds.
-  const IDLE = { name: 'Idle', on: true, strength: 'control', start: { all: [{ s: 'head', c: '>', v: 1.30 }, { s: 'hips', c: '>', v: 0.80 }], for: 0.2 }, stop: { all: [{ s: 'head', c: '<', v: 1.05 }], for: 0.3 },
+  const IDLE = { name: 'Idle', on: true, start: { all: [{ s: 'head', c: '>', v: 1.30 }, { s: 'hips', c: '>', v: 0.80 }], for: 0.2 }, stop: { all: [{ s: 'head', c: '<', v: 1.05 }], for: 0.3 },
     steps: [{ pose: { RightArm_y: -1.25, LeftArm_y: 1.25, RightArm_z: -0.2, LeftArm_z: 0.2 }, time: 1 }] };
   IDLE.do = { type: 'pose' }; st.orders = [IDLE]; st.active = DANCE ? null : IDLE; st.step = 0; st.stepT = 0; st.force = null; const tm = new Map();
   const v1 = O => { const o = O.orders.find(x => x.name === 'Idle'), w = o.when || {};   // the editor's first file format
     return { version: 2, orders: [{ name: 'Idle', start: { all: [{ s: 'head', c: '>', v: w.upHeadAbove ?? 1.3 }, { s: 'hips', c: '>', v: w.upHipsAbove ?? 0.8 }], for: w.upFor ?? 0.2 }, stop: { all: [{ s: 'head', c: '<', v: w.downHeadBelow ?? 1.05 }], for: w.downFor ?? 0.3 }, pose: o.do.pose }] }; };
-  const norm = o => { if (!o.do) o.do = { type: 'pose' }; if (!o.steps) o.steps = [{ pose: o.pose || {}, time: 1 }]; delete o.pose; if (o.on === undefined) o.on = true; if (!o.strength) o.strength = 'control'; for (const st_ of o.steps) st_._stand = null; return o; };
+  const norm = o => { if (!o.do) o.do = { type: 'pose' }; if (!o.steps) o.steps = [{ pose: o.pose || {}, time: 1 }]; delete o.pose; if (o.on === undefined) o.on = true; delete o.strength; for (const st_ of o.steps) st_._stand = null; return o; };
   st.apply = O => { if (!O || !O.orders) return false; if (!O.version || O.version < 2) O = v1(O);
     st.orders = O.orders.map(norm); tm.clear();
     if (st.rec) { brain.react = null; st.rec = null; }
@@ -183,7 +182,7 @@ export async function attachGPC(brain, ort, say) {
     const o = st.active;
     if (o && !(o.do && o.do.type === 'recording') && o.steps.length > 1 && st.step < o.steps.length - 1) { st.stepT += 1 / 30; const sp = o.steps[st.step];
       if (poseGap(sp.pose) < (sp.close ?? 0.12) || st.stepT > (sp.time ?? 1)) { st.step++; st.stepT = 0; standFor(o, st.step); } }
-    const mode = !o ? 'getup' : o.strength === 'guide' ? 'guide' : 'idle'; if (mode !== st.mode) { st.mode = mode; st.fresh = false; }
+    const mode = !o ? 'getup' : 'idle'; if (mode !== st.mode) { st.mode = mode; st.fresh = false; }
   }
   st.mode = DANCE ? 'dance' : 'idle'; standFor(st.active, 0);
   try { const saved = JSON.parse(localStorage.getItem('gpc.orders') || 'null'); if (saved) st.apply(saved); else fetch(here + 'orders.json?t=' + Date.now()).then(r => r.ok ? r.json() : null).then(O => O && st.apply(O)).catch(() => {}); } catch (_) {}
@@ -194,10 +193,10 @@ export async function attachGPC(brain, ort, say) {
     if (!DANCE) { direct(); st.head = st.signs.head; st.hips = st.signs.hips; }
     if (st.mode !== 'idle' && st.ready && !st.busy) {
       st.busy = true; st.sent = performance.now(); st.askMode = st.mode;
-      w.postMessage({ obs: o, want: want ? Float32Array.from(want, v => v + 4) : null, beta: DANCE || st.mode !== 'guide' ? 0 : (st.active && st.active.guide) || 1 });   // the chooser alone is free; guided, its choices lean toward the step's pose
+      w.postMessage({ obs: o });   // the chooser picks freely
     }
     const now = performance.now(); if (now - last > 1000) { st.rate = st.picks - st.since; st.since = st.picks; last = now;
-      say(`${fps.toFixed(0)} fps · ${st.mode === 'idle' || st.mode === 'guide' ? `order: ${st.active ? st.active.name : '?'}` : st.mode === 'getup' ? `getting up · big brain ${st.rate} picks a second, ${st.ms.toFixed(0)} ms each` : `big brain alone · ${st.rate} picks a second, ${st.ms.toFixed(0)} ms each`}${st.ready ? '' : ' · big brain still loading'} · ${threads} core${threads > 1 ? 's' : ''}`); }
+      say(`${fps.toFixed(0)} fps · ${st.mode === 'idle' ? `order: ${st.active ? st.active.name : '?'}` : st.mode === 'getup' ? `getting up · big brain ${st.rate} picks a second, ${st.ms.toFixed(0)} ms each` : `big brain alone · ${st.rate} picks a second, ${st.ms.toFixed(0)} ms each`}${st.ready ? '' : ' · big brain still loading'} · ${threads} core${threads > 1 ? 's' : ''}`); }
     let codes = want;
     if (st.mode !== 'idle') { if (st.fresh) codes = st.codes; else if (DANCE) return tracker.run(feeds); }   // until this episode's first pick: the translator (dance: the old tracker)
     return dec.run({ obs: new ort.Tensor('float32', o, [1, 343]), codes: new ort.Tensor('float32', Float32Array.from(codes), [1, 40]) });

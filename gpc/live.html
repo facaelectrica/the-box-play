@@ -677,7 +677,7 @@ if (kin && PHYSICAL && BB.dir) try {
   const session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
   const brainNet = new Brain(W, ort, session, meta); brainNet.setStandPose(BRAIN_STAND);
   // --- test page: NVIDIA's GPC prior alone drives him (gpc/live.js) ---
-  const { attachGPC, GpcDrive } = await import(new URL('gpc/live.js?v=17', document.baseURI).href);
+  const { attachGPC, GpcDrive } = await import(new URL('gpc/live.js?v=18', document.baseURI).href);
   const gst = document.createElement('div'); gst.id = 'gpcst'; gst.style.cssText = 'position:fixed;left:12px;right:60px;top:calc(48px + env(safe-area-inset-top));z-index:6;font:700 12px system-ui;color:#111;background:#ffd400;border-radius:8px;padding:5px 8px;pointer-events:none'; document.body.appendChild(gst);
   window.__gpc = await attachGPC(brainNet, ort, t => { gst.textContent = t + (/[?&]strong/.test(location.search) ? ' · full strength' : ' · human strength and joint limits'); });
   window.__brainNet = brainNet;

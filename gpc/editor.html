@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v34</title>
+<title>EDITOR v35</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -12,7 +12,7 @@
   select{font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:3px 6px}
   button{font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:8px;padding:6px 10px;cursor:pointer}
   button:hover{background:#352b23} #mMove.on,#mRot.on,.stp.on{background:#e0a34a;color:#1b1612} #stTime{width:52px;font:inherit;font-size:12px;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:2px 4px;text-align:right} #gh.on{border-color:#7ddc8a;color:#7ddc8a} button.pri{background:#e0a34a;color:#1b1612;border-color:#e0a34a}
-  #main{flex:1;display:grid;grid-template-columns:110px minmax(0,1fr) 300px;min-height:0}
+  #main{flex:1;display:grid;grid-template-columns:130px minmax(0,1fr) 340px;min-height:0}
   #orders{border-right:1px solid #3a302a;padding:10px}
   .ord{padding:7px 9px;border-radius:8px;margin-bottom:4px} .ord.on{background:#e0a34a;color:#1b1612;font-weight:600} .ord.off{color:#6f6359}
   #puppet{padding:10px;display:flex;flex-direction:column;min-height:0}
@@ -26,7 +26,7 @@
   .crow input{width:56px;color:#ffd38a;text-align:right} .crow .u{color:#8a7d72;width:24px} .crow button{padding:1px 6px}
   .cfor{font-size:12px;color:#a99a8c;margin:2px 0 12px} .cfor input{width:46px;font:inherit;font-size:12px;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 4px;text-align:right}
   .sg td{font-size:12px;padding:1px 4px;color:#d8cdc2} .sg td:last-child{text-align:right;color:#ffd38a}
-  #props summary{cursor:pointer;font-weight:600;margin:6px 0} #props h4{font-size:12px;color:#a99a8c;margin:10px 0 2px;font-weight:600} .sg .grp td{color:#a99a8c;font-weight:600;padding-top:8px}
+  #props summary,#reads summary{cursor:pointer;font-weight:600;margin:6px 0} #props h4{font-size:12px;color:#a99a8c;margin:10px 0 2px;font-weight:600} .sg .grp td{color:#a99a8c;font-weight:600;padding-top:8px}
   #libList,#libUse{max-height:220px;overflow:auto;border:1px solid #3a302a;border-radius:6px;margin-bottom:12px} .li{font-size:12px;padding:3px 6px;cursor:pointer;color:#d8cdc2;display:flex;gap:6px} .li:hover{background:#2a221c} .li.on{background:#e0a34a;color:#1b1612} .li .c{color:#8a7d72;margin-left:auto;white-space:nowrap} #libList .li,#libUse .li{flex-wrap:wrap;align-items:center} #libList .li .n,#libUse .li .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap} #libList .li .c,#libUse .li .c{flex-basis:100%;margin-left:20px;font-size:11px} .li .x{color:#8a7d72;margin-left:6px} .li .x:hover{color:#eee} .li input{margin:0} .lh{font-size:12px;color:#a99a8c;margin:4px 0 2px;font-weight:600} .li.on .c{color:#1b1612}
   .ord{cursor:pointer} .ord.dis{opacity:.45} .ord input{vertical-align:-2px;margin:0 2px 0 0} .ord.act::after{content:" ●";color:#7ddc8a} .on.test{outline:2px solid #ff9f43}
   .sent input{width:58px;font:inherit;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 5px;text-align:center}
@@ -41,45 +41,60 @@
   #active{font-weight:600} .idle{color:#7ddc8a} .none{color:#ff9f7a}
   #help{font-size:11px;color:#a99a8c;text-align:center;line-height:1.6}
   #tbl{font-size:12px;width:100%;border-collapse:collapse} #tbl td{padding:1px 4px;border-bottom:1px solid #2e2620} #tbl td:last-child{text-align:right;color:#ffd38a} #tbl .old{color:#8a7d72;cursor:pointer;margin-left:4px} #tbl .old:hover{color:#eee;text-decoration:underline}
+  .ord{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pan{border:1px solid #3a302a;border-radius:8px;padding:8px;margin-bottom:10px;background:#1f1915} #usePan{background:#17201a;border-color:#2f4a35}
+  .panH{display:flex;align-items:center;gap:6px;margin-bottom:6px;font-size:13px} .panH button{padding:2px 8px;font-size:12px}
+  #libList{max-height:260px;resize:vertical;overflow:auto;border:1px solid #3a302a;border-radius:6px;margin:0} #libPan.big #libList{max-height:none;height:62vh}
+  #libUse{max-height:200px;overflow:auto;border:0;margin:0}
+  .ty,.tk{font-size:12px;padding:4px 6px;cursor:pointer;color:#d8cdc2;display:flex;flex-wrap:wrap;gap:0 6px;align-items:center;border-bottom:1px solid #2a221c}
+  .ty:hover,.tk:hover{background:#2a221c} .ty .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600} .tk{padding-left:28px;background:#181310} .tk .n{flex:1;min-width:0}
+  .ty .c,.tk .c{flex-basis:100%;color:#8a7d72;font-size:11px;margin-left:20px} .tk .c{margin-left:18px} #libUse .ty .c{margin-left:0}
+  .ty input,.tk input{margin:0} .car{color:#8a7d72;width:10px} .cnt{color:#1b1612;background:#a99a8c;border-radius:9px;padding:0 6px;font-size:11px;font-weight:600} .ty .x{color:#8a7d72} .ty .x:hover{color:#eee}
+  .ty.in .cnt{background:#7ddc8a} .tk.in .n{color:#9be3a6} .ty.pv,.tk.pv{box-shadow:inset 3px 0 0 #e0a34a;background:#2e241c}
+  #tl{margin-top:6px;background:#241d18;border-radius:8px;padding:6px 8px;font-size:12px} .tlTop{display:flex;gap:8px;align-items:center;margin-bottom:4px;min-width:0} .tlTop button{padding:1px 8px;font-size:12px} #tlFrame{font-size:11px;margin-top:2px}
+  #tlState{font-weight:600;padding:0 6px;border-radius:4px;background:#3a302a;color:#d8cdc2} #tlState.play{background:#1f3a24;color:#9be3a6} #tlState.err{background:#4a2020;color:#ff9f7a}
+  #tlName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .tlRow{display:flex;gap:6px;align-items:center;min-width:0} .tlRow button{padding:3px 9px;min-width:34px} #tlBar{flex:1;min-width:0;width:0;accent-color:#e0a34a} #tlTime{font-variant-numeric:tabular-nums;color:#ffd38a;white-space:nowrap;text-align:right} #tlLoop.on{background:#e0a34a;color:#1b1612}
+  button:disabled{opacity:.4;cursor:default} .nw{white-space:nowrap} body.rec .poseOnly{display:none!important}
+  #empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#a99a8c;font-size:13px;pointer-events:none} #empty[hidden]{display:none}
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v34</b><span class="dim" id="file"></span><span class="sp"></span>
-    <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
+  <header><b>EDITOR v35</b><span class="dim" id="file"></span><span class="sp"></span>
+    <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo" class="poseOnly">Undo</button><button id="reset" class="poseOnly">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Default<br><small>Chooser</small></div></div>
     <div id="puppet">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:13px">
         <select id="figSel"><option value="female">Female</option><option value="male">Male</option><option value="shapes">Mannequin</option><option value="none">None</option></select>
-        <label><input type="checkbox" id="skelOn" checked> Skeleton</label><label><input type="checkbox" id="ghostOn" checked> Original</label><span class="sp"></span><button id="mMove" class="on" title="Move (W)">Move</button><button id="mRot" title="Rotate (E)">Rotate</button></div>
-      <div id="views"><div class="view" id="v3"><span class="lab" id="hint"></span></div></div>
+        <label class="nw"><input type="checkbox" id="skelOn" checked> Skeleton</label><label class="nw poseOnly" title="Grey figure: the step before, or the standing pose"><input type="checkbox" id="ghostOn" checked> Original</label><span class="sp"></span><button id="mMove" class="on poseOnly" title="Move (W)">Move</button><button id="mRot" class="poseOnly" title="Rotate (E)">Rotate</button></div>
+      <div id="views"><div class="view" id="v3"><span class="lab" id="hint"></span><div id="empty" hidden>No moves in this order yet.<br>Choose a move type in the Library.</div></div></div>
       <div id="steps" style="display:flex;gap:4px;align-items:center;margin-top:6px;font-size:12px"></div>
+      <div id="tl" hidden><div class="tlTop"><span id="tlState"></span><span id="tlName"></span><span class="sp"></span><button id="tlLoop" title="Loop">Loop</button></div><div class="tlRow"><button id="tlStart" title="To start">⏮</button><button id="tlPlay" title="Play (Space)">▶</button><button id="tlEnd" title="To end">⏭</button><input type="range" id="tlBar" min="0" max="1000" value="0"><span id="tlTime">0.0 / 0.0 s</span></div><div id="tlFrame" class="dim"></div></div>
     </div>
     <div id="side">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><input id="oname" style="flex:1;font:inherit;font-weight:600;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:4px 8px">
         </div><div style="display:flex;gap:4px;margin:-4px 0 10px"><button id="oUp" title="Raise priority">▲</button><button id="oDn" title="Lower priority">▼</button><button id="oTest" title="Force this order">Test</button><span class="sp"></span><button id="oDel" title="Delete order">✕</button></div>
-      <div class="crow"><span style="width:62px">Strength</span><select id="oStr"><option value="control">Control</option><option value="guide">Guide</option></select><span class="sp"></span><button id="oMoment" title="Start conditions and pose from his body now">From moment</button></div>
-      <div class="crow" style="margin-bottom:10px"><span style="width:62px">Do</span><select id="oDo"><option value="pose">Pose</option><option value="recording">Recording</option></select></div>
+      <div class="crow" style="margin-bottom:10px"><span style="width:62px">Do</span><select id="oDo"><option value="pose">Pose steps</option><option value="recording">Moves</option></select></div>
       <div id="libBox" hidden>
-        <div class="crow"><input id="libQ" placeholder="Search" style="flex:1;width:auto;text-align:left;color:#eee"></div>
-        <div class="crow"><select id="libFrom" title="His pose at the first frame" style="flex:1;min-width:0;width:0"><option value="">From any</option><option value="standing">From standing</option><option value="crouching or kneeling">From crouching or kneeling</option><option value="sitting">From sitting</option><option value="bent over">From bent over</option><option value="on all fours">From on all fours</option><option value="lying on back">From lying on back</option><option value="lying on front">From lying on front</option><option value="lying on left side">From lying on left side</option><option value="lying on right side">From lying on right side</option></select><select id="libTo" title="His pose at the last frame" style="flex:1;min-width:0;width:0"><option value="">To any</option><option value="standing">To standing</option><option value="crouching or kneeling">To crouching or kneeling</option><option value="sitting">To sitting</option><option value="bent over">To bent over</option><option value="on all fours">To on all fours</option><option value="lying on back">To lying on back</option><option value="lying on front">To lying on front</option><option value="lying on left side">To lying on left side</option><option value="lying on right side">To lying on right side</option></select></div>
-        <div class="crow"><span id="libN" class="dim" style="flex:1"></span><button id="libAdd" title="Add every move shown to this order (30 at most)">Add shown</button></div>
-        <div id="libList"></div>
-        <h4 class="lh">In this order <span id="libUseN" class="dim"></span></h4>
-        <div id="libUse"></div>
+        <div class="pan" id="libPan"><div class="panH"><b>Library</b><span class="sp"></span><button id="libBig" title="Enlarge the list">Expand</button></div>
+          <div class="crow"><input id="libQ" placeholder="Search moves" style="flex:1;width:auto;text-align:left;color:#eee"></div>
+          <div class="crow"><select id="libFrom" title="His pose at the first frame" style="flex:1;min-width:0;width:0"><option value="">From any</option><option value="standing">From standing</option><option value="crouching or kneeling">From crouching or kneeling</option><option value="sitting">From sitting</option><option value="bent over">From bent over</option><option value="on all fours">From on all fours</option><option value="lying on back">From lying on back</option><option value="lying on front">From lying on front</option><option value="lying on left side">From lying on left side</option><option value="lying on right side">From lying on right side</option></select><select id="libTo" title="His pose at the last frame" style="flex:1;min-width:0;width:0"><option value="">To any</option><option value="standing">To standing</option><option value="crouching or kneeling">To crouching or kneeling</option><option value="sitting">To sitting</option><option value="bent over">To bent over</option><option value="on all fours">To on all fours</option><option value="lying on back">To lying on back</option><option value="lying on front">To lying on front</option><option value="lying on left side">To lying on left side</option><option value="lying on right side">To lying on right side</option></select></div>
+        <div class="crow"><span id="libN" class="dim" style="flex:1"></span><button id="libAdd" title="Add every take of every type shown (30 takes at most per order)">Add all shown</button></div>
+          <div id="libList"></div></div>
+        <div class="pan" id="usePan"><div class="panH"><b>Moves in this order</b><span class="sp"></span><span id="libUseN" class="dim"></span></div>
+          <div class="note" style="margin:0 0 6px">When the order starts, the director plays the move whose first frame is closest to his body, and among those, the one that goes least through the walls.</div>
+          <div id="libUse"></div></div>
       </div>
-      <h3>Start</h3><div id="cStart"></div>
+      <div class="crow" style="margin:4px 0 6px"><h3 style="margin:0;flex:1">Start</h3><button id="oMoment" title="Set the Start conditions (and, for a Pose order, the pose) from his body in the box now">From moment</button></div><div id="cStart"></div>
       <h3>Stop</h3><div id="cStop"></div>
-      <details id="props"><summary>Pose properties</summary>
-        <h4>Joints</h4><table id="tbl"></table>
-        <table id="signs" class="sg"></table>
-      </details>
+      <details id="props" class="poseOnly"><summary>Pose joints</summary><table id="tbl"></table></details>
+      <details id="reads"><summary>Live readings</summary><div class="note" style="margin:0 0 4px">His body in the box now, as the Start and Stop conditions read it.</div><table id="signs" class="sg"></table></details>
     </div>
   </div>
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=34"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=35"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -96,6 +111,7 @@ const LYING = ['upright', 'back', 'front', 'left side', 'right side'];
 const SIGNS = { lyingOn: ['lying on', ''], head: ['head height', 'm'], chest: ['chest height', 'm'], hips: ['hips height', 'm'], rightHand: ['right hand height', 'm'], leftHand: ['left hand height', 'm'],
   rightFoot: ['right foot height', 'm'], leftFoot: ['left foot height', 'm'], lean: ['trunk lean', '°'], speed: ['hips speed', 'm/s'], tilt: ['box tilt', '°'], tiltLR: ['tilt left/right', '°'], tiltFB: ['tilt forward/back', '°'] };
 let orders = [], cur = 0, stepK = 0;
+const PV = { cache: new Map(), cur: null };   // move preview: decoded moves, and the one on the timeline
 const fr = $('frame');
 // the box keeps the phone's shape; the stage is square so the box can turn all the way round without moving the page
 // phone view: the frame is the phone, as large as fits; room view: the frame fills the whole play area
@@ -128,8 +144,10 @@ boot();
 
 // ---------- the pose: forward kinematics on a scratch copy of his body ----------
 const BODIES = ['Hips', 'Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightLeg', 'RightShin', 'RightFoot', 'RightToeBase', 'LeftLeg', 'LeftShin', 'LeftFoot', 'LeftToeBase'];
-function setRoot(p) { d2.qpos.fill(0); if (p.root_w !== undefined) { const r = [p.root_w, p.root_x, p.root_y, p.root_z], l = Math.hypot(...r) || 1; for (let k = 0; k < 4; k++) d2.qpos[3 + k] = r[k] / l; } else d2.qpos[3] = 1; }
-function fk(p) {
+function setRoot(p) { d2.qpos.fill(0); if (p.root_w !== undefined) { const r = [p.root_w, p.root_x, p.root_y, p.root_z], l = Math.hypot(...r) || 1; for (let k = 0; k < 4; k++) d2.qpos[3 + k] = r[k] / l; } else d2.qpos[3] = 1;
+  if (p.root_p) for (let k = 0; k < 3; k++) d2.qpos[k] = p.root_p[k]; }   // root_p: only preview frames carry a position
+// fix = [x, y, floor]: a preview keeps one drawing shift for the whole move, so he travels and lies where the move puts him
+function fk(p, fix) {
   setRoot(p); for (const a of acts) d2.qpos[a.qadr] = p[a.name] || 0;
   mj.mj_kinematics(m, d2); const out = {};
   for (const n of BODIES) { const id = W.bodyId[n]; out[n] = [d2.xpos[3 * id], d2.xpos[3 * id + 1], d2.xpos[3 * id + 2], m.body_parentid[id]]; out[n].id = id; }
@@ -143,9 +161,10 @@ function fk(p) {
     lo = Math.min(lo, d2.geom_xpos[3 * g + 2] - dz);
   }
   // the drawing stands him with his soles on the floor and the point between his feet over the origin
-  const fa = W.bodyId.RightFoot, fb = W.bodyId.LeftFoot, mx = (d2.xpos[3 * fa] + d2.xpos[3 * fb]) / 2, my = (d2.xpos[3 * fa + 1] + d2.xpos[3 * fb + 1]) / 2;
-  for (const n of BODIES) { out[n][0] -= mx; out[n][1] -= my; out[n][2] -= lo; const id = out[n].id; out[n].q = [d2.xquat[4 * id + 1], d2.xquat[4 * id + 2], d2.xquat[4 * id + 3], d2.xquat[4 * id]]; }
-  fk.lo = lo; fk.sh = [mx, my, lo];
+  const fa = W.bodyId.RightFoot, fb = W.bodyId.LeftFoot; fk.lo = lo;
+  const [mx, my, lz] = fix || [(d2.xpos[3 * fa] + d2.xpos[3 * fb]) / 2, (d2.xpos[3 * fa + 1] + d2.xpos[3 * fb + 1]) / 2, lo];
+  for (const n of BODIES) { out[n][0] -= mx; out[n][1] -= my; out[n][2] -= lz; const id = out[n].id; out[n].q = [d2.xquat[4 * id + 1], d2.xquat[4 * id + 2], d2.xquat[4 * id + 3], d2.xquat[4 * id]]; }
+  fk.sh = [mx, my, lz];
   return out;
 }
 // ---------- posing like a 3D package: select a joint, W move (IK), E rotate (FK) ----------
@@ -277,10 +296,11 @@ function poseFig() {   // d2 holds the pose's forward kinematics (fk(pose) just 
 let sel = null, hover = null, lastApply = 0, gstart = null;
 const chainOf = n => n && MOVE[n] && mode() === 'translate' ? MOVE[n].j : n ? [n] : [];
 function draw() {
-  if (!d2) return; const P = fk(pose); poseFig(); const prev = stepK > 0 && orders[cur] ? orders[cur].steps[stepK - 1].pose : ORIG, P0 = fk(prev);
+  if (!d2) return; const pv = PV.cur && PV.cur.M, P = fk(pose, pv ? pv.fix : null); poseFig(); const prev = stepK > 0 && orders[cur] ? orders[cur].steps[stepK - 1].pose : ORIG, P0 = fk(prev);
   if (!bones.length) build3d();
   const sk = $('skelOn').checked;
-  updateFig(P, bones, 0.016); updateFig(P0, gbones, 0.012); for (const [, b] of bones) b.visible = b.visible && sk; ghost.visible = $('ghostOn').checked;
+  updateFig(P, bones, 0.016); updateFig(P0, gbones, 0.012); for (const [, b] of bones) b.visible = b.visible && sk; ghost.visible = $('ghostOn').checked && !PV.cur;
+  if (PV.cur) { for (const n of BODIES) { const mm = jm[n]; mm.visible = sk; mm.position.set(...P[n].slice(0, 3)); mm.scale.setScalar(0.02); mm.material.color.setHex(COL.joint); } return; }   // previewing: no editing
   const piv = chainOf(sel);
   for (const n of BODIES) { const mm = jm[n]; mm.visible = sk || n === sel;
     mm.position.set(...P[n].slice(0, 3)); mm.scale.setScalar(n === sel ? 0.032 : piv.includes(n) ? 0.026 : 0.02);
@@ -326,10 +346,10 @@ function pick(e) { const r = ren.domElement.getBoundingClientRect(); mouse.set((
   const f = ray.intersectObjects(Object.values(figG), true); return f.length ? f[0].object.userData.name || null : null; }
 let down = null;
 ren.domElement.addEventListener('pointerdown', e => { if (!d2 || e.button !== 0 || tc.axis) return; down = { x: e.clientX, y: e.clientY }; });
-ren.domElement.addEventListener('pointerup', e => { if (!down || tc.dragging) { down = null; return; } const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4; down = null; if (moved) return;
+ren.domElement.addEventListener('pointerup', e => { if (!down || tc.dragging || PV.cur) { down = null; return; } const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4; down = null; if (moved) return;
   const n = pick(e); sel = n; if (n) tc.attach(proxy); else tc.detach(); draw(); });
-ren.domElement.addEventListener('pointermove', e => { if (tc.dragging || down) return; const n = pick(e); if (n !== hover) { hover = n; ren.domElement.style.cursor = n ? 'pointer' : 'grab'; draw(); } });
-window.__ed = { twoBone, fkRaw, solve, tc, proxy, select: n => { sel = n; tc.attach(proxy); draw(); }, setMode, pose: () => pose, fk: () => fk(pose), previewMove: id => previewMove(id) };   // for checks
+ren.domElement.addEventListener('pointermove', e => { if (tc.dragging || down || PV.cur) return; const n = pick(e); if (n !== hover) { hover = n; ren.domElement.style.cursor = n ? 'pointer' : 'grab'; draw(); } });
+window.__ed = { twoBone, fkRaw, solve, tc, proxy, select: n => { sel = n; tc.attach(proxy); draw(); }, setMode, pose: () => pose, fk: () => fk(pose), previewMove: id => pvOpen(id), pv: () => PV.cur };   // for checks
 addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   if (e.key === 'w' || e.key === 'W') setMode('translate'); else if (e.key === 'e' || e.key === 'E') setMode('rotate');
   else if (e.key === 'Escape') { sel = null; tc.detach(); draw(); } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') { $('undo').click(); e.preventDefault(); } });
@@ -346,7 +366,7 @@ $('reset').onclick = () => { history.push(Object.assign({}, pose)); pose = Objec
 function listOrders() {
   $('olist').innerHTML = orders.map((o, k) => `<div class="ord ${k === cur ? 'on' : ''} ${G && G.active === o ? 'act' : ''} ${G && G.force === o.name ? 'test' : ''} ${o.on === false ? 'dis' : ''}" data-k="${k}"><input type="checkbox" data-on="${k}" ${o.on === false ? '' : 'checked'} title="On"> ${esc(o.name)}</div>`).join('');
   for (const c of $('olist').querySelectorAll('[data-on]')) { c.onclick = e => e.stopPropagation(); c.onchange = () => { orders[+c.dataset.on].on = c.checked; listOrders(); dirty(); }; }
-  for (const d of $('olist').querySelectorAll('.ord')) d.onclick = () => { cur = +d.dataset.k; stepK = 0; pose = orders[cur].steps[0].pose; history = []; sel = null; listOrders(); showOrder(); draw(); };
+  for (const d of $('olist').querySelectorAll('.ord')) d.onclick = () => { if (PV.cur) pvClose(); cur = +d.dataset.k; stepK = 0; pose = orders[cur].steps[0].pose; history = []; sel = null; listOrders(); showOrder(); draw(); };
 }
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 function condUI(box, part, o) {
@@ -355,7 +375,7 @@ function condUI(box, part, o) {
     (x.s === 'lyingOn' ? `<span style="width:30px;text-align:center">is</span><select data-k="${k}" data-f="v" style="width:96px">${LYING.map(v => `<option ${v === x.v ? 'selected' : ''}>${v}</option>`).join('')}</select><span class="u"></span>`
       : `<select data-k="${k}" data-f="c"><option value="<" ${x.c === '<' ? 'selected' : ''}>&lt;</option><option value=">" ${x.c === '>' ? 'selected' : ''}>&gt;</option></select><input data-k="${k}" data-f="v" type="number" step="0.05" value="${x.v}"><span class="u">${SIGNS[x.s][1]}</span>`) +
     `<button data-k="${k}" data-f="x">✕</button></div>`;
-  box.innerHTML = c.all.map(row).join('') + `<div class="cfor"><button data-f="add">+ condition</button> for <input data-f="for" type="number" step="0.1" value="${c.for}"> s${part === 'stop' && !c.all.length ? ' · none: stops when Start is no longer true' : ''}</div>`;
+  box.innerHTML = c.all.map(row).join('') + `<div class="cfor"><button data-f="add">+ condition</button> for <input data-f="for" type="number" step="0.1" value="${c.for}"> s${part === 'stop' && !c.all.length ? '<div>No conditions: it stops when Start is no longer true.</div>' : ''}</div>`;
   for (const el of box.querySelectorAll('[data-f]')) {
     const f = el.dataset.f, k = +el.dataset.k;
     if (f === 'x') el.onclick = () => { c.all.splice(k, 1); condUI(box, part, o); dirty(); };
@@ -366,10 +386,10 @@ function condUI(box, part, o) {
   }
 }
 function showOrder() {
-  const o = orders[cur]; $('oname').value = o.name; $('oStr').value = o.strength || 'control'; if (!o.do) o.do = { type: 'pose' }; $('oDo').value = o.do.type; doUI(); condUI($('cStart'), 'start', o); condUI($('cStop'), 'stop', o); stepsUI();
+  const o = orders[cur]; $('oname').value = o.name; if (!o.do) o.do = { type: 'pose' }; $('oDo').value = o.do.type; doUI(); condUI($('cStart'), 'start', o); condUI($('cStop'), 'stop', o); stepsUI();
   $('oTest').classList.toggle('on', G.force === o.name); $('oDel').disabled = orders.length < 2;
 }
-$('oStr').onchange = () => { orders[cur].strength = $('oStr').value; dirty(); };
+$('libBig').onclick = () => { const b = $('libPan').classList.toggle('big'); $('libBig').textContent = b ? 'Shrink' : 'Expand'; $('libBig').title = b ? 'Shrink the list' : 'Enlarge the list'; };
 // Do: Pose (the steps under the puppet) or Recording: a list of moves from the library; when the order starts, the
 // director plays the one whose first frame is closest to his body and that fits the space around him best
 $('oDo').onchange = () => { const o = orders[cur]; o.do = $('oDo').value === 'recording' ? { type: 'recording', moves: [] } : { type: 'pose' }; doUI(); dirty(); };
@@ -378,40 +398,104 @@ async function libIndex() { if (LIB.rows) return LIB.rows; const key = localStor
   try { const r = await fetch(LIBI, { headers: { Authorization: 'Bearer ' + key, Accept: 'application/vnd.github.raw' } }); if (!r.ok) { LIB.err = 'Library: GitHub ' + r.status; return null; }
     const J = JSON.parse(await new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).text());
     LIB.rows = J.rows.map(v => Object.fromEntries(J.cols.map((c, k) => [c, v[k]]))); LIB.by = Object.fromEntries(LIB.rows.map(x => [x.id, x]));
-    for (const x of LIB.rows) x.text = (x.id + ' ' + x.desc + ' ' + x.short + ' ' + x.type + ' ' + x.position + ' ' + x.category).toLowerCase(); return LIB.rows; }
+    for (const x of LIB.rows) x.text = (x.id + ' ' + x.desc + ' ' + x.short + ' ' + x.type + ' ' + x.position + ' ' + x.category).toLowerCase();
+    const T = LIB.typeBy = {}; for (const x of LIB.rows) { const k = typeKey(x.id); (x.tk = T[k] || (T[k] = { key: k, short: x.short, desc: x.desc, takes: [] })).takes.push(x); }
+    LIB.types = Object.values(T); return LIB.rows; }
   catch (e) { LIB.err = 'Library: ' + e.message; return null; } }
-const mvLabel = x => x ? x.short.charAt(0).toUpperCase() + x.short.slice(1) + ' · ' + x.actor : '';
-const mvInfo = x => x ? `${x.start} → ${x.end} · ${(x.frames / 30).toFixed(1)} s · ${(x.space[1] - x.space[0]).toFixed(1)}×${(x.space[3] - x.space[2]).toFixed(1)} m` : '';
-function doUI() { const o = orders[cur], rec = o.do && o.do.type === 'recording'; $('libBox').hidden = !rec; $('steps').style.display = rec ? 'none' : 'flex'; if (rec) { libList(); libUse(); } }
-let libShown = [];
+const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+const mvLabel = x => x ? cap(x.short) + ' · ' + x.actor : '';
+const mvSec = x => (x.frames / 30).toFixed(1);
+// the library groups takes by move type: BONES recorded each type with several performers (id = type + _NNN__A<actor>)
+const typeKey = id => id.replace(/_\d+__A\d+$/, '');
+const most = a => { const c = new Map(); for (const v of a) c.set(v, (c.get(v) || 0) + 1); return [...c.entries()].sort((p, q) => q[1] - p[1])[0][0]; };
+function typeInfo(takes) { const se = takes.map(x => x.start + ' → ' + x.end), s = most(se), n = new Set(se).size, f = takes.map(x => x.frames / 30), lo = Math.min(...f), hi = Math.max(...f);
+  return `${s}${n > 1 ? ' (mixed)' : ''} · ${lo.toFixed(1)}${hi - lo >= 0.1 ? '–' + hi.toFixed(1) : ''} s`; }
+function doUI() { const o = orders[cur], rec = o.do && o.do.type === 'recording'; $('libBox').hidden = !rec;
+  if (PV.cur && (PV.cur.o !== o || !rec)) pvClose(); if (rec && !PV.cur && o.do.moves && o.do.moves.length) pvOpen(o.do.moves[0], true); showBar(); if (rec) { libList(); libUse(); } }
+let libShown = [];   // [{ t: type, takes: the takes that match the search }]
+const libOpen = new Set();
 async function libList() { const o = orders[cur], L = await libIndex(); if (orders[cur] !== o) return;
   if (!L) { $('libN').textContent = LIB.err; $('libList').innerHTML = ''; return; }
   const words = $('libQ').value.toLowerCase().split(/\s+/).filter(Boolean), f = $('libFrom').value, t = $('libTo').value, use = new Set(o.do.moves || []);
-  const M = L.filter(x => (!f || x.start === f) && (!t || x.end === t) && words.every(w => x.text.includes(w)));
-  // best matches first: the words in the move's name, then in its short description, then anywhere
-  if (words.length) { const rank = x => { const n = (x.id + ' ' + x.short).toLowerCase(); const id = x.id.toLowerCase(); return id.startsWith(words[0]) && words.every(w => id.includes(w)) ? 0 : words.every(w => id.includes(w)) ? 1 : words.every(w => n.includes(w)) ? 2 : 3; };
-    for (const x of M) x._r = rank(x); M.sort((a, b) => a._r - b._r); }
-  libShown = M; $('libN').textContent = M.length === L.length ? L.length.toLocaleString() + ' moves' : `${M.length.toLocaleString()} of ${L.length.toLocaleString()} moves` + (M.length > 200 ? ', first 200 shown' : '');
-  $('libList').innerHTML = M.slice(0, 200).map(x => `<div class="li ${use.has(x.id) ? 'on' : ''}" data-id="${esc(x.id)}" title="${esc(x.desc)}"><input type="checkbox" ${use.has(x.id) ? 'checked' : ''}><span class="n">${esc(mvLabel(x))}</span><span class="c">${esc(mvInfo(x))}</span></div>`).join('') || '<div class="li dim">No moves</div>';
-  for (const d of $('libList').querySelectorAll('[data-id]')) { const id = d.dataset.id, cb = d.querySelector('input');
-    cb.onclick = e => { e.stopPropagation(); setUse(id, cb.checked); }; d.onclick = () => previewMove(id); } }
+  const by = new Map(); let nTakes = 0;
+  for (const x of L) if ((!f || x.start === f) && (!t || x.end === t) && words.every(w => x.text.includes(w))) { let g = by.get(x.tk); if (!g) by.set(x.tk, g = { t: x.tk, takes: [] }); g.takes.push(x); nTakes++; }
+  const M = [...by.values()];
+  // best matches first: the words in the type's name (starting with the first word), then in its description, then anywhere
+  if (words.length) { const rank = g => { const id = g.t.key.toLowerCase(), n = id + ' ' + g.t.short.toLowerCase(); return id.startsWith(words[0]) && words.every(w => id.includes(w)) ? 0 : words.every(w => id.includes(w)) ? 1 : words.every(w => n.includes(w)) ? 2 : 3; };
+    for (const g of M) g.r = rank(g); M.sort((a, b) => a.r - b.r); }
+  libShown = M; const NT = LIB.types.length;
+  $('libN').textContent = (M.length === NT ? `${NT} types` : `${M.length} of ${NT} types`) + ` · ${nTakes.toLocaleString()} takes` + (M.length > 150 ? ' · first 150 shown' : '');
+  const pvId = PV.cur && PV.cur.id;
+  $('libList').innerHTML = M.slice(0, 150).map(g => { const k = g.t.key, n = g.takes.filter(x => use.has(x.id)).length, open = libOpen.has(k);
+    return `<div class="ty ${n ? 'in' : ''} ${g.takes.some(x => x.id === pvId) ? 'pv' : ''}" data-k="${esc(k)}" title="${esc(g.t.desc)}"><input type="checkbox" ${n === g.takes.length ? 'checked' : ''} data-ind="${n && n < g.takes.length ? 1 : ''}" title="Use every take of this type in the order"><span class="car">${open ? '▾' : '▸'}</span><span class="n">${esc(cap(g.t.short))}</span><span class="cnt" title="Takes">${g.takes.length}</span><span class="c">${esc(typeInfo(g.takes))}</span></div>` +
+      (open ? g.takes.map((x, j) => `<div class="tk ${use.has(x.id) ? 'in' : ''} ${x.id === pvId ? 'pv' : ''}" data-id="${esc(x.id)}" title="${esc(x.id)}"><input type="checkbox" ${use.has(x.id) ? 'checked' : ''} title="Use this take"><span class="n">Take ${j + 1} · ${esc(x.actor)}</span><span class="c">${esc(x.start === g.takes[0].start && x.end === g.takes[0].end ? '' : x.start + ' → ' + x.end + ' · ')}${mvSec(x)} s · ${(x.space[1] - x.space[0]).toFixed(1)}×${(x.space[3] - x.space[2]).toFixed(1)} m</span></div>`).join('') : ''); }).join('') || '<div class="li dim">No moves match</div>';
+  for (const d of $('libList').querySelectorAll('.ty')) { const g = by.get(LIB.typeBy[d.dataset.k]), cb = d.querySelector('input'); cb.indeterminate = !!cb.dataset.ind;
+    cb.onclick = e => { e.stopPropagation(); setUse(g.takes.map(x => x.id), cb.checked); };
+    d.onclick = () => { const k = d.dataset.k; if (libOpen.has(k)) libOpen.delete(k); else { libOpen.add(k); pvOpen(g.takes[0].id); } libList(); }; }
+  for (const d of $('libList').querySelectorAll('.tk')) { const id = d.dataset.id, cb = d.querySelector('input');
+    cb.onclick = e => { e.stopPropagation(); setUse([id], cb.checked); }; d.onclick = () => pvOpen(id); } }
 function libUse() { const o = orders[cur], D = o.do, ids = D.moves || [];
   const old = D.file || D.category ? `<div class="li dim">Old game set: ${esc(D.file ? D.file.replace(/^kin\//, '').replace(/\.bin$/, '') : 'closest in ' + D.category)}</div>` : '';
-  $('libUseN').textContent = ids.length ? ids.length + (ids.length === 1 ? ' move' : ' moves') : '';
-  $('libUse').innerHTML = old + (ids.map(id => { const x = LIB.by && LIB.by[id]; return `<div class="li" data-id="${esc(id)}" title="${esc(x ? x.desc : id)}"><span class="n">${esc(x ? mvLabel(x) : id)}</span><span class="x" title="Remove">✕</span><span class="c">${esc(mvInfo(x))}</span></div>`; }).join('') || (old ? '' : '<div class="li dim">None. Tick moves above.</div>'));
-  for (const d of $('libUse').querySelectorAll('[data-id]')) { const id = d.dataset.id; d.querySelector('.x').onclick = e => { e.stopPropagation(); setUse(id, false); }; d.onclick = () => previewMove(id); } }
-function setUse(id, on) { const o = orders[cur], D = o.do; let ids = (D.moves || []).filter(x => x !== id); if (on) ids.push(id);
-  o.do = { type: 'recording', moves: ids }; libList(); libUse(); dirty(); }
-$('libAdd').onclick = () => { const o = orders[cur], ids = new Set(o.do.moves || []); for (const x of libShown) { if (ids.size >= 30) break; ids.add(x.id); } o.do = { type: 'recording', moves: [...ids] }; libList(); libUse(); dirty(); };
+  const groups = new Map(); for (const id of ids) { const k = typeKey(id); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(id); }
+  $('libUseN').textContent = ids.length ? `${groups.size} ${groups.size === 1 ? 'type' : 'types'} · ${ids.length} ${ids.length === 1 ? 'take' : 'takes'}` : '';
+  const pvId = PV.cur && PV.cur.id;
+  $('libUse').innerHTML = old + ([...groups.entries()].map(([k, list]) => { const t = LIB.typeBy && LIB.typeBy[k], x = LIB.by && LIB.by[list[0]];
+    return `<div class="ty ${list.includes(pvId) ? 'pv' : ''}" data-k="${esc(k)}" title="${esc(t ? t.desc : k)}"><span class="n">${esc(t ? cap(t.short) : k)}</span><span class="cnt" title="Takes in this order">${list.length}${t ? ' of ' + t.takes.length : ''}</span><span class="x" title="Remove from the order">✕</span><span class="c">${esc(t ? typeInfo(list.map(id => LIB.by[id]).filter(Boolean)) : '')}</span></div>`; }).join('') || (old ? '' : '<div class="li dim">None yet. Tick a type above.</div>'));
+  for (const d of $('libUse').querySelectorAll('.ty')) { const list = groups.get(d.dataset.k); d.querySelector('.x').onclick = e => { e.stopPropagation(); setUse(list, false); }; d.onclick = () => pvOpen(list[0]); } }
+function setUse(list, on) { const o = orders[cur], D = o.do, drop = new Set(list); let ids = (D.moves || []).filter(x => !drop.has(x)); if (on) ids = ids.concat(list);
+  o.do = { type: 'recording', moves: ids }; if (!PV.cur && ids.length) pvOpen(ids[0], true); libList(); libUse(); dirty(); }
+// Add shown: every take of every type shown, in list order, up to 30 takes in the order (each take is loaded on the phone)
+const MAXTAKES = 30;
+$('libAdd').onclick = () => { const o = orders[cur], ids = new Set(o.do.moves || []); let nt = 0, skip = 0;
+  for (const g of libShown) { const add = g.takes.filter(x => !ids.has(x.id)); if (!add.length) continue; if (ids.size + add.length > MAXTAKES) { skip++; continue; } for (const x of add) ids.add(x.id); nt++; }
+  o.do = { type: 'recording', moves: [...ids] }; libList(); libUse(); dirty(); if (skip) $('libN').textContent = `Added ${nt} types. ${skip} more would pass ${MAXTAKES} takes in one order.`; };
 let libT = 0; $('libQ').oninput = () => { clearTimeout(libT); libT = setTimeout(libList, 150); }; $('libFrom').onchange = libList; $('libTo').onchange = libList;
-async function previewMove(id) { try { const dec = await decodeQ(await G.moveRaw(id)); previewQ(dec.q, dec.T, dec.C); } catch (e) { $('libN').textContent = 'Could not open ' + id + ': ' + e.message; } }
-// preview: the recording plays on the puppet (the order's pose is kept and comes back after)
-let prev = null;
-async function preview(f) { const b = await G.clip(f), n = Math.floor(b.length / 376); previewQ(b, n, 376, 299); }
-function previewQ(b, n, stride, off = 0) { if (prev) cancelAnimationFrame(prev.raf); const keep = prev ? prev.keep : pose, t0 = performance.now();
-  const step = () => { const i = Math.floor((performance.now() - t0) / 1000 * 30); if (i >= n) { pose = keep; prev = null; draw(); return; }
-    const q = b.subarray(i * stride + off, i * stride + off + 73), p = { root_w: q[3], root_x: q[4], root_y: q[5], root_z: q[6] }; for (const a of acts) p[a.name] = q[a.qadr]; pose = p; draw(); prev.raf = requestAnimationFrame(step); };
-  prev = { keep, raf: requestAnimationFrame(step) }; }
+
+// ---------- move preview: a timeline under the puppet. The order's pose is kept and comes back on close. ----------
+// A move is drawn as recorded: anchored on the first frame's hips, turned so he starts facing the arrow, floor at the
+// move's own floor (its 2nd-percentile lowest point, as the game's converter puts it).
+function qv(w, x, y, z, v) { const tx = 2 * (y * v[2] - z * v[1]), ty = 2 * (z * v[0] - x * v[2]), tz = 2 * (x * v[1] - y * v[0]); return [v[0] + w * tx + y * tz - z * ty, v[1] + w * ty + z * tx - x * tz, v[2] + w * tz + x * ty - y * tx]; }
+function prepMove(dec) { const { q, T, C } = dec, [w, x, y, z] = [q[3], q[4], q[5], q[6]];
+  let h = qv(w, x, y, z, [0, -1, 0]); if (Math.hypot(h[0], h[1]) < 0.5) h = qv(w, x, y, z, [0, 0, 1]);   // lying: his head's direction
+  const M = { q, T, C, p0: [q[0], q[1]], a: -Math.PI / 2 - Math.atan2(h[1], h[0]), fix: [0, 0, 0] }, lows = [];
+  for (let t = 0; t < T; t += 2) { fk(frameAt(M, t), M.fix); lows.push(fk.lo); }
+  lows.sort((a, b) => a - b); M.fix = [0, 0, lows[Math.floor(0.02 * (lows.length - 1))]];
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; for (let t = 0; t < T; t += 3) { const p = frameAt(M, t).root_p; x0 = Math.min(x0, p[0]); x1 = Math.max(x1, p[0]); y0 = Math.min(y0, p[1]); y1 = Math.max(y1, p[1]); }
+  M.mid = [(x0 + x1) / 2, (y0 + y1) / 2]; return M; }
+function frameAt(M, i) { const q = M.q, o = i * M.C, c = Math.cos(M.a), s = Math.sin(M.a), dx = q[o] - M.p0[0], dy = q[o + 1] - M.p0[1], hw = Math.cos(M.a / 2), hz = Math.sin(M.a / 2), w = q[o + 3], x = q[o + 4], y = q[o + 5], z = q[o + 6];
+  const p = { root_p: [c * dx - s * dy, s * dx + c * dy, q[o + 2]], root_w: hw * w - hz * z, root_x: hw * x - hz * y, root_y: hw * y + hz * x, root_z: hw * z + hz * w };
+  for (const a of acts) p[a.name] = q[o + a.qadr]; return p; }
+const loadMove = id => { if (!PV.cache.has(id)) PV.cache.set(id, G.moveRaw(id).then(decodeQ).then(prepMove).catch(e => { PV.cache.delete(id); throw e; })); return PV.cache.get(id); };
+async function pvOpen(id, paused) {
+  sel = null; tc.detach();
+  const P = PV.cur = { id, o: orders[cur], M: null, t: 0, playing: !paused, loop: PV.cur ? PV.cur.loop : false, err: '' }; showBar(); pvUI(); libMark();
+  try { P.M = await loadMove(id); } catch (e) { if (PV.cur === P) { P.err = e.message; pvUI(); } return; }
+  if (PV.cur !== P) return; P.last = performance.now(); { const d = new THREE.Vector3(P.M.mid[0], P.M.mid[1], 0.7).sub(orbit.target); orbit.target.add(d); cam.position.add(d); }   // look at the middle of where the move goes
+  showBar(); pvUI(); requestAnimationFrame(pvTick); }
+function pvTick(now) { const P = PV.cur; if (!P || !P.M) return; const dur = (P.M.T - 1) / 30;
+  if (P.playing) { P.t += (now - P.last) / 1000; if (P.t >= dur) { if (P.loop) P.t = 0; else { P.t = dur; P.playing = false; } } }
+  P.last = now; pose = frameAt(P.M, Math.min(P.M.T - 1, Math.round(P.t * 30))); draw(); pvUI(); requestAnimationFrame(pvTick); }
+function pvToggle() { const P = PV.cur; if (!P || !P.M) return; if (!P.playing && P.t >= (P.M.T - 1) / 30) P.t = 0; P.playing = !P.playing; pvUI(); }
+function pvClose() { if (!PV.cur) return; const o = PV.cur.o; PV.cur = null; if (o === orders[cur]) pose = o.steps[stepK].pose; { const d = new THREE.Vector3(0, 0, 0.9).sub(orbit.target); orbit.target.add(d); cam.position.add(d); } showBar(); libMark(); draw(); }   // the order's own pose comes back
+function libMark() { const id = PV.cur && PV.cur.id; for (const d of document.querySelectorAll('#libList .tk, #libList .ty, #libUse .ty')) d.classList.toggle('pv', !!id && (d.dataset.id === id || d.dataset.k === typeKey(id))); }
+let pvScrub = null;
+function pvUI() { const P = PV.cur; if (!P) return; const x = LIB.by && LIB.by[P.id], t = x && x.tk, j = t ? t.takes.indexOf(x) + 1 : 0;
+  $('tlName').textContent = x ? `${cap(x.short)} · take ${j} of ${t.takes.length} · ${x.actor}` : P.id;
+  $('tlState').textContent = P.err ? 'Could not open: ' + P.err : !P.M ? 'Loading' : P.playing ? 'Playing' : P.t >= (P.M.T - 1) / 30 ? 'Ended' : 'Paused';
+  $('tlState').className = P.err ? 'err' : P.playing ? 'play' : '';
+  const ok = !!P.M, dur = ok ? (P.M.T - 1) / 30 : 0; for (const id of ['tlPlay', 'tlBar', 'tlStart', 'tlEnd', 'tlLoop']) $(id).disabled = !ok;
+  $('tlPlay').textContent = P.playing ? '❚❚' : '▶'; $('tlPlay').title = P.playing ? 'Pause (Space)' : 'Play (Space)'; $('tlLoop').classList.toggle('on', P.loop);
+  if (pvScrub === null) $('tlBar').value = dur ? Math.round(P.t / dur * 1000) : 0;
+  $('tlTime').textContent = `${P.t.toFixed(1)} / ${dur.toFixed(1)} s`; $('tlFrame').textContent = (ok ? `Frame ${Math.min(P.M.T - 1, Math.round(P.t * 30)) + 1} of ${P.M.T}` : '') + ((orders[cur].do.moves || []).includes(P.id) ? '' : (ok ? ' · ' : '') + 'Not in this order'); }
+// the bar under the puppet: the timeline while previewing, the pose steps for a Pose order
+function showBar() { const o = orders[cur], rec = !!(o && o.do && o.do.type === 'recording'); document.body.classList.toggle('rec', rec); $('tl').hidden = !PV.cur; $('steps').style.display = rec ? 'none' : 'flex';
+  const none = rec && !(PV.cur && PV.cur.M); $('empty').hidden = !(rec && !PV.cur); live.visible = fig.visible = !none; }
+$('tlPlay').onclick = pvToggle; $('tlLoop').onclick = () => { if (PV.cur) { PV.cur.loop = !PV.cur.loop; pvUI(); } };
+$('tlStart').onclick = () => { if (PV.cur && PV.cur.M) { PV.cur.t = 0; pvUI(); } };
+$('tlEnd').onclick = () => { if (PV.cur && PV.cur.M) { PV.cur.t = (PV.cur.M.T - 1) / 30; PV.cur.playing = false; pvUI(); } };
+$('tlBar').onpointerdown = () => { if (PV.cur) { pvScrub = PV.cur.playing; PV.cur.playing = false; } };
+$('tlBar').oninput = () => { const P = PV.cur; if (P && P.M) P.t = +$('tlBar').value / 1000 * (P.M.T - 1) / 30; };
+$('tlBar').onchange = () => { if (PV.cur && pvScrub !== null) PV.cur.playing = pvScrub; pvScrub = null; };
 // From moment: Start conditions from what the signs read now (trim them), his body now as the pose / the example
 $('oMoment').onclick = () => { const o = orders[cur], S = G.signs, r = v => +v.toFixed(2), c = [];
   if (S.lyingOn && S.lyingOn !== 'upright') c.push({ s: 'lyingOn', c: '=', v: S.lyingOn });
@@ -433,14 +517,14 @@ function stepsUI() {
   $('stTime').oninput = () => { const v = parseFloat($('stTime').value); if (v > 0) { o.steps[stepK].time = v; dirty(); } };
 }
 $('oname').oninput = () => { const o = orders[cur], old = o.name; o.name = $('oname').value || 'Order'; if (G.force === old) G.force = o.name; listOrders(); dirty(); };
-$('addO').onclick = () => { const o = { name: 'Order ' + (orders.length + 1), on: true, strength: 'control', start: { all: [], for: 0.2 }, stop: { all: [], for: 0.3 }, steps: [{ pose: Object.assign({}, pose), time: 1 }] };
+$('addO').onclick = () => { const o = { name: 'Order ' + (orders.length + 1), on: true, start: { all: [], for: 0.2 }, stop: { all: [], for: 0.3 }, steps: [{ pose: Object.assign({}, pose), time: 1 }] };
   orders.push(o); cur = orders.length - 1; stepK = 0; pose = o.steps[0].pose; history = []; listOrders(); showOrder(); draw(); dirty(); };
 $('oUp').onclick = () => { if (cur < 1) return; [orders[cur - 1], orders[cur]] = [orders[cur], orders[cur - 1]]; cur--; listOrders(); dirty(); };
 $('oDn').onclick = () => { if (cur >= orders.length - 1) return; [orders[cur + 1], orders[cur]] = [orders[cur], orders[cur + 1]]; cur++; listOrders(); dirty(); };
 $('oDel').onclick = () => { if (orders.length < 2) return; const o = orders.splice(cur, 1)[0]; if (G.active === o) G.active = null; if (G.force === o.name) G.force = null; cur = Math.max(0, cur - 1); stepK = 0; pose = orders[cur].steps[0].pose; listOrders(); showOrder(); draw(); dirty(); };
 $('oTest').onclick = () => { const o = orders[cur]; G.force = G.force === o.name ? null : o.name; showOrder(); listOrders(); };
 const clean = p => Object.fromEntries(Object.entries(p).filter(([k, v]) => Math.abs(v) > 1e-6 || k === 'root_w').map(([k, v]) => [k, +v.toFixed(4)]));
-function ordersFile() { return { version: 3, saved: new Date().toISOString(), orders: orders.map(o => ({ name: o.name, on: o.on !== false, strength: o.strength || 'control', do: o.do || { type: 'pose' }, start: o.start, stop: o.stop, steps: o.steps.map(x => ({ pose: clean(x.pose), time: x.time ?? 1 })), example: o.example })), otherwise: 'chooser' }; }
+function ordersFile() { return { version: 3, saved: new Date().toISOString(), orders: orders.map(o => ({ name: o.name, on: o.on !== false, do: o.do || { type: 'pose' }, start: o.start, stop: o.stop, steps: o.steps.map(x => ({ pose: clean(x.pose), time: x.time ?? 1 })), example: o.example })), otherwise: 'chooser' }; }
 // Save: this browser's game uses the orders at once; with a GitHub key, they are also published (gpc/orders.json on
 // facaelectrica/the-box-play), which every phone's game loads within a minute or two. The key stays in this browser.
 const REPO = 'facaelectrica/the-box-play', PATH = 'gpc/orders.json';
@@ -486,7 +570,7 @@ function keys(win) {
     else if (e.key === 'ArrowUp') nudge('pitch', step); else if (e.key === 'ArrowDown') nudge('pitch', -step);
     else if (e.key === 'l' || e.key === 'L') $('level').click();
     else if (e.key === 'r' || e.key === 'R') { F.__box.standUp(); }
-    else if (e.key === ' ') { F.__box.lookBtn().click(); }
+    else if (e.key === ' ') { if (PV.cur) pvToggle(); else F.__box.lookBtn().click(); }
     else return;
     e.preventDefault(); };
   for (const w of [window, win]) w.addEventListener('keydown', down);
@@ -507,11 +591,11 @@ addEventListener('keydown', e => { if ((e.key === 's' || e.key === 'S') && !e.ct
 function tick() {
   const a = G.active, rc = G.rec && G.rec.file && a && G.rec.o === a ? ' · ' + (LIB.by && LIB.by[G.rec.file] ? mvLabel(LIB.by[G.rec.file]) : G.rec.file.replace(/^kin\//, '').replace(/\.bin$/, '')) + (G.rec.wall > 0.05 ? ` · walls ${Math.round(G.rec.wall * 100)} cm` : '') : '';
   $('active').textContent = a ? a.name + (a.steps.length > 1 && !rc ? ` ${G.step + 1}/${a.steps.length}` : '') + rc : 'Chooser'; $('who').className = a ? 'order' : 'chooser';
-  $('whoWhy').textContent = a ? (G.force === a.name ? 'Forced' : a.strength === 'guide' ? 'Guide' : 'Control') : `${G.rate || 0} picks/s`;
+  $('whoWhy').textContent = a ? (G.force === a.name ? 'Forced' : 'Translator') : `${G.rate || 0} picks/s`;
   $('sw').textContent = (G.switches || []).slice(-3).map(x => `${x[0]}s → ${x[1]}`).join('   ');
   if (a !== lastAct) { lastAct = a; listOrders(); }
   { const S = G.signs || {}, f = v => v === undefined ? null : +v.toFixed(3); trail.push([+((performance.now()) / 1000).toFixed(1), a ? a.name : 'chooser', ...['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot', 'lean', 'speed', 'tilt'].map(k => f(S[k]))]); if (trail.length > 100) trail.shift(); }
-  if ($('props').open) { const S = G.signs || {}, fmt = (k, u) => S[k] === undefined ? '–' : typeof S[k] === 'string' ? S[k] : S[k].toFixed(u === 'm' || u === 'm/s' ? 2 : 0) + ' ' + u;
+  if ($('reads').open) { const S = G.signs || {}, fmt = (k, u) => S[k] === undefined ? '–' : typeof S[k] === 'string' ? S[k] : S[k].toFixed(u === 'm' || u === 'm/s' ? 2 : 0) + ' ' + u;
     $('signs').innerHTML = Object.entries(GROUPS).map(([g, ks]) => `<tr class="grp"><td colspan="2">${g}</td></tr>` + ks.map(k => `<tr><td>${SIGNS[k][0]}</td><td>${fmt(k, SIGNS[k][1])}</td></tr>`).join('')).join(''); }
   setTimeout(tick, 200);
 }
