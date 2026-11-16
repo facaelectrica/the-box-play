@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v35</title>
+<title>EDITOR v36</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -59,17 +59,17 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v35</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v36</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo" class="poseOnly">Undo</button><button id="reset" class="poseOnly">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Default<br><small>Chooser</small></div></div>
     <div id="puppet">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:13px">
         <select id="figSel"><option value="female">Female</option><option value="male">Male</option><option value="shapes">Mannequin</option><option value="none">None</option></select>
-        <label class="nw"><input type="checkbox" id="skelOn" checked> Skeleton</label><label class="nw poseOnly" title="Grey figure: the step before, or the standing pose"><input type="checkbox" id="ghostOn" checked> Original</label><span class="sp"></span><button id="mMove" class="on poseOnly" title="Move (W)">Move</button><button id="mRot" class="poseOnly" title="Rotate (E)">Rotate</button></div>
+        <label class="nw"><input type="checkbox" id="skelOn" checked> Skeleton</label><label class="nw poseOnly" title="Grey figure: the step before, or the standing pose"><input type="checkbox" id="ghostOn" checked> Original</label><span class="sp"></span><button id="frameB" title="Frame the figure (F)">Frame</button><button id="mMove" class="on poseOnly" title="Move (W)">Move</button><button id="mRot" class="poseOnly" title="Rotate (E)">Rotate</button></div>
       <div id="views"><div class="view" id="v3"><span class="lab" id="hint"></span><div id="empty" hidden>No moves in this order yet.<br>Choose a move type in the Library.</div></div></div>
       <div id="steps" style="display:flex;gap:4px;align-items:center;margin-top:6px;font-size:12px"></div>
-      <div id="tl" hidden><div class="tlTop"><span id="tlState"></span><span id="tlName"></span><span class="sp"></span><button id="tlLoop" title="Loop">Loop</button></div><div class="tlRow"><button id="tlStart" title="To start">⏮</button><button id="tlPlay" title="Play (Space)">▶</button><button id="tlEnd" title="To end">⏭</button><input type="range" id="tlBar" min="0" max="1000" value="0"><span id="tlTime">0.0 / 0.0 s</span></div><div id="tlFrame" class="dim"></div></div>
+      <div id="tl" hidden><div class="tlTop"><span id="tlState"></span><span id="tlName"></span><span class="sp"></span><button id="tlLoop" title="Loop">Loop</button></div><div class="tlRow"><button id="tlStart" title="To start">⏮</button><button id="tlPlay" title="Play (Space)">▶</button><button id="tlEnd" title="To end">⏭</button><input type="range" id="tlBar" min="0" max="1000" value="0" tabindex="-1"><span id="tlTime">0.0 / 0.0 s</span></div><div id="tlFrame" class="dim"></div></div>
     </div>
     <div id="side">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><input id="oname" style="flex:1;font:inherit;font-weight:600;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:4px 8px">
@@ -94,7 +94,7 @@
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=35"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=36"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -349,11 +349,11 @@ ren.domElement.addEventListener('pointerdown', e => { if (!d2 || e.button !== 0 
 ren.domElement.addEventListener('pointerup', e => { if (!down || tc.dragging || PV.cur) { down = null; return; } const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4; down = null; if (moved) return;
   const n = pick(e); sel = n; if (n) tc.attach(proxy); else tc.detach(); draw(); });
 ren.domElement.addEventListener('pointermove', e => { if (tc.dragging || down || PV.cur) return; const n = pick(e); if (n !== hover) { hover = n; ren.domElement.style.cursor = n ? 'pointer' : 'grab'; draw(); } });
-window.__ed = { twoBone, fkRaw, solve, tc, proxy, select: n => { sel = n; tc.attach(proxy); draw(); }, setMode, pose: () => pose, fk: () => fk(pose), previewMove: id => pvOpen(id), pv: () => PV.cur };   // for checks
+window.__ed = { twoBone, fkRaw, solve, tc, proxy, select: n => { sel = n; tc.attach(proxy); draw(); }, setMode, pose: () => pose, fk: () => fk(pose), previewMove: id => pvOpen(id), pv: () => PV.cur, cam: () => ({ pos: cam.position.toArray(), target: orbit.target.toArray(), aspect: cam.aspect }) };   // for checks
 addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-  if (e.key === 'w' || e.key === 'W') setMode('translate'); else if (e.key === 'e' || e.key === 'E') setMode('rotate');
+  if (e.key === 'f' || e.key === 'F') frameView(); else if (e.key === 'w' || e.key === 'W') setMode('translate'); else if (e.key === 'e' || e.key === 'E') setMode('rotate');
   else if (e.key === 'Escape') { sel = null; tc.detach(); draw(); } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') { $('undo').click(); e.preventDefault(); } });
-function loop() { const r = host.getBoundingClientRect(); if (r.width && (ren.domElement.width !== Math.round(r.width * ren.getPixelRatio()) || ren.domElement.height !== Math.round(r.height * ren.getPixelRatio()))) { ren.setSize(r.width, r.height, false); cam.aspect = r.width / r.height; cam.updateProjectionMatrix(); }
+function loop() { const r = host.getBoundingClientRect(); if (r.width && r.height && (ren.domElement.width !== Math.round(r.width * ren.getPixelRatio()) || ren.domElement.height !== Math.round(r.height * ren.getPixelRatio()))) { ren.setSize(r.width, r.height, false); cam.aspect = r.width / r.height; cam.updateProjectionMatrix(); }
   orbit.update(); ren.render(scene, cam); requestAnimationFrame(loop); }
 requestAnimationFrame(loop);
 // fk() moves the drawing so his soles are on the floor line; the IK works in that same frame (handle heights shift
@@ -467,16 +467,20 @@ function frameAt(M, i) { const q = M.q, o = i * M.C, c = Math.cos(M.a), s = Math
   for (const a of acts) p[a.name] = q[o + a.qadr]; return p; }
 const loadMove = id => { if (!PV.cache.has(id)) PV.cache.set(id, G.moveRaw(id).then(decodeQ).then(prepMove).catch(e => { PV.cache.delete(id); throw e; })); return PV.cache.get(id); };
 async function pvOpen(id, paused) {
-  sel = null; tc.detach();
+  sel = null; tc.detach(); pvScrub = null;
   const P = PV.cur = { id, o: orders[cur], M: null, t: 0, playing: !paused, loop: PV.cur ? PV.cur.loop : false, err: '' }; showBar(); pvUI(); libMark();
   try { P.M = await loadMove(id); } catch (e) { if (PV.cur === P) { P.err = e.message; pvUI(); } return; }
-  if (PV.cur !== P) return; P.last = performance.now(); { const d = new THREE.Vector3(P.M.mid[0], P.M.mid[1], 0.7).sub(orbit.target); orbit.target.add(d); cam.position.add(d); }   // look at the middle of where the move goes
+  if (PV.cur !== P) return; P.last = performance.now(); frameView([P.M.mid[0], P.M.mid[1], 0.8]);   // look at the middle of where the move goes
   showBar(); pvUI(); requestAnimationFrame(pvTick); }
 function pvTick(now) { const P = PV.cur; if (!P || !P.M) return; const dur = (P.M.T - 1) / 30;
   if (P.playing) { P.t += (now - P.last) / 1000; if (P.t >= dur) { if (P.loop) P.t = 0; else { P.t = dur; P.playing = false; } } }
   P.last = now; pose = frameAt(P.M, Math.min(P.M.T - 1, Math.round(P.t * 30))); draw(); pvUI(); requestAnimationFrame(pvTick); }
+// Frame: the camera back to its standard view, aimed at c (the figure's middle); also repairs a lost camera
+function frameView(c) { if (!c) { const P = fk(pose, PV.cur && PV.cur.M ? PV.cur.M.fix : null); c = [P.Hips[0], P.Hips[1], 0.8]; } if (!c.every(Number.isFinite)) c = [0, 0, 0.9];
+  orbit.target.set(...c); cam.position.set(c[0] + 1.4, c[1] - 2.6, c[2] + 0.5); cam.up.set(0, 0, 1); orbit.update(); }
+$('frameB').onclick = () => frameView();
 function pvToggle() { const P = PV.cur; if (!P || !P.M) return; if (!P.playing && P.t >= (P.M.T - 1) / 30) P.t = 0; P.playing = !P.playing; pvUI(); }
-function pvClose() { if (!PV.cur) return; const o = PV.cur.o; PV.cur = null; if (o === orders[cur]) pose = o.steps[stepK].pose; { const d = new THREE.Vector3(0, 0, 0.9).sub(orbit.target); orbit.target.add(d); cam.position.add(d); } showBar(); libMark(); draw(); }   // the order's own pose comes back
+function pvClose() { if (!PV.cur) return; const o = PV.cur.o; PV.cur = null; if (o === orders[cur]) pose = o.steps[stepK].pose; frameView([0, 0, 0.9]); showBar(); libMark(); draw(); }   // the order's own pose comes back
 function libMark() { const id = PV.cur && PV.cur.id; for (const d of document.querySelectorAll('#libList .tk, #libList .ty, #libUse .ty')) d.classList.toggle('pv', !!id && (d.dataset.id === id || d.dataset.k === typeKey(id))); }
 let pvScrub = null;
 function pvUI() { const P = PV.cur; if (!P) return; const x = LIB.by && LIB.by[P.id], t = x && x.tk, j = t ? t.takes.indexOf(x) + 1 : 0;
@@ -493,9 +497,11 @@ function showBar() { const o = orders[cur], rec = !!(o && o.do && o.do.type === 
 $('tlPlay').onclick = pvToggle; $('tlLoop').onclick = () => { if (PV.cur) { PV.cur.loop = !PV.cur.loop; pvUI(); } };
 $('tlStart').onclick = () => { if (PV.cur && PV.cur.M) { PV.cur.t = 0; pvUI(); } };
 $('tlEnd').onclick = () => { if (PV.cur && PV.cur.M) { PV.cur.t = (PV.cur.M.T - 1) / 30; PV.cur.playing = false; pvUI(); } };
-$('tlBar').onpointerdown = () => { if (PV.cur) { pvScrub = PV.cur.playing; PV.cur.playing = false; } };
-$('tlBar').oninput = () => { const P = PV.cur; if (P && P.M) P.t = +$('tlBar').value / 1000 * (P.M.T - 1) / 30; };
-$('tlBar').onchange = () => { if (PV.cur && pvScrub !== null) PV.cur.playing = pvScrub; pvScrub = null; };
+// dragging the bar: playback pauses while the button is held and resumes on release (wherever the mouse is let go)
+$('tlBar').onpointerdown = () => { if (PV.cur && PV.cur.M) { pvScrub = { P: PV.cur, play: PV.cur.playing }; PV.cur.playing = false; } };
+$('tlBar').oninput = () => { const P = PV.cur; if (P && P.M) { P.t = +$('tlBar').value / 1000 * (P.M.T - 1) / 30; pvUI(); } };
+const scrubEnd = () => { if (pvScrub && pvScrub.P === PV.cur) PV.cur.playing = pvScrub.play; pvScrub = null; };
+addEventListener('pointerup', scrubEnd); addEventListener('pointercancel', scrubEnd); addEventListener('blur', scrubEnd);
 // From moment: Start conditions from what the signs read now (trim them), his body now as the pose / the example
 $('oMoment').onclick = () => { const o = orders[cur], S = G.signs, r = v => +v.toFixed(2), c = [];
   if (S.lyingOn && S.lyingOn !== 'upright') c.push({ s: 'lyingOn', c: '=', v: S.lyingOn });
@@ -580,7 +586,7 @@ function snapshot() {
   const r = v => typeof v === 'number' ? +v.toFixed(3) : v;
   const box = (() => { try { return F.__box.snap(); } catch (e) { return { error: String(e) }; } })();
   const js = JSON.stringify({ what: 'editor snapshot', editor: document.title, at: new Date().toISOString(), tilt: { leftRight: +$('roll').value, forwardBack: +$('pitch').value, phoneView: $('lock').checked },
-    active: G.active ? G.active.name : 'chooser', forced: G.force, orders: ordersFile().orders, signsNow: Object.fromEntries(Object.entries(G.signs || {}).map(([k, v]) => [k, r(v)])),
+    active: G.active ? G.active.name : 'chooser', forced: G.force, view: { camera: cam.position.toArray(), target: orbit.target.toArray(), size: [host.clientWidth, host.clientHeight], preview: PV.cur ? { move: PV.cur.id, t: +PV.cur.t.toFixed(2), playing: PV.cur.playing, loaded: !!PV.cur.M, err: PV.cur.err, bar: +$('tlBar').value, dragging: !!pvScrub } : null }, orders: ordersFile().orders, signsNow: Object.fromEntries(Object.entries(G.signs || {}).map(([k, v]) => [k, r(v)])),
     recording: G.rec && G.rec.file ? { move: G.rec.file, frames: G.rec.n, poseGap: G.rec.pose, throughWallsM: G.rec.wall, nextBest: G.rec.others } : null, switches: G.switches, trailNote: '[seconds, active, head, chest, hips, rightHand, leftHand, rightFoot, leftFoot, lean, speed, tilt] every 0.2 s', trail, chooser: G.report ? G.report() : null, box });
   const name = 'editor-snapshot-' + new Date().toISOString().slice(11, 19).replace(/:/g, '') + '.json', a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = name; a.click();
