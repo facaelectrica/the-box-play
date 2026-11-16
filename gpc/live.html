@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 18</div><div id="brainver"></div>
+<div id="ver">GPC live 19</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -755,7 +755,9 @@ function buildFigure() {
   const m = W.m;
   let look = null;
   // the chosen figure's GLB (FIGS); 'shapes' = the MJCF's own shapes; if a GLB fails, the code-sculpted mannequin
-  try { look = DOLL ? lookFromGLTF(THREE, DOLL) : FIG === 'shapes' ? null : buildLook(THREE, mergeGeometries, W); }
+  try { look = DOLL ? lookFromGLTF(THREE, DOLL) : FIG === 'shapes' ? null : buildLook(THREE, mergeGeometries, W);
+    if (look && DOLL) { const bp = n => { const b = W.bodyId[n]; return [m.body_pos[3 * b], m.body_pos[3 * b + 1], m.body_pos[3 * b + 2]]; }, add = (a, c) => a.map((v, i) => v + c[i]);
+      spineByJoint(look, to => to === 'Spine1' ? bp('Spine1') : to === 'Spine2' ? bp('Spine2') : add(bp('Spine2'), bp('Chest'))); } }
   catch (e) { console.warn('figure look failed, drawing the plain shapes', e); }
   for (const g of bodyGroup) if (g) { figRoot.remove(g); g.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); movers.splice(movers.indexOf(g), 1); }
   bodyGroup.length = 0;
@@ -807,6 +809,16 @@ function buildFigure() {
 // The head and the limbs stay rigid. The rigid pieces stay (hidden) for touching him.
 const TORSO = ['Hips', 'Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head'];
 let torso = null;   // { bones, meshes }
+// (user Nov 16 15:39) each spine joint moves its own piece: the lower back the ball above the hips, the mid back the
+// belly, the chest the upper torso (and the ball between belly and chest). The figure file hangs the first ball on the
+// hips and the belly on the lower back; the pieces are moved to their joints (shifted into the joint's own frame).
+function spineByJoint(look, off) {
+  const move = (from, mat, to) => { const keep = [], go = []; for (const it of look[from] || []) (it.mat === mat ? go : keep).push(it); look[from] = keep;
+    const o = off(to); for (const it of go) { const geo = it.geo.clone(); geo.translate(-o[0], -o[1], -o[2]); (look[to] || (look[to] = [])).push({ ...it, geo }); } };
+  move('Spine1', 'joint', 'Chest'); move('Spine1', 'shell', 'Spine2'); move('Hips', 'joint', 'Spine1');
+  // offsets are from each piece's old joint to its new one: Hips->Spine1, Spine1->Spine2, Spine1->Chest (via Spine2)
+  return look;
+}
 function skinTorso(look) {
   const m = W.m;
   if (torso) { for (const o of [...torso.meshes, ...(torso.meshes.wires || []), ...torso.bones]) { figRoot.remove(o); if (o.isMesh && !o.userData.wire) o.geometry.dispose(); } torso = null; }
