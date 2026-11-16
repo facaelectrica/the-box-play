@@ -88,7 +88,7 @@ export function makeSolver(S, opt = {}) {
       let f = V.perp(V.add(V.mul(dir, w), V.mul(base, 1 - w)), a); if (!ok3(f)) f = base; f = V.norm(f); mem.fw[key] = f; return f; };
     SIDE.forEach((d, si) => {
       tgt[id[d.SH]] = Rc;
-      const wa = trust(vis, [d.sh, d.el, d.wr]), wl = trust(vis, [d.hip, d.kn, d.an]); wt[id[d.A]] = wt[id[d.FA]] = wt[id[d.H]] = wa; wt[id[d.LG]] = wt[id[d.SN]] = wt[id[d.FT]] = wl;
+      const wa = trust(vis, [d.sh, d.el, d.wr]), wl = trust(vis, [d.hip, d.kn, d.an]); wt[id[d.A]] = wt[id[d.FA]] = wa; wt[id[d.H]] = 0.6 * Math.min(wa, trust(vis, [d.pk, d.ix]));   // the wrist always eases to its target: the hand points are the noisiest wt[id[d.LG]] = wt[id[d.SN]] = wt[id[d.FT]] = wl;
       if (wa > 0) { const a = V.norm(V.sub(P[d.el], P[d.sh])), b = V.norm(V.sub(P[d.wr], P[d.el])), sgn = -d.s;
         const f = bendAxis(d.A, a, b, sgn, V.add(V.mul(V.cross(a, Fc), sgn), V.mul(Zc, 0.3)), false);
         tgt[id[d.A]] = aim(a, f, rest(d.FA), Z0); let Rf = aim(b, f, rest(d.H), Z0);
