@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 19</div><div id="brainver"></div>
+<div id="ver">GPC live 20</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -810,13 +810,13 @@ function buildFigure() {
 const TORSO = ['Hips', 'Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head'];
 let torso = null;   // { bones, meshes }
 // (user Nov 16 15:39) each spine joint moves its own piece: the lower back the ball above the hips, the mid back the
-// belly, the chest the upper torso (and the ball between belly and chest). The figure file hangs the first ball on the
+// belly and the ball between belly and chest (user 15:50: the upper torso turns around it), the chest the upper torso. The figure file hangs the first ball on the
 // hips and the belly on the lower back; the pieces are moved to their joints (shifted into the joint's own frame).
 function spineByJoint(look, off) {
   const move = (from, mat, to) => { const keep = [], go = []; for (const it of look[from] || []) (it.mat === mat ? go : keep).push(it); look[from] = keep;
     const o = off(to); for (const it of go) { const geo = it.geo.clone(); geo.translate(-o[0], -o[1], -o[2]); (look[to] || (look[to] = [])).push({ ...it, geo }); } };
-  move('Spine1', 'joint', 'Chest'); move('Spine1', 'shell', 'Spine2'); move('Hips', 'joint', 'Spine1');
-  // offsets are from each piece's old joint to its new one: Hips->Spine1, Spine1->Spine2, Spine1->Chest (via Spine2)
+  move('Spine1', 'joint', 'Spine2'); move('Spine1', 'shell', 'Spine2'); move('Hips', 'joint', 'Spine1');
+  // offsets are from each piece's old joint to its new one: Hips->Spine1, Spine1->Spine2
   return look;
 }
 function skinTorso(look) {
