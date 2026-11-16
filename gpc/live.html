@@ -1147,13 +1147,13 @@ if (EDITOR) {
     try { el.setPointerCapture(e.pointerId); } catch (_) {} e.stopImmediatePropagation(); e.preventDefault();
   }, true);
   el.addEventListener('pointermove', e => {
-    if (!RV.drag) return; const dx = e.clientX - RV.drag.x, dy = e.clientY - RV.drag.y;
+    if (!window.__box || !RV.drag) return; const dx = e.clientX - RV.drag.x, dy = e.clientY - RV.drag.y;
     if (!RV.drag.pan) { RV.yaw = RV.drag.yaw - dx * 0.008; RV.pitch = clamp(RV.drag.pitch + dy * 0.008, -1.45, 1.45); }
     else { const k = (3.1 * Math.hypot(hw, hh) + D / 2) * RV.zoom * 0.75 / innerHeight, cy = Math.cos(RV.yaw), sy = Math.sin(RV.yaw), cp = Math.cos(RV.pitch), sp = Math.sin(RV.pitch);
       RV.pan.copy(RV.drag.p).add(new THREE.Vector3(-cy * dx * k - sy * sp * dy * k, cp * dy * k, sy * dx * k - cy * sp * dy * k)); }
     e.stopImmediatePropagation();
   }, true);
-  const endRV = e => { if (RV.drag) { RV.drag = null; e.stopImmediatePropagation(); } };
+  const endRV = e => { if (window.__box && RV.drag) { RV.drag = null; e.stopImmediatePropagation(); } };
   el.addEventListener('pointerup', endRV, true); el.addEventListener('pointercancel', endRV, true);
   el.addEventListener('wheel', e => { if (!roomView()) return; RV.zoom = clamp(RV.zoom * Math.exp(e.deltaY * 0.0012), 0.12, 3); e.preventDefault(); e.stopImmediatePropagation(); }, { capture: true, passive: false });
   addEventListener('keydown', e => { if ((e.key === 'f' || e.key === 'F') && roomView()) { RV.yaw = 0; RV.pitch = 0.12; RV.zoom = 1; RV.pan.set(0, 0, 0); } });
