@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 15</div><div id="brainver"></div>
+<div id="ver">GPC live 16</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -792,7 +792,7 @@ function buildFigure() {
       ball.castShadow = true; grp.add(ball);
     }
   }
-  skinTorso(look && DOLL ? look : null);
+  skinTorso(null);   // (user Nov 16 15:27) every part is solid, the trunk too: no skinning across the spine
   syncFigure();
   applyDebug();
   rigHands();
