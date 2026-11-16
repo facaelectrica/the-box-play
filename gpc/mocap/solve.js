@@ -121,10 +121,13 @@ export function makeSolver(S, opt = {}) {
         tgt[id[d.A]] = aim(a, f, rest(d.FA), Z0); let Rf = aim(b, f, rest(d.H), Z0);
         if (hv) { const dir = hv.dir, nrm = V.mul(V.cross(dir, hv.across), -d.s), rate = hv.sure ? 0.8 : 0.35;
           if (ok3(dir) && ok3(V.perp(nrm, V.norm(dir)))) { const Rh = aim(dir, nrm, [d.s, 0, 0], Z0), qh = M.toQuat(M.mul(M.T(Rf), Rh));
-            // palm down to palm up is half a turn of the forearm, so the twist may reach 160 degrees
-            let tw = 2 * Math.atan2(qh[1], qh[0]); if (tw > Math.PI) tw -= 2 * Math.PI; if (tw < -Math.PI) tw += 2 * Math.PI;   // the hand's turn around the forearm goes into the forearm
-            tw = mem.tw[si] + Math.max(-rate, Math.min(rate, tw - mem.tw[si] - 2 * Math.PI * Math.round((tw - mem.tw[si]) / (2 * Math.PI))));   // no sudden turns: the hand points are noisy
-            tw = Math.max(-2.8, Math.min(2.8, tw)); mem.tw[si] = tw; Rf = M.mul(Rf, M.euler(tw, 0, 0)); tgt[id[d.H]] = Rh; } }
+            // The hand's turn around the forearm goes into the forearm. Zero is palm down in the T pose, which is the
+            // forearm turned fully inward; palm up is half a turn the other way. So the forearm's range is one-sided:
+            // about -20 to +170 degrees for the left arm and the mirror of that for the right. The angle is measured
+            // from the middle of that range (75 degrees), which puts the +-180 seam where no forearm can go; measured
+            // from zero, a palm-up hand sat on the seam and the figure's hand flipped over.
+            const mid = d.s * 1.3; let tw = 2 * Math.atan2(qh[1], qh[0]); tw = mid + (tw - mid) - 2 * Math.PI * Math.round((tw - mid) / (2 * Math.PI));
+            tw = Math.max(mid - 2.2, Math.min(mid + 2.2, tw)); tw = mem.tw[si] + Math.max(-rate, Math.min(rate, tw - mem.tw[si])); mem.tw[si] = tw; Rf = M.mul(Rf, M.euler(tw, 0, 0)); tgt[id[d.H]] = Rh; } }
         else Rf = M.mul(Rf, M.euler(mem.tw[si], 0, 0));
         tgt[id[d.FA]] = Rf; }
       if (wl > 0) { const a = V.norm(V.sub(P[d.kn], P[d.hip])), b = V.norm(V.sub(P[d.an], P[d.kn])), foot = see(d.he, d.to), fwd = foot ? V.sub(P[d.to], P[d.he]) : Fp;
@@ -180,7 +183,7 @@ export function makeSolver(S, opt = {}) {
     q = out; return out;
   }
   const home = () => { root.xy = [0, 0]; root.lock = [null, null]; };   // the hips back over the origin (a new recording starts here)
-  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get footSpeed() { return mem.foot.map(m => m ? m.speed : 0); }, get footCal() { return footCal; }, get performerLeg() { return perf.leg; }, get held() { return SIDE.filter((d, i) => root.lock[i] && root.g && root.g[i] > 0.5).map(d => id[d.FT]); }, get contacts() { return SIDE.map((d, i) => ({ g: root.g ? root.g[i] : 0, pt: root.pt ? root.pt[i] : null })); } };
+  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get twist() { return mem.tw.slice(); }, get footSpeed() { return mem.foot.map(m => m ? m.speed : 0); }, get footCal() { return footCal; }, get performerLeg() { return perf.leg; }, get held() { return SIDE.filter((d, i) => root.lock[i] && root.g && root.g[i] > 0.5).map(d => id[d.FT]); }, get contacts() { return SIDE.map((d, i) => ({ g: root.g ? root.g[i] : 0, pt: root.pt ? root.pt[i] : null })); } };
 }
 
 // A finished recording: frames taken at the camera's own times -> 30 frames a second, lightly smoothed.
