@@ -1,7 +1,8 @@
 // Camera tracking -> his pose. Input: the 33 body points of MediaPipe's Pose Landmarker ("world" points: metres, centred
 // on the hips, x to the image's right, y down, z away from the camera). Output: the game's 73 numbers for each frame.
 // Every bone is aimed along the tracked limb; the twist of an upper arm or thigh comes from the plane its elbow or
-// knee bends in. Points the camera cannot see keep the joint's last angles. The hips travel by keeping each foot
+// knee bends in. Points the camera sees poorly are trusted less: the joint drifts to the tracker's guess, and
+// keeps its last angles when the point is lost. Legs are fitted to the performer's size. The hips travel by keeping each foot
 // still while it is on the floor, because the tracked points carry no position in the room.
 import { M, V, fk, standPose } from './skel.js?v=1';
 
@@ -20,14 +21,15 @@ class Euro { constructor(minCut, beta) { this.mc = minCut; this.beta = beta; thi
     this.x += al(this.mc + this.beta * Math.abs(this.dx)) * (x - this.x); return this.x; } }
 
 export function makeSolver(S, opt = {}) {
-  const o = Object.assign({ smooth: 1, hands: true, minVis: 0.5, travel: true }, opt), id = S.id, nb = S.names.length;
+  const o = Object.assign({ smooth: 1, hands: true, minVis: 0.3, travel: true, fit: true }, opt), id = S.id, nb = S.names.length;
   const rest = n => V.norm(S.off[id[n]]), Z0 = [0, 0, 1], X0 = [1, 0, 0];
   const SIDE = [   // right, then left: the points and bodies of one arm and one leg
     { s: -1, sh: LM.rSh, el: LM.rEl, wr: LM.rWr, pk: LM.rPk, ix: LM.rIx, hip: LM.rHip, kn: LM.rKn, an: LM.rAn, he: LM.rHe, to: LM.rTo, A: 'RightArm', FA: 'RightForeArm', H: 'RightHand', SH: 'RightShoulder', LG: 'RightLeg', SN: 'RightShin', FT: 'RightFoot', TB: 'RightToeBase' },
     { s: 1, sh: LM.lSh, el: LM.lEl, wr: LM.lWr, pk: LM.lPk, ix: LM.lIx, hip: LM.lHip, kn: LM.lKn, an: LM.lAn, he: LM.lHe, to: LM.lTo, A: 'LeftArm', FA: 'LeftForeArm', H: 'LeftHand', SH: 'LeftShoulder', LG: 'LeftLeg', SN: 'LeftShin', FT: 'LeftFoot', TB: 'LeftToeBase' } ];
   const RAD = S.names.map(n => /Toe/.test(n) ? 0.025 : /Foot/.test(n) ? 0.075 : n === 'Head' ? 0.11 : /Hand|ForeArm/.test(n) ? 0.04 : 0.08);   // rough distance from a joint to the skin
-  let q, cal, headCal, filt, tPrev, mem, root;
-  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0] }; root = { xy: [0, 0], lock: [null, null], on: [false, false] }; }
+  let q, cal, headCal, filt, tPrev, mem, root, perf;
+  const LEG = V.len(S.off[id.RightShin]) + V.len(S.off[id.RightFoot]);   // his own leg, hip joint to ankle
+  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0] }; root = { xy: [0, 0], lock: [null, null], on: [false, false] }; perf = { leg: null }; }
   reset();
 
   // tracked points -> the game's axes (x to his left, y behind him, z up), steadied
@@ -48,15 +50,26 @@ export function makeSolver(S, opt = {}) {
   // forward (this removes the camera's own tilt), and the head's angle at this moment counts as level.
   function calibrate(lm) { const P = lm.map(l => [l.x, l.z, -l.y]), T = torso(P); if (!T.pelvis.every(Number.isFinite)) return false;
     cal = M.T(T.pelvis); const Pc = P.map(p => M.vec(cal, p)), T2 = torso(Pc), H = headOf(Pc);
-    headCal = H.every(Number.isFinite) ? M.mul(M.T(T2.chest), H) : M.I(); filt = null; mem.fw = {}; return true; }
+    headCal = H.every(Number.isFinite) ? M.mul(M.T(T2.chest), H) : M.I(); filt = null; mem.fw = {}; perf.leg = null; return true; }
+
+  // two-bone IK for a leg: hip joint H, ankle wanted at Tg, bending around the side axis f0
+  function legIK(d, H, Tg, f0) { const sn = id[d.SN], ft = id[d.FT], L1 = V.len(S.off[sn]), L2 = V.len(S.off[ft]), D = V.sub(Tg, H), dl = V.len(D); if (dl < 1e-4) return null;
+    const dd = Math.max(Math.abs(L1 - L2) + 1e-3, Math.min(L1 + L2 - 1e-3, dl)), u = V.mul(D, 1 / dl), fp = V.perp(f0, u); if (!ok3(fp)) return null;
+    const f = V.norm(fp), p = V.cross(u, f), ca = (L1 * L1 + dd * dd - L2 * L2) / (2 * L1 * dd), sa = Math.sqrt(Math.max(0, 1 - ca * ca));
+    const a = V.add(V.mul(u, ca), V.mul(p, sa)), kn = V.add(H, V.mul(a, L1)), b = V.norm(V.sub(V.add(H, V.mul(u, dd)), kn));
+    return [aim(a, f, rest(d.SN), X0), aim(b, f, rest(d.FT), X0)]; }
+  // how far to trust a group of points: 1 when clearly seen, falling to 0 as the tracker loses them. A limb the
+  // camera cannot see well (the far arm and leg when he stands sideways) still follows the tracker's guess, slowly.
+  const trust = (vis, k) => clamp01((Math.min(...k.map(i => vis[i])) - 0.05) / 0.25);
 
   function solve(lm, t) {
     const { P: raw, vis } = points(lm, t), P = raw.map(p => M.vec(cal, p)), see = (...k) => k.every(i => vis[i] >= o.minVis);
-    const tgt = new Array(nb).fill(null), T = torso(P), Rp = T.pelvis, Rc = T.chest;
+    const tgt = new Array(nb).fill(null), wt = new Array(nb).fill(1), T = torso(P), Rp = T.pelvis, Rc = T.chest;
     if (!Rp.every(Number.isFinite) || !Rc.every(Number.isFinite)) return q;
     // trunk: the hips carry the trunk's lean; the turn between hips and shoulders is shared by the three spine joints
     const rel = M.mul(M.T(Rp), Rc); tgt[0] = Rp; tgt[id.Spine1] = M.mul(Rp, M.part(rel, 1 / 3)); tgt[id.Spine2] = M.mul(Rp, M.part(rel, 2 / 3)); tgt[id.Chest] = Rc;
-    if (see(LM.nose, LM.lEar, LM.rEar)) { const Rh = M.mul(headOf(P), M.T(headCal));
+    const wh = trust(vis, [LM.nose, LM.lEar, LM.rEar]); wt[id.Neck1] = wt[id.Neck2] = wt[id.Head] = wh;
+    if (wh > 0) { const Rh = M.mul(headOf(P), M.T(headCal));
       if (Rh.every(Number.isFinite)) { const rh = M.mul(M.T(Rc), Rh); tgt[id.Neck1] = M.mul(Rc, M.part(rh, 1 / 3)); tgt[id.Neck2] = M.mul(Rc, M.part(rh, 2 / 3)); tgt[id.Head] = Rh; } }
     const Fc = [-Rc[1], -Rc[4], -Rc[7]], Zc = [Rc[2], Rc[5], Rc[8]], Fp = [-Rp[1], -Rp[4], -Rp[7]], Xp = [Rp[0], Rp[3], Rp[6]];
     // the side axis an elbow or knee bends around: from the bend itself when it is bent enough, otherwise the last
@@ -68,7 +81,8 @@ export function makeSolver(S, opt = {}) {
       let f = V.perp(V.add(V.mul(dir, w), V.mul(base, 1 - w)), a); if (!ok3(f)) f = base; f = V.norm(f); mem.fw[key] = f; return f; };
     SIDE.forEach((d, si) => {
       tgt[id[d.SH]] = Rc;
-      if (see(d.sh, d.el, d.wr)) { const a = V.norm(V.sub(P[d.el], P[d.sh])), b = V.norm(V.sub(P[d.wr], P[d.el])), sgn = -d.s;
+      const wa = trust(vis, [d.sh, d.el, d.wr]), wl = trust(vis, [d.hip, d.kn, d.an]); wt[id[d.A]] = wt[id[d.FA]] = wt[id[d.H]] = wa; wt[id[d.LG]] = wt[id[d.SN]] = wt[id[d.FT]] = wl;
+      if (wa > 0) { const a = V.norm(V.sub(P[d.el], P[d.sh])), b = V.norm(V.sub(P[d.wr], P[d.el])), sgn = -d.s;
         const f = bendAxis(d.A, a, b, sgn, V.add(V.mul(V.cross(a, Fc), sgn), V.mul(Zc, 0.3)), false);
         tgt[id[d.A]] = aim(a, f, rest(d.FA), Z0); let Rf = aim(b, f, rest(d.H), Z0);
         if (o.hands && see(d.pk, d.ix)) { const dir = V.sub(V.mid(P[d.ix], P[d.pk]), P[d.wr]), nrm = V.mul(V.cross(dir, V.sub(P[d.ix], P[d.pk])), -d.s);
@@ -77,10 +91,16 @@ export function makeSolver(S, opt = {}) {
             tw = Math.max(-1.6, Math.min(1.6, tw)); mem.tw[si] = tw; Rf = M.mul(Rf, M.euler(tw, 0, 0)); tgt[id[d.H]] = Rh; } }
         else Rf = M.mul(Rf, M.euler(mem.tw[si], 0, 0));
         tgt[id[d.FA]] = Rf; }
-      if (see(d.hip, d.kn, d.an)) { const a = V.norm(V.sub(P[d.kn], P[d.hip])), b = V.norm(V.sub(P[d.an], P[d.kn])), foot = see(d.he, d.to), fwd = foot ? V.sub(P[d.to], P[d.he]) : Fp;
+      if (wl > 0) { const a = V.norm(V.sub(P[d.kn], P[d.hip])), b = V.norm(V.sub(P[d.an], P[d.kn])), foot = see(d.he, d.to), fwd = foot ? V.sub(P[d.to], P[d.he]) : Fp;
         const upF = foot ? V.perp(V.sub(P[d.an], P[d.he]), V.norm(fwd)) : null, latF = upF && ok3(upF) ? V.norm(V.cross(upF, fwd)) : [0, 0, 0];
         const f = bendAxis(d.LG, a, b, 1, V.add(Xp, latF), true);   // a knee's axis lies along the hips' and the foot's sideways axes
-        tgt[id[d.LG]] = aim(a, f, rest(d.SN), X0); tgt[id[d.SN]] = aim(b, f, rest(d.FT), X0);
+        // The performer's bones are not his. The tracked leg length gives the scale between the two bodies, and the
+        // ankle is placed at the performer's ankle position (from the middle of the hips) times that scale, so feet
+        // that stand still for the performer stand still for him. The knee keeps its tracked bend axis.
+        if (see(d.hip, d.kn, d.an) && vis[d.kn] > 0.6) { const len = V.len(V.sub(P[d.kn], P[d.hip])) + V.len(V.sub(P[d.an], P[d.kn])); if (len > 0.3 && len < 1.5) perf.leg = perf.leg === null ? len : perf.leg + 0.02 * (len - perf.leg); }
+        const sc = o.fit && perf.leg ? Math.max(0.7, Math.min(1.45, LEG / perf.leg)) : 1, Hr = M.vec(Rp, S.off[id.RightLeg]), Hl = M.vec(Rp, S.off[id.LeftLeg]);
+        const ik = o.fit ? legIK(d, d.s < 0 ? Hr : Hl, V.add(V.mid(Hr, Hl), V.mul(V.sub(P[d.an], V.mid(P[LM.lHip], P[LM.rHip])), sc)), f) : null;
+        if (ik) { tgt[id[d.LG]] = ik[0]; tgt[id[d.SN]] = ik[1]; } else { tgt[id[d.LG]] = aim(a, f, rest(d.SN), X0); tgt[id[d.SN]] = aim(b, f, rest(d.FT), X0); }
         if (foot && ok3(fwd)) { const up = V.perp(V.sub(P[d.an], P[d.he]), V.norm(fwd)); if (ok3(up)) tgt[id[d.FT]] = aim(fwd, up, [0, -1, 0], Z0); } }
     });
     // world rotations -> hinge angles, joint by joint; a joint without a tracked rotation keeps its angles
@@ -88,7 +108,8 @@ export function makeSolver(S, opt = {}) {
     let qr = M.toQuat(Rw[0]); if (qr[0] * q[3] + qr[1] * q[4] + qr[2] * q[5] + qr[3] * q[6] < 0) qr = qr.map(v => -v);
     out[3] = qr[0]; out[4] = qr[1]; out[5] = qr[2]; out[6] = qr[3];
     for (let b = 1; b < nb; b++) { const h = 7 + 3 * (b - 1), pa = Rw[S.parent[b]], near = [q[h], q[h + 1], q[h + 2]];
-      if (tgt[b]) { const e = M.toEuler(M.mul(M.T(pa), tgt[b]), near); out[h] = e[0]; out[h + 1] = e[1]; out[h + 2] = e[2]; Rw[b] = tgt[b]; }
+      if (tgt[b]) { let R = tgt[b]; if (wt[b] < 1) { const held = M.mul(pa, M.euler(near[0], near[1], near[2])); R = M.mul(held, M.part(M.mul(M.T(held), R), wt[b] * wt[b])); }   // weakly seen: drift toward the tracker's guess
+        const e = M.toEuler(M.mul(M.T(pa), R), near); out[h] = e[0]; out[h + 1] = e[1]; out[h + 2] = e[2]; Rw[b] = R; }
       else Rw[b] = M.mul(pa, M.euler(near[0], near[1], near[2])); }
     // The hips in the room. The lowest part of the body rests on the floor. Each foot is held where it is while it
     // is on the floor; the hips go where the held feet put them, and each held leg is then bent to reach its spot
@@ -98,7 +119,7 @@ export function makeSolver(S, opt = {}) {
     for (let b = 0; b < nb; b++) low = Math.min(low, K.p[b][2] - RAD[b]);
     SIDE.forEach((d, i) => { const ft = id[d.FT], tb = id[d.TB], h = Math.min(K.p[ft][2] - RAD[ft], K.p[tb][2] - RAD[tb]) - low;
       const shinUp = K.p[id[d.SN]][2] - K.p[ft][2] > 0.2;   // the knee well above the ankle: a foot he stands on, not a leg lying on the floor
-      root.on[i] = o.travel && !!tgt[id[d.LG]] && shinUp && (root.on[i] ? h < 0.07 : h < 0.035); if (!root.on[i]) root.lock[i] = null; });
+      root.on[i] = o.travel && !!tgt[id[d.LG]] && wt[id[d.LG]] > 0.5 && shinUp && (root.on[i] ? h < 0.07 : h < 0.035); if (!root.on[i]) root.lock[i] = null; });
     let sx = 0, sy = 0, held = 0; SIDE.forEach((d, i) => { const L = root.lock[i]; if (L) { sx += L[0] - K.p[id[d.FT]][0]; sy += L[1] - K.p[id[d.FT]][1]; held++; } });
     if (held) root.xy = [sx / held, sy / held];
     SIDE.forEach((d, i) => { if (!root.on[i]) return; const p = K.p[id[d.FT]], at = [root.xy[0] + p[0], root.xy[1] + p[1]], L = root.lock[i];
@@ -106,16 +127,12 @@ export function makeSolver(S, opt = {}) {
       else { const e = Math.hypot(at[0] - L[0], at[1] - L[1]), k = e > 0.25 ? 1 : clamp01((e - 0.06) / 0.15) * 0.3; L[0] += (at[0] - L[0]) * k; L[1] += (at[1] - L[1]) * k; } });   // a foot dragged along the floor takes its spot with it
     out[0] = root.xy[0]; out[1] = root.xy[1]; out[2] = -low;
     SIDE.forEach((d, i) => { const L = root.lock[i], f0 = mem.fw[d.LG]; if (!L || !f0) return;
-      const lg = id[d.LG], sn = id[d.SN], ft = id[d.FT], H = [root.xy[0] + K.p[lg][0], root.xy[1] + K.p[lg][1], K.p[lg][2] - low], Tg = [L[0], L[1], K.p[ft][2] - low];
-      const L1 = V.len(S.off[sn]), L2 = V.len(S.off[ft]), D = V.sub(Tg, H), dl = V.len(D); if (dl < 1e-4) return;
-      const dd = Math.max(Math.abs(L1 - L2) + 1e-3, Math.min(L1 + L2 - 1e-3, dl)), u = V.mul(D, 1 / dl), fp = V.perp(f0, u); if (!ok3(fp)) return;
-      const f = V.norm(fp), p = V.cross(u, f), ca = (L1 * L1 + dd * dd - L2 * L2) / (2 * L1 * dd), sa = Math.sqrt(Math.max(0, 1 - ca * ca));
-      const a = V.add(V.mul(u, ca), V.mul(p, sa)), kn = V.add(H, V.mul(a, L1)), bdir = V.norm(V.sub(V.add(H, V.mul(u, dd)), kn));
-      Rw[lg] = aim(a, f, rest(d.SN), X0); Rw[sn] = aim(bdir, f, rest(d.FT), X0); euler(lg); euler(sn); euler(ft); });
+      const lg = id[d.LG], sn = id[d.SN], ft = id[d.FT], H = [root.xy[0] + K.p[lg][0], root.xy[1] + K.p[lg][1], K.p[lg][2] - low], ik = legIK(d, H, [L[0], L[1], K.p[ft][2] - low], f0); if (!ik) return;
+      Rw[lg] = ik[0]; Rw[sn] = ik[1]; euler(lg); euler(sn); euler(ft); });
     q = out; return out;
   }
   const home = () => { root.xy = [0, 0]; root.lock = [null, null]; };   // the hips back over the origin (a new recording starts here)
-  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get held() { return SIDE.filter((d, i) => root.lock[i]).map(d => id[d.FT]); } };
+  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get performerLeg() { return perf.leg; }, get held() { return SIDE.filter((d, i) => root.lock[i]).map(d => id[d.FT]); } };
 }
 
 // A finished recording: frames taken at the camera's own times -> 30 frames a second, lightly smoothed.

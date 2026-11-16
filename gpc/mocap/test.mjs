@@ -5,17 +5,19 @@ import { readBody, fk, M } from './skel.js'; import { makeSolver, toMove } from 
 import { encodeQ } from './encq.js'; import { decodeQ } from '../libq.js';
 const here = path.dirname(fileURLToPath(import.meta.url)), S = readBody(fs.readFileSync(path.join(here, '../../body/soma23_box.xml'), 'utf8'));
 const clipDir = path.join(here, '../clips'), all = fs.readdirSync(clipDir).filter(f => f.endsWith('.q'));
-const di = process.argv.indexOf('--dump'), args = process.argv.slice(2).filter((a, i) => !a.startsWith('--') && i + 2 !== di + 1), pick = args.length ? args.map(a => a + '.q') : all.filter((_, i) => i % 25 === 0);
+const di = process.argv.indexOf('--dump'), args = process.argv.slice(2).filter((a, i) => !a.startsWith('--') && (di < 0 || i + 2 !== di + 1)), pick = args.length ? args.map(a => a + '.q') : all.filter((_, i) => i % 25 === 0);
 const load = async f => { const b = fs.readFileSync(path.join(clipDir, f)); return decodeQ(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
 if (di > 0) {   // poses and this file's body positions, for the MuJoCo comparison (test_fk.py)
   const d = await load(pick[0]), fr = [0, 10, 50, d.T - 1].map(t => ({ q: Array.from(d.q.slice(t * 73, t * 73 + 73)), p: fk(S, d.q, t * 73).p }));
   fs.writeFileSync(process.argv[di + 1], JSON.stringify({ names: S.names, fr })); process.exit(0); }
 const LIMBS = ['RightForeArm', 'RightHand', 'LeftForeArm', 'LeftHand', 'RightShin', 'RightFoot', 'LeftShin', 'LeftFoot', 'Head'];
 const TW = ['RightLeg', 'RightShin', 'LeftLeg', 'LeftShin', 'RightArm', 'RightForeArm', 'LeftArm', 'LeftForeArm'], rot = {}; let slide = 0, heldN = 0, trav = 0, travLen = 0, zErr = 0; let n = 0, sum = 0, worst = 0, worstAt = '', sumL = 0, nL = 0, jump = 0, encWorst = 0, wraps = 0, big = 0; const per = {};
+const S2 = JSON.parse(JSON.stringify(S)); for (const n of ['RightShin', 'RightFoot', 'LeftShin', 'LeftFoot']) S2.off[S2.id[n]] = S2.off[S2.id[n]].map(v => v * 0.89); for (const n of ['RightLeg', 'LeftLeg']) S2.off[S2.id[n]][0] *= 1.15;
+const other = process.argv.includes('--other'), SP = other ? S2 : S; if (other) console.log('performer with legs 11% shorter and hips 15% wider than his');
 for (const f of pick) {
   const d = await load(f), sol = makeSolver(S, { smooth: 0 }), frames = []; let prev = null, pk = null, ph = [];
   for (let t = 0; t < d.T; t++) {
-    const o = t * 73, out = sol.solve(fakePoints(S, d.q, o), t / 30); frames.push({ t: t / 30, q: out });
+    const o = t * 73, out = sol.solve(fakePoints(SP, d.q, o), t / 30); frames.push({ t: t / 30, q: out });
     { const held = sol.held, Kn = fk(S, out); for (const b of held) if (ph.includes(b)) { slide = Math.max(slide, Math.hypot(Kn.p[b][0] - pk.p[b][0], Kn.p[b][1] - pk.p[b][1]) * 100); heldN++; } pk = Kn; ph = held; }
     const A = fk(S, d.q, o), B = fk(S, out), ca = [0, 1, 2].map(k => (A.p[S.id.RightLeg][k] + A.p[S.id.LeftLeg][k]) / 2), cb = [0, 1, 2].map(k => (B.p[S.id.RightLeg][k] + B.p[S.id.LeftLeg][k]) / 2);
     for (let b = 1; b < 23; b++) { const e = Math.hypot(...[0, 1, 2].map(k => (A.p[b][k] - ca[k]) - (B.p[b][k] - cb[k]))) * 100;
