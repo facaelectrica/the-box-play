@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v23</title>
+<title>EDITOR v24</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -11,7 +11,7 @@
   header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
   select{font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:3px 6px}
   button{font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:8px;padding:6px 10px;cursor:pointer}
-  button:hover{background:#352b23} #mMove.on,#mRot.on{background:#e0a34a;color:#1b1612} #gh.on{border-color:#7ddc8a;color:#7ddc8a} button.pri{background:#e0a34a;color:#1b1612;border-color:#e0a34a}
+  button:hover{background:#352b23} #mMove.on,#mRot.on,.stp.on{background:#e0a34a;color:#1b1612} #stTime{width:52px;font:inherit;font-size:12px;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:2px 4px;text-align:right} #gh.on{border-color:#7ddc8a;color:#7ddc8a} button.pri{background:#e0a34a;color:#1b1612;border-color:#e0a34a}
   #main{flex:1;display:grid;grid-template-columns:110px minmax(0,1fr) 300px;min-height:0}
   #orders{border-right:1px solid #3a302a;padding:10px}
   .ord{padding:7px 9px;border-radius:8px;margin-bottom:4px} .ord.on{background:#e0a34a;color:#1b1612;font-weight:600} .ord.off{color:#6f6359}
@@ -26,7 +26,7 @@
   .crow input{width:56px;color:#ffd38a;text-align:right} .crow .u{color:#8a7d72;width:24px} .crow button{padding:1px 6px}
   .cfor{font-size:12px;color:#a99a8c;margin:2px 0 12px} .cfor input{width:46px;font:inherit;font-size:12px;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 4px;text-align:right}
   .sg td{font-size:12px;padding:1px 4px;color:#d8cdc2} .sg td:last-child{text-align:right;color:#ffd38a}
-  .ord{cursor:pointer} .ord.act::after{content:" ●";color:#7ddc8a} .on.test{outline:2px solid #ff9f43}
+  .ord{cursor:pointer} .ord.dis{opacity:.45} .ord input{vertical-align:-2px;margin:0 2px 0 0} .ord.act::after{content:" ●";color:#7ddc8a} .on.test{outline:2px solid #ff9f43}
   .sent input{width:58px;font:inherit;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 5px;text-align:center}
   .note{font-size:12px;color:#a99a8c;margin:6px 0 14px} #oTest.on{background:#ff9f43;color:#1b1612}
   #frame{border:0;border-radius:14px;background:#000}
@@ -42,7 +42,7 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v23</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v24</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Snapshot (S)">Snapshot</button><button id="gh" title="Publishing">Token</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove</button></span><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Default<br><small>Chooser</small></div></div>
@@ -51,10 +51,12 @@
         <select id="figSel"><option value="female">Female</option><option value="male">Male</option><option value="shapes">Mannequin</option><option value="none">None</option></select>
         <label><input type="checkbox" id="skelOn" checked> Skeleton</label><label><input type="checkbox" id="ghostOn" checked> Original</label><span class="sp"></span><button id="mMove" class="on" title="Move (W)">Move</button><button id="mRot" title="Rotate (E)">Rotate</button></div>
       <div id="views"><div class="view" id="v3"><span class="lab" id="hint"></span></div></div>
+      <div id="steps" style="display:flex;gap:4px;align-items:center;margin-top:6px;font-size:12px"></div>
     </div>
     <div id="side">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><input id="oname" style="flex:1;font:inherit;font-weight:600;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:4px 8px">
         </div><div style="display:flex;gap:4px;margin:-4px 0 10px"><button id="oUp" title="Raise priority">▲</button><button id="oDn" title="Lower priority">▼</button><button id="oTest" title="Force this order">Test</button><span class="sp"></span><button id="oDel" title="Delete order">✕</button></div>
+      <div class="crow" style="margin-bottom:10px"><span style="width:62px">Strength</span><select id="oStr"><option value="control">Control</option><option value="guide">Guide</option></select></div>
       <h3>Start</h3><div id="cStart"></div>
       <h3>Stop</h3><div id="cStop"></div>
       <h3>Changed joints</h3><table id="tbl"></table>
@@ -64,7 +66,7 @@
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=22"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=24"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -77,8 +79,8 @@
 const $ = id => document.getElementById(id), DEG = 180 / Math.PI;
 const ORIG = { RightArm_y: -1.25, LeftArm_y: 1.25, RightArm_z: -0.2, LeftArm_z: 0.2 };   // the game's standing pose (sim/brain.js BRAIN_STAND)
 const SIGNS = { head: ['head height', 'm'], chest: ['chest height', 'm'], hips: ['hips height', 'm'], rightHand: ['right hand height', 'm'], leftHand: ['left hand height', 'm'],
-  rightFoot: ['right foot height', 'm'], leftFoot: ['left foot height', 'm'], lean: ['trunk lean', '°'], speed: ['hips speed', 'm/s'], tilt: ['box tilt', '°'] };
-let orders = [], cur = 0;
+  rightFoot: ['right foot height', 'm'], leftFoot: ['left foot height', 'm'], lean: ['trunk lean', '°'], speed: ['hips speed', 'm/s'], tilt: ['box tilt', '°'], tiltLR: ['tilt left/right', '°'], tiltFB: ['tilt forward/back', '°'] };
+let orders = [], cur = 0, stepK = 0;
 const fr = $('frame');
 // the box keeps the phone's shape; the stage is square so the box can turn all the way round without moving the page
 // phone view: the frame is the phone, as large as fits; room view: the frame fills the whole play area
@@ -101,7 +103,7 @@ async function boot() {
   F.document.getElementById('go').click();
   B = F.__brainNet; G = F.__gpc; W = F.__box.W; mj = W.mj; m = W.m; d2 = new mj.MjData(m);
   acts = W.act.map(a => ({ name: a.name, qadr: a.qadr, j: mj.mj_name2id(m, mj.mjtObj.mjOBJ_JOINT.value, a.name) }));
-  orders = G.orders; cur = 0; pose = orders[0].pose; listOrders(); showOrder();
+  orders = G.orders; cur = 0; stepK = 0; pose = orders[0].steps[0].pose; listOrders(); showOrder();
   applyPose(); draw(); keys(F); tick();
   $('gh').classList.toggle('on', !!localStorage.getItem('gpc.ghKey'));
   $('mMove').onclick = () => setMode('translate'); $('mRot').onclick = () => setMode('rotate');
@@ -258,7 +260,7 @@ function poseFig() {   // d2 holds the pose's forward kinematics (fk(pose) just 
 let sel = null, hover = null, lastApply = 0, gstart = null;
 const chainOf = n => n && MOVE[n] && mode() === 'translate' ? MOVE[n].j : n ? [n] : [];
 function draw() {
-  if (!d2) return; const P = fk(pose); poseFig(); const P0 = fk(ORIG);
+  if (!d2) return; const P = fk(pose); poseFig(); const prev = stepK > 0 && orders[cur] ? orders[cur].steps[stepK - 1].pose : ORIG, P0 = fk(prev);
   if (!bones.length) build3d();
   const sk = $('skelOn').checked;
   updateFig(P, bones, 0.016); updateFig(P0, gbones, 0.012); for (const [, b] of bones) b.visible = b.visible && sk; ghost.visible = $('ghostOn').checked;
@@ -318,14 +320,15 @@ function loop() { const r = host.getBoundingClientRect(); if (r.width && (ren.do
 requestAnimationFrame(loop);
 // fk() moves the drawing so his soles are on the floor line; the IK works in that same frame (handle heights shift
 // together with the target), so a dragged foot can be lifted off the floor and the rest stays put.
-function applyPose() { try { G.setPose(orders[cur], pose); } catch (e) { console.warn(e); } }
+function applyPose() { try { G.setStepPose(orders[cur], stepK, pose); } catch (e) { console.warn(e); } }
 function dirty() { $('file').textContent = '●'; }
 $('undo').onclick = () => { if (!history.length) return; pose = history.pop(); applyPose(); draw(); dirty(); };
 $('reset').onclick = () => { history.push(Object.assign({}, pose)); pose = Object.assign({}, ORIG); applyPose(); draw(); dirty(); };
 // ---------- orders: list, select, add, reorder, delete, start/stop conditions ----------
 function listOrders() {
-  $('olist').innerHTML = orders.map((o, k) => `<div class="ord ${k === cur ? 'on' : ''} ${G && G.active === o ? 'act' : ''} ${G && G.force === o.name ? 'test' : ''}" data-k="${k}">${esc(o.name)}</div>`).join('');
-  for (const d of $('olist').querySelectorAll('.ord')) d.onclick = () => { cur = +d.dataset.k; pose = orders[cur].pose; history = []; sel = null; listOrders(); showOrder(); draw(); };
+  $('olist').innerHTML = orders.map((o, k) => `<div class="ord ${k === cur ? 'on' : ''} ${G && G.active === o ? 'act' : ''} ${G && G.force === o.name ? 'test' : ''} ${o.on === false ? 'dis' : ''}" data-k="${k}"><input type="checkbox" data-on="${k}" ${o.on === false ? '' : 'checked'} title="On"> ${esc(o.name)}</div>`).join('');
+  for (const c of $('olist').querySelectorAll('[data-on]')) { c.onclick = e => e.stopPropagation(); c.onchange = () => { orders[+c.dataset.on].on = c.checked; listOrders(); dirty(); }; }
+  for (const d of $('olist').querySelectorAll('.ord')) d.onclick = () => { cur = +d.dataset.k; stepK = 0; pose = orders[cur].steps[0].pose; history = []; sel = null; listOrders(); showOrder(); draw(); };
 }
 const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 function condUI(box, part, o) {
@@ -343,18 +346,28 @@ function condUI(box, part, o) {
   }
 }
 function showOrder() {
-  const o = orders[cur]; $('oname').value = o.name; condUI($('cStart'), 'start', o); condUI($('cStop'), 'stop', o);
+  const o = orders[cur]; $('oname').value = o.name; $('oStr').value = o.strength || 'control'; condUI($('cStart'), 'start', o); condUI($('cStop'), 'stop', o); stepsUI();
   $('oTest').classList.toggle('on', G.force === o.name); $('oDel').disabled = orders.length < 2;
 }
+$('oStr').onchange = () => { orders[cur].strength = $('oStr').value; dirty(); };
+// steps: the poses of an order, in order; the puppet edits the selected one; grey figure = the step before
+function stepsUI() {
+  const o = orders[cur]; $('steps').innerHTML = o.steps.map((x, k) => `<button class="stp ${k === stepK ? 'on' : ''}" data-k="${k}">${k + 1}</button>`).join('') +
+    `<button id="stAdd" title="Add step">+</button><button id="stDel" title="Delete step" ${o.steps.length < 2 ? 'disabled' : ''}>✕</button><span class="sp"></span><span class="dim">Time</span><input id="stTime" type="number" step="0.1" min="0.1" value="${o.steps[stepK].time ?? 1}"><span class="dim">s</span>`;
+  for (const b of $('steps').querySelectorAll('.stp')) b.onclick = () => { stepK = +b.dataset.k; pose = o.steps[stepK].pose; history = []; stepsUI(); draw(); };
+  $('stAdd').onclick = () => { o.steps.splice(stepK + 1, 0, { pose: Object.assign({}, pose), time: 1 }); stepK++; pose = o.steps[stepK].pose; history = []; G.setStepPose(o, stepK, pose); stepsUI(); draw(); dirty(); };
+  $('stDel').onclick = () => { if (o.steps.length < 2) return; o.steps.splice(stepK, 1); stepK = Math.max(0, stepK - 1); pose = o.steps[stepK].pose; history = []; if (G.active === o) G.step = 0; stepsUI(); draw(); dirty(); };
+  $('stTime').oninput = () => { const v = parseFloat($('stTime').value); if (v > 0) { o.steps[stepK].time = v; dirty(); } };
+}
 $('oname').oninput = () => { const o = orders[cur], old = o.name; o.name = $('oname').value || 'Order'; if (G.force === old) G.force = o.name; listOrders(); dirty(); };
-$('addO').onclick = () => { const o = { name: 'Order ' + (orders.length + 1), start: { all: [], for: 0.2 }, stop: { all: [], for: 0.3 }, pose: Object.assign({}, orders[cur].pose) };
-  orders.push(o); cur = orders.length - 1; pose = o.pose; history = []; listOrders(); showOrder(); draw(); dirty(); };
+$('addO').onclick = () => { const o = { name: 'Order ' + (orders.length + 1), on: true, strength: 'control', start: { all: [], for: 0.2 }, stop: { all: [], for: 0.3 }, steps: [{ pose: Object.assign({}, pose), time: 1 }] };
+  orders.push(o); cur = orders.length - 1; stepK = 0; pose = o.steps[0].pose; history = []; listOrders(); showOrder(); draw(); dirty(); };
 $('oUp').onclick = () => { if (cur < 1) return; [orders[cur - 1], orders[cur]] = [orders[cur], orders[cur - 1]]; cur--; listOrders(); dirty(); };
 $('oDn').onclick = () => { if (cur >= orders.length - 1) return; [orders[cur + 1], orders[cur]] = [orders[cur], orders[cur + 1]]; cur++; listOrders(); dirty(); };
-$('oDel').onclick = () => { if (orders.length < 2) return; const o = orders.splice(cur, 1)[0]; if (G.active === o) G.active = null; if (G.force === o.name) G.force = null; cur = Math.max(0, cur - 1); pose = orders[cur].pose; listOrders(); showOrder(); draw(); dirty(); };
+$('oDel').onclick = () => { if (orders.length < 2) return; const o = orders.splice(cur, 1)[0]; if (G.active === o) G.active = null; if (G.force === o.name) G.force = null; cur = Math.max(0, cur - 1); stepK = 0; pose = orders[cur].steps[0].pose; listOrders(); showOrder(); draw(); dirty(); };
 $('oTest').onclick = () => { const o = orders[cur]; G.force = G.force === o.name ? null : o.name; showOrder(); listOrders(); };
 const clean = p => Object.fromEntries(Object.entries(p).filter(([k, v]) => Math.abs(v) > 1e-6).map(([k, v]) => [k, +v.toFixed(4)]));
-function ordersFile() { return { version: 2, saved: new Date().toISOString(), orders: orders.map(o => ({ name: o.name, start: o.start, stop: o.stop, pose: clean(o.pose) })), otherwise: 'chooser' }; }
+function ordersFile() { return { version: 3, saved: new Date().toISOString(), orders: orders.map(o => ({ name: o.name, on: o.on !== false, strength: o.strength || 'control', start: o.start, stop: o.stop, steps: o.steps.map(x => ({ pose: clean(x.pose), time: x.time ?? 1 })), example: o.example })), otherwise: 'chooser' }; }
 // Save: this browser's game uses the orders at once; with a GitHub key, they are also published (gpc/orders.json on
 // facaelectrica/the-box-play), which every phone's game loads within a minute or two. The key stays in this browser.
 const REPO = 'facaelectrica/the-box-play', PATH = 'gpc/orders.json';
@@ -373,7 +386,7 @@ $('save').onclick = async () => { const O = ordersFile(), js = JSON.stringify(O,
   if (!localStorage.getItem('gpc.ghKey')) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = 'orders.json'; a.click(); $('file').textContent = ''; return; }
   $('file').textContent = 'Publishing'; const r = await publish(js).catch(e => 'error'); $('file').textContent = r === 'ok' ? 'Published' : 'Publish failed: ' + r; if (r === 'ok') setTimeout(() => { if ($('file').textContent === 'Published') $('file').textContent = ''; }, 4000); };
 $('load').onclick = () => $('fileIn').click();
-$('fileIn').onchange = async () => { const f = $('fileIn').files[0]; if (!f) return; try { G.apply(JSON.parse(await f.text())); orders = G.orders; cur = 0; pose = orders[0].pose; history = []; listOrders(); showOrder(); draw(); dirty(); } catch (e) { $('file').textContent = 'Invalid file'; } };
+$('fileIn').onchange = async () => { const f = $('fileIn').files[0]; if (!f) return; try { G.apply(JSON.parse(await f.text())); orders = G.orders; cur = 0; stepK = 0; pose = orders[0].steps[0].pose; history = []; listOrders(); showOrder(); draw(); dirty(); } catch (e) { $('file').textContent = 'Invalid file'; } };
 
 // ---------- the box: keyboard, live state ----------
 function setTilt() { $('rollV').textContent = $('roll').value + '°'; $('pitchV').textContent = $('pitch').value + '°'; }
@@ -409,8 +422,8 @@ function snapshot() {
 $('snapB').onclick = snapshot;
 addEventListener('keydown', e => { if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') snapshot(); });
 function tick() {
-  const a = G.active; $('active').textContent = a ? a.name : 'Chooser'; $('who').className = a ? 'order' : 'chooser';
-  $('whoWhy').textContent = a ? (G.force === a.name ? 'Forced' : 'Order') : `${G.rate || 0} picks/s`;
+  const a = G.active; $('active').textContent = a ? a.name + (a.steps.length > 1 ? ` ${G.step + 1}/${a.steps.length}` : '') : 'Chooser'; $('who').className = a ? 'order' : 'chooser';
+  $('whoWhy').textContent = a ? (G.force === a.name ? 'Forced' : a.strength === 'guide' ? 'Guide' : 'Control') : `${G.rate || 0} picks/s`;
   $('sw').textContent = (G.switches || []).slice(-3).map(x => `${x[0]}s → ${x[1]}`).join('   ');
   if (a !== lastAct) { lastAct = a; listOrders(); }
   { const S = G.signs || {}, f = v => v === undefined ? null : +v.toFixed(3); trail.push([+((performance.now()) / 1000).toFixed(1), a ? a.name : 'chooser', ...['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot', 'lean', 'speed', 'tilt'].map(k => f(S[k]))]); if (trail.length > 100) trail.shift(); }
