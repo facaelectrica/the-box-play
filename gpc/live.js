@@ -2,7 +2,10 @@
 // finishes one), small part (decoder, 3 M numbers) here every control tick on his current body.
 export async function attachGPC(brain, ort, say) {
   const here = new URL('./', import.meta.url).href, iso = self.crossOriginIsolated, cores = navigator.hardwareConcurrency || 2;
-  const threads = iso ? Math.max(1, Math.min(4, cores - 1)) : 1;
+  // the big part gets 2 cores by default (4 starved the game's own physics and drawing: user 23:30, poor frame rate); ?cores=1..4 to try others
+  const ask = +(new URLSearchParams(location.search).get('cores') || 0);
+  const threads = iso ? Math.max(1, Math.min(ask || 2, cores - 1, 4)) : 1;
+  let fps = 0, fN = 0, fT = performance.now(); const raf = () => { fN++; const n = performance.now(); if (n - fT >= 1000) { fps = fN * 1000 / (n - fT); fN = 0; fT = n; } requestAnimationFrame(raf); }; requestAnimationFrame(raf);
   const w = new Worker(here + 'worker.js', { type: 'module' }), tracker = brain.session, st = { codes: null, busy: false, ms: 0, picks: 0, ticks: 0, sinceT: performance.now(), since: 0, rate: 0, err: null, loaded: {}, ready: false, threads };
   const TOTAL = 194.3e6;
   w.onmessage = e => {
@@ -22,7 +25,7 @@ export async function attachGPC(brain, ort, say) {
     if (st.ready && !st.busy) { st.busy = true; w.postMessage({ obs: new Float32Array(o) }); }
     if (!st.codes) return tracker.run(feeds);   // until the first picks arrive he stands with the page's own tracker
     st.ticks++;
-    const now = performance.now(); if (now - last > 1000) { st.rate = st.picks - st.since; st.since = st.picks; last = now; say(`NVIDIA brain live · ${st.rate} picks a second · ${st.ms.toFixed(0)} ms each · ${threads} core${threads > 1 ? 's' : ''}${iso ? '' : ' (several-core mode refused)'}`); }
+    const now = performance.now(); if (now - last > 1000) { st.rate = st.picks - st.since; st.since = st.picks; last = now; say(`${fps.toFixed(0)} fps · NVIDIA brain live · ${st.rate} picks a second · ${st.ms.toFixed(0)} ms each · ${threads} core${threads > 1 ? 's' : ''}${iso ? '' : ' (several-core mode refused)'}`); }
     return dec.run({ obs: new ort.Tensor('float32', new Float32Array(o), [1, 343]), codes: new ort.Tensor('float32', st.codes, [1, 40]) });
   } };
   return st;
