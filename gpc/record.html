@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RECORD v12</title><link rel="icon" href="../icon-192.png">
+<title>RECORD v13</title><link rel="icon" href="../icon-192.png">
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #3a302a} header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
@@ -25,7 +25,7 @@
   #take[hidden]{display:none}
 </style></head>
 <body>
-<header><b>RECORD v12</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
+<header><b>RECORD v13</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
 <div id="views">
   <div class="view"><span class="lab">Camera</span><div id="vwrap" class="mir"><video id="video" playsinline muted></video><canvas id="over"></canvas></div>
     <div id="msg">Start the camera, step back until your whole body is in view, then calibrate.</div><div id="big" hidden></div><div id="recDot" hidden>REC</div></div>
@@ -40,7 +40,7 @@
     <span class="sp"></span>
     <label title="The figure shown in the pose view">Figure <select id="figSel"><option value="female">Female</option><option value="male">Male</option><option value="none">None</option></select></label>
     <label title="Show the joints and bones"><input type="checkbox" id="skelOn">Skeleton</label>
-    <label title="Tracker. Body and hands also tracks each hand with 21 points, for wrists and palms. The three body-only models differ in accuracy and speed.">Tracker <select id="model"><option value="holistic" selected>Body and hands</option><option value="lite">Body, lite</option><option value="full">Body, full</option><option value="heavy">Body, heavy</option></select></label>
+    <label title="Tracker. Rotations reads joint rotations from the picture, including the turn of each bone. The others read joint positions; the turn of each bone is then estimated.">Tracker <select id="model"><option value="hmr" selected>Rotations (InstantHMR)</option><option value="holistic">Body and hands</option><option value="lite">Body, lite</option><option value="full">Body, full</option><option value="heavy">Body, heavy</option></select></label>
     <label title="Steadies the tracked points; higher values lag more">Smoothing <select id="smooth"><option value="0">Off</option><option value="0.5">Low</option><option value="1" selected>Medium</option><option value="2">High</option></select></label>
     <label title="Show the camera and the pose as in a mirror"><input type="checkbox" id="mirror" checked>Mirror view</label>
     <label title="Track wrist bend and forearm turn from the hand points"><input type="checkbox" id="hands" checked>Hands</label>
@@ -66,13 +66,15 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { lookFromGLTF } from '../sim/look.js';
 import { readBody, fk, M } from './mocap/skel.js?v=1';
-import { makeSolver, toMove } from './mocap/solve.js?v=12';
-import { fakePoints } from './mocap/synth.js?v=12';
+import { makeSolver, toMove } from './mocap/solve.js?v=13';
+import { fakePoints } from './mocap/synth.js?v=13';
 import { encodeQ } from './mocap/encq.js?v=1';
 import { decodeQ } from './libq.js?v=1';
+import { loadHMR, bodyRotations, boxOf, KP, KP_EDGES } from './mocap/hmr.js?v=13';
 const $ = id => document.getElementById(id);
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3', MODEL = k => `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${k}/float16/latest/pose_landmarker_${k}.task`;
 const HOLISTIC = 'https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task';
+const ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/', HMR_MODEL = 'https://huggingface.co/momolesang/InstantHMR/resolve/main/instanthmr-medium.onnx';
 const TEST_MOVE = 'h_b_w_crouch_to_stand_270_start_003__A342', FPS = 30;
 const S = readBody(await (await fetch('../body/soma23_box.xml')).text()), sol = makeSolver(S);
 const st = { mode: 'off', stream: null, tracker: null, trackerKind: '', test: null, last: null, frames: null, t0: 0, take: null, play: false, frame: 0, in: 0, out: 0, count: 0, seen: 0, fpsT: 0, fpsN: 0, gen: 0 };
@@ -154,6 +156,7 @@ function ui() {
   else if (st.mode === 'take') setState('Review');
 }
 function note() {   // what the tracker cannot see right now
+  if (st.rot) return;
   const v = st.last && st.last.world, see = (...k) => k.every(i => (v[i].visibility ?? 1) >= sol.opt.minVis);
   if (!v) { $('note').textContent = st.mode === 'live' || st.mode === 'rec' || st.mode === 'count' ? 'No body in view.' : ''; return; }
   const miss = []; if (!see(23, 25, 27) || !see(24, 26, 28)) miss.push('legs'); if (!see(11, 13, 15) || !see(12, 14, 16)) miss.push('arms');
@@ -162,6 +165,9 @@ function note() {   // what the tracker cannot see right now
 
 // ---------- tracking ----------
 async function loadTracker(kind) {
+  if (kind === 'hmr') {   // the rotation tracker; a light body tracker only finds him in the picture
+    if (!st.hmr) { const ort = await import(ORT + 'ort.webgpu.min.mjs'); ort.env.wasm.wasmPaths = ORT; st.hmr = await loadHMR(ort, HMR_MODEL, new URL('./mocap/', import.meta.url).href, t => { $('msg').textContent = t; }); }
+    kind = 'lite'; if (st.tracker && st.trackerKind === kind) return; }
   if (st.tracker && st.trackerKind === kind) return; if (st.tracker) { st.tracker.close(); st.tracker = null; }
   const { PoseLandmarker, HolisticLandmarker, FilesetResolver } = await import(MP + '/vision_bundle.mjs'), files = await FilesetResolver.forVisionTasks(MP + '/wasm');
   const make = delegate => kind === 'holistic' ? HolisticLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: HOLISTIC, delegate }, runningMode: 'VIDEO' })
@@ -181,7 +187,7 @@ async function start() {
       if (gen !== st.gen) { st.stream.getTracks().forEach(t => t.stop()); st.stream = null; return; }
       video.srcObject = st.stream; await video.play(); listCameras(); }
   } catch (e) { if (gen !== st.gen) return; stop(); setState(e && e.name === 'NotAllowedError' ? 'Camera blocked' : 'Error', 'err'); $('msg').hidden = false; $('msg').textContent = e && e.name === 'NotAllowedError' ? 'The browser blocked the camera. Allow camera access for this page, then start again.' : String(e && e.message || e); return; }
-  st.mode = 'live'; st.fpsT = performance.now(); st.fpsN = 0; $('vwrap').classList.toggle('test', !!st.test); ui(); setState('Tracking', 'live'); st.test ? testLoop(gen) : camLoop(gen);
+  st.mode = 'live'; st.fpsT = performance.now(); st.fpsN = 0; $('vwrap').classList.toggle('test', !!st.test); ui(); setState('Tracking', 'live'); st.rot = !st.test && $('model').value === 'hmr'; st.test ? testLoop(gen) : st.rot ? hmrLoop(gen) : camLoop(gen);
 }
 function stop() { st.gen++; if (st.stream) st.stream.getTracks().forEach(t => t.stop()); st.stream = null; video.srcObject = null; st.test = null; st.frames = null; st.take = null; st.play = false; st.mode = 'off'; $('big').hidden = true; drawPoints(null, over.width, over.height);
   $('msg').textContent = 'Start the camera, step back until your whole body is in view, then calibrate.'; ui(); }
@@ -197,6 +203,38 @@ function camLoop(gen) {
       const hands = hol ? { left: one(res.leftHandWorldLandmarks), right: one(res.rightHandWorldLandmarks), pic: [one(res.leftHandLandmarks), one(res.rightHandLandmarks)] } : null;
       onPoints(world, img, now / 1000, video.videoWidth, video.videoHeight, hands); } };
   const next = () => video.requestVideoFrameCallback ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); next();
+}
+// The rotation tracker. It needs a box around him: from its own picture points of the frame before, and from the
+// light body tracker at the start, every half second, and whenever it loses him.
+function hmrLoop(gen) {
+  let box = null, age = 0, lastT = -1;
+  const tick = async () => { if (gen !== st.gen) return;
+    if (video.readyState >= 2 && video.currentTime !== lastT && st.mode !== 'take') { lastT = video.currentTime; const now = performance.now(), w = video.videoWidth, h = video.videoHeight;
+      try {
+        if (!box || age >= 15) { const res = st.tracker.detectForVideo(video, now), pl = res.landmarks && res.landmarks[0], seen = pl && pl.filter(p => (p.visibility ?? 1) > 0.5);
+          const seed = seen && seen.length > 8 ? boxOf(seen.map(p => [p.x * w, p.y * h]), w, h) : null; if (seed || !pl) box = seed; age = 0; }
+        if (box) { const r = await st.hmr.step(video, box); if (gen !== st.gen) return; age++; box = boxOf(r.pts, w, h); onRot(r, now / 1000, w, h); } else onRot(null, now / 1000, w, h);
+      } catch (e) { console.warn(e); box = null; } }
+    video.requestVideoFrameCallback ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); };
+  tick();
+}
+function onRot(r, t, w, h) {
+  st.last = r ? { rot: r, t } : null; st.fpsN++; if (over.width !== w || over.height !== h) { over.width = w; over.height = h; } g.clearRect(0, 0, w, h);
+  if (t * 1000 - st.fpsT > 1000) { $('fps').textContent = Math.round(st.fpsN * 1000 / (t * 1000 - st.fpsT)) + ' fps'; st.fpsT = t * 1000; st.fpsN = 0; $('note').textContent = !r ? 'No body in view.' : st.calibrated ? '' : 'Not calibrated: stand straight, facing the camera, whole body in view.'; }
+  if (!r) return;
+  g.lineWidth = Math.max(2, w / 320); g.strokeStyle = '#e0a34a'; for (const [a, b] of KP_EDGES) { g.beginPath(); g.moveTo(r.pts[a][0], r.pts[a][1]); g.lineTo(r.pts[b][0], r.pts[b][1]); g.stroke(); }
+  const W = bodyRotations(st.hmr.map, S, r.state), mid = (a, b, c) => [(r.pts[a][0] + r.pts[b][0] + r.pts[c][0]) / 3, (r.pts[a][1] + r.pts[b][1] + r.pts[c][1]) / 3];
+  const feet = [mid(KP.rAnkle, KP.rHeel, KP.rToe), mid(KP.lAnkle, KP.lHeel, KP.lToe)], ppm = r.cam[2] > 0.3 ? r.focal / r.cam[2] : 0;   // pixels per metre at his distance from the camera
+  autoCalRot(W, t); const q = sol.solveRot(W, t, feet, ppm); drawPose(q, 0, sol.held);
+  if (st.mode === 'rec') { st.frames.push({ t: t - st.t0, q: Float64Array.from(q), mp: Array.from(r.params, v => +v.toFixed(4)), cam: r.cam.map(v => +v.toFixed(3)), ft: feet.map(f => f.map(Math.round)) });
+    setState('Recording ' + (t - st.t0).toFixed(1) + ' s', 'rec'); if (t - st.t0 > 120) finish(); }
+}
+// the same automatic calibration, read from the rotations: hips nearly upright and facing the camera, legs straight, feet still
+function autoCalRot(W, t) {
+  if (st.calibrated || st.mode !== 'live') { calT = 0; return; }
+  const H = W[0], tilt = Math.acos(Math.max(-1, Math.min(1, H[8]))) * 180 / Math.PI, yaw = Math.abs(Math.atan2(H[3], H[0])) * 180 / Math.PI, bend = b => { const R = W[S.id[b]], P = W[S.parent[S.id[b]]]; return Math.acos(Math.max(-1, Math.min(1, R[2] * P[2] + R[5] * P[5] + R[8] * P[8]))) * 180 / Math.PI; };
+  const sp = sol.footSpeed; if (!(tilt < 30 && yaw < 25 && bend('RightShin') < 25 && bend('LeftShin') < 25 && sp[0] < 0.15 && sp[1] < 0.15)) { calT = 0; return; } if (!calT) calT = t;
+  if (t - calT >= 1 && sol.calibrateRot(W)) { st.calibrated = true; setState('Calibrated', 'live'); setTimeout(() => { if (st.mode === 'live') setState('Tracking', 'live'); }, 1500); }
 }
 function testLoop(gen) {   // a library move stands in for the camera: its poses become tracked points
   const d = st.test, t0 = performance.now(); let lastF = -1;
@@ -239,7 +277,7 @@ function countdown(text, then) {
     if (n === 0) { big.hidden = true; then(); return; } big.hidden = false; big.innerHTML = n + '<small>' + text + '</small>'; n--; setTimeout(tick, 1000); };
   tick();
 }
-$('cal').onclick = () => countdown('Stand straight, facing the camera', () => { st.mode = 'live'; const okc = st.last && sol.calibrate(st.last.world); if (okc) st.calibrated = true; ui(); setState(okc ? 'Calibrated' : 'Calibration failed: no body in view', okc ? 'live' : 'err'); if (okc) setTimeout(() => { if (st.mode === 'live') setState('Tracking', 'live'); }, 1500); });
+$('cal').onclick = () => countdown('Stand straight, facing the camera', () => { st.mode = 'live'; const okc = st.last && (st.last.rot ? sol.calibrateRot(bodyRotations(st.hmr.map, S, st.last.rot.state)) : sol.calibrate(st.last.world)); if (okc) st.calibrated = true; ui(); setState(okc ? 'Calibrated' : 'Calibration failed: no body in view', okc ? 'live' : 'err'); if (okc) setTimeout(() => { if (st.mode === 'live') setState('Tracking', 'live'); }, 1500); });
 $('rec').onclick = () => { if (st.mode === 'rec') return finish(); if (st.mode === 'count') { st.mode = 'live'; $('big').hidden = true; ui(); setState('Tracking', 'live'); return; }
   if (st.mode === 'take') return; countdown('Recording starts', () => { sol.home(); st.frames = []; st.t0 = performance.now() / 1000; st.mode = 'rec'; ui(); }); };
 function finish() {
@@ -265,7 +303,7 @@ const save = (blob, file) => { const a = document.createElement('a'); a.href = U
 const fileName = () => ($('name').value.trim().replace(/[^\w.-]+/g, '_') || 'rec');
 function trimmed() { const { mv } = st.take, T = st.out - st.in + 1; return { T, q: mv.q.slice(st.in * 73, (st.out + 1) * 73) }; }
 $('dlQ').onclick = async () => { const m = trimmed(); save(new Blob([await encodeQ(m.q, m.T)], { type: 'application/octet-stream' }), fileName() + '.q'); };
-$('dlRaw').onclick = () => save(new Blob([JSON.stringify({ about: 'MediaPipe Pose Landmarker points of one recording: lm = world points (x, y, z in metres, visibility), im = the same points in the picture (x, y from 0 to 1), asp = picture width / height, hd = the hand tracker\'s 21 world points for the left and the right hand', model: st.trackerKind || 'test', frames: st.take.raw.map(f => ({ t: +f.t.toFixed(4), lm: f.lm, im: f.im, asp: f.asp, hd: f.hd })) })], { type: 'application/json' }), fileName() + '.tracking.json');
+$('dlRaw').onclick = () => save(new Blob([JSON.stringify({ about: 'MediaPipe Pose Landmarker points of one recording: lm = world points (x, y, z in metres, visibility), im = the same points in the picture (x, y from 0 to 1), asp = picture width / height, hd = the hand tracker\'s 21 world points for the left and the right hand. Rotation tracker: mp = the 204 rig parameters, cam = his position from the camera (m), ft = the feet in the picture (pixels)', model: st.rot ? 'instanthmr-medium' : st.trackerKind || 'test', frames: st.take.raw.map(f => f.mp ? { t: +f.t.toFixed(4), mp: f.mp, cam: f.cam, ft: f.ft } : { t: +f.t.toFixed(4), lm: f.lm, im: f.im, asp: f.asp, hd: f.hd }) })], { type: 'application/json' }), fileName() + '.tracking.json');
 addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' && e.target.type === 'text') return; const k = e.key.toLowerCase();
   if (k === ' ') { e.preventDefault(); playPause(); } else if (k === 'r' && !$('rec').disabled) $('rec').click(); else if (st.mode === 'take' && k === 'i') $('trimIn').click(); else if (st.mode === 'take' && k === 'o') $('trimOut').click(); });
 ui();

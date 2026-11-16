@@ -80,9 +80,13 @@ export function makeSolver(S, opt = {}) {
     const px = i => [img[i].x * aspect, img[i].y]; let ppm = 0;
     for (const [a, b] of [[11, 23], [12, 24], [23, 25], [24, 26], [25, 27], [26, 28]]) { const lw = Math.hypot(lm[a].x - lm[b].x, lm[a].y - lm[b].y, lm[a].z - lm[b].z), A = px(a), B = px(b); if (lw > 0.15) ppm = Math.max(ppm, Math.hypot(A[0] - B[0], A[1] - B[1]) / lw); }
     if (!(ppm > 0)) return [1, 1]; mem.ppm = mem.ppm ? mem.ppm + 0.1 * (ppm - mem.ppm) : ppm;
-    return SIDE.map((d, i) => { const p = [d.an, d.he, d.to].map(px), c = [(p[0][0] + p[1][0] + p[2][0]) / 3, (p[0][1] + p[1][1] + p[2][1]) / 3], m = mem.foot[i]; let st = 1;
-      if (m && dt > 0) { const a = 1 - Math.exp(-dt / 0.08); for (let k = 0; k < 2; k++) m.v[k] += a * ((c[k] - m.c[k]) / dt / mem.ppm - m.v[k]); m.speed = Math.hypot(m.v[0], m.v[1]); st = clamp01((0.35 - m.speed) / 0.23); }
-      mem.foot[i] = { c, v: m ? m.v : [0, 0], speed: m ? m.speed : 0 }; return st; });
+    return footStill(SIDE.map(d => { const p = [d.an, d.he, d.to].map(px); return [(p[0][0] + p[1][0] + p[2][0]) / 3, (p[0][1] + p[1][1] + p[2][1]) / 3]; }), mem.ppm, dt);
+  }
+  // c: where each foot is in the picture (right, left), ppm: picture units per metre at his distance
+  function footStill(c, ppm, dt) {
+    return c.map((ci, i) => { const m = mem.foot[i]; let st = 1;
+      if (m && dt > 0) { const a = 1 - Math.exp(-dt / 0.08); for (let k = 0; k < 2; k++) m.v[k] += a * ((ci[k] - m.c[k]) / dt / ppm - m.v[k]); m.speed = Math.hypot(m.v[0], m.v[1]); st = clamp01((0.35 - m.speed) / 0.23); }
+      mem.foot[i] = { c: ci, v: m ? m.v : [0, 0], speed: m ? m.speed : 0 }; return st; });
   }
 
   // The hand's direction and its knuckle line (little finger to index), in the game's axes. From the hand tracker's
@@ -142,6 +146,12 @@ export function makeSolver(S, opt = {}) {
         if (ik) { tgt[id[d.LG]] = ik[0]; tgt[id[d.SN]] = ik[1]; } else { tgt[id[d.LG]] = aim(a, f, rest(d.SN), X0); tgt[id[d.SN]] = aim(b, f, rest(d.FT), X0); }
         if (foot) { const Rt = footOf(P, d); if (Rt) tgt[id[d.FT]] = M.mul(Rt, M.T(footCal[si])); } }
     });
+    return finish(tgt, wt, still, !!img);
+  }
+
+  // From each body's wanted world rotation (tgt, with trust wt) to the pose: hinge angles, then the hips in the room and
+  // the feet on the floor. Shared by both kinds of tracker. still: how still each foot is in the picture; pic: whether that is known.
+  function finish(tgt, wt, still, pic) {
     // world rotations -> hinge angles, joint by joint; a joint without a tracked rotation keeps its angles
     const out = new Float64Array(q), Rw = new Array(nb); Rw[0] = tgt[0];
     let qr = M.toQuat(Rw[0]); if (qr[0] * q[3] + qr[1] * q[4] + qr[2] * q[5] + qr[3] * q[6] < 0) qr = qr.map(v => -v);
@@ -162,7 +172,7 @@ export function makeSolver(S, opt = {}) {
     const pv = [null, null], g = [0, 0];
     SIDE.forEach((d, i) => { const ft = id[d.FT], tb = id[d.TB], zf = K.p[ft][2] - RAD[ft], zt = K.p[tb][2] - RAD[tb], h = Math.min(zf, zt) - low;
       const shinUp = K.p[id[d.SN]][2] - K.p[ft][2] > 0.2;   // the knee well above the ankle: a foot he stands on, not a leg lying on the floor
-      g[i] = o.travel && !!tgt[id[d.LG]] && wt[id[d.LG]] > 0.5 && shinUp ? (img ? clamp01((0.10 - h) / 0.05) * still[i] : clamp01((0.05 - h) / 0.025)) : 0;   // with the picture: low and not moving; without it: low
+      g[i] = o.travel && !!tgt[id[d.LG]] && wt[id[d.LG]] > 0.5 && shinUp ? (pic ? clamp01((0.10 - h) / 0.05) * still[i] : clamp01((0.05 - h) / 0.025)) : 0;   // with the picture: low and not moving; without it: low
       const toe = root.toe[i] ? zt < zf + 0.005 : zt < zf - 0.01; if (toe !== root.toe[i]) { root.toe[i] = toe; root.lock[i] = null; }   // the held point changed: hold the new one where it is now
       pv[i] = toe ? K.p[tb] : K.p[ft]; if (!g[i]) root.lock[i] = null; });
     let sx = 0, sy = 0, sw = 0; SIDE.forEach((d, i) => { const L = root.lock[i]; if (L) { sx += g[i] * (L[0] - pv[i][0]); sy += g[i] * (L[1] - pv[i][1]); sw += g[i]; } });
@@ -171,7 +181,7 @@ export function makeSolver(S, opt = {}) {
       if (!L) root.lock[i] = at;   // a foot that has just landed is held where it landed
       else { const e = Math.hypot(at[0] - L[0], at[1] - L[1]), k = e > 0.2 ? 1 : Math.max(1 - g[i], clamp01((e - 0.03) / 0.1) * 0.4); L[0] += (at[0] - L[0]) * k; L[1] += (at[1] - L[1]) * k; } });   // a lifting or dragged foot takes its spot with it
     out[0] = root.xy[0]; out[1] = root.xy[1]; out[2] = -low;
-    SIDE.forEach((d, i) => { const L = root.lock[i], f0 = mem.fw[d.LG]; if (!L || !f0 || !g[i]) return;
+    SIDE.forEach((d, i) => { const L = root.lock[i]; if (!L || !g[i]) return; const RL = Rw[id[d.LG]], f0 = [RL[0], RL[3], RL[6]];   // the knee's hinge axis: the thigh's own x axis
       const lg = id[d.LG], sn = id[d.SN], ft = id[d.FT], tb = id[d.TB], H = [root.xy[0] + K.p[lg][0], root.xy[1] + K.p[lg][1], K.p[lg][2] - low];
       // a held foot that is nearly flat is flat (the tracked foot angle wobbles by several degrees), and it rests on the floor
       const fwd = [-Rw[ft][1], -Rw[ft][4], -Rw[ft][7]], fh = V.perp(fwd, Z0);
@@ -183,7 +193,16 @@ export function makeSolver(S, opt = {}) {
     q = out; return out;
   }
   const home = () => { root.xy = [0, 0]; root.lock = [null, null]; };   // the hips back over the origin (a new recording starts here)
-  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get twist() { return mem.tw.slice(); }, get footSpeed() { return mem.foot.map(m => m ? m.speed : 0); }, get footCal() { return footCal; }, get performerLeg() { return perf.leg; }, get held() { return SIDE.filter((d, i) => root.lock[i] && root.g && root.g[i] > 0.5).map(d => id[d.FT]); }, get contacts() { return SIDE.map((d, i) => ({ g: root.g ? root.g[i] : 0, pt: root.pt ? root.pt[i] : null })); } };
+  // A tracker that gives joint rotations (InstantHMR): W = each body's world rotation in the game's axes, as the camera
+  // sees him. feet: where the right and the left foot are in the picture (pixels), ppm: pixels per metre at his distance.
+  function solveRot(W, t, feet = null, ppm = 0) {
+    const dt = mem.tF === undefined ? 0 : t - mem.tF; mem.tF = t;
+    const still = feet && ppm > 0 ? footStill(feet, ppm, dt) : [1, 1];
+    return finish(W.map(R => R ? M.mul(cal, R) : null), new Array(nb).fill(1), still, !!(feet && ppm > 0));
+  }
+  // he stands straight, facing the camera: the hips' rotation at this moment counts as upright and facing forward
+  function calibrateRot(W) { if (!W[0] || !W[0].every(Number.isFinite)) return false; cal = M.T(W[0]); return true; }
+  return { solve, calibrate, solveRot, calibrateRot, reset, home, opt: o, get pose() { return q; }, get twist() { return mem.tw.slice(); }, get footSpeed() { return mem.foot.map(m => m ? m.speed : 0); }, get footCal() { return footCal; }, get performerLeg() { return perf.leg; }, get held() { return SIDE.filter((d, i) => root.lock[i] && root.g && root.g[i] > 0.5).map(d => id[d.FT]); }, get contacts() { return SIDE.map((d, i) => ({ g: root.g ? root.g[i] : 0, pt: root.pt ? root.pt[i] : null })); } };
 }
 
 // A finished recording: frames taken at the camera's own times -> 30 frames a second, lightly smoothed.
