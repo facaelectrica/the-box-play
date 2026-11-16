@@ -11,7 +11,7 @@ if (di > 0) {   // poses and this file's body positions, for the MuJoCo comparis
   const d = await load(pick[0]), fr = [0, 10, 50, d.T - 1].map(t => ({ q: Array.from(d.q.slice(t * 73, t * 73 + 73)), p: fk(S, d.q, t * 73).p }));
   fs.writeFileSync(process.argv[di + 1], JSON.stringify({ names: S.names, fr })); process.exit(0); }
 const LIMBS = ['RightForeArm', 'RightHand', 'LeftForeArm', 'LeftHand', 'RightShin', 'RightFoot', 'LeftShin', 'LeftFoot', 'Head'];
-const TW = ['RightLeg', 'RightShin', 'LeftLeg', 'LeftShin', 'RightArm', 'RightForeArm', 'LeftArm', 'LeftForeArm'], rot = {}; let slide = 0, heldN = 0, trav = 0, travLen = 0, zErr = 0; let n = 0, sum = 0, worst = 0, worstAt = '', sumL = 0, nL = 0, jump = 0, encWorst = 0, wraps = 0, big = 0; const per = {};
+const TW = ['RightFoot', 'LeftFoot', 'RightLeg', 'RightShin', 'LeftLeg', 'LeftShin', 'RightArm', 'RightForeArm', 'LeftArm', 'LeftForeArm'], rot = {}; let slide = 0, heldN = 0, trav = 0, travLen = 0, zErr = 0; let n = 0, sum = 0, worst = 0, worstAt = '', sumL = 0, nL = 0, jump = 0, encWorst = 0, wraps = 0, big = 0; const per = {};
 const S2 = JSON.parse(JSON.stringify(S)); for (const n of ['RightShin', 'RightFoot', 'LeftShin', 'LeftFoot']) S2.off[S2.id[n]] = S2.off[S2.id[n]].map(v => v * 0.89); for (const n of ['RightLeg', 'LeftLeg']) S2.off[S2.id[n]][0] *= 1.15;
 const other = process.argv.includes('--other'), SP = other ? S2 : S; if (other) console.log('performer with legs 11% shorter and hips 15% wider than his');
 for (const f of pick) {

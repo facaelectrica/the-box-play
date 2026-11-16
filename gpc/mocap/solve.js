@@ -27,9 +27,12 @@ export function makeSolver(S, opt = {}) {
     { s: -1, sh: LM.rSh, el: LM.rEl, wr: LM.rWr, pk: LM.rPk, ix: LM.rIx, hip: LM.rHip, kn: LM.rKn, an: LM.rAn, he: LM.rHe, to: LM.rTo, A: 'RightArm', FA: 'RightForeArm', H: 'RightHand', SH: 'RightShoulder', LG: 'RightLeg', SN: 'RightShin', FT: 'RightFoot', TB: 'RightToeBase' },
     { s: 1, sh: LM.lSh, el: LM.lEl, wr: LM.lWr, pk: LM.lPk, ix: LM.lIx, hip: LM.lHip, kn: LM.lKn, an: LM.lAn, he: LM.lHe, to: LM.lTo, A: 'LeftArm', FA: 'LeftForeArm', H: 'LeftHand', SH: 'LeftShoulder', LG: 'LeftLeg', SN: 'LeftShin', FT: 'LeftFoot', TB: 'LeftToeBase' } ];
   const RAD = S.names.map(n => /Toe/.test(n) ? 0.025 : /Foot/.test(n) ? 0.075 : n === 'Head' ? 0.11 : /Hand|ForeArm/.test(n) ? 0.04 : 0.08);   // rough distance from a joint to the skin
-  let q, cal, headCal, filt, tPrev, mem, root, perf;
+  let q, cal, headCal, footCal, filt, tPrev, mem, root, perf;
+  // The tracker's heel point sits higher than its toe point: on a flat foot the line from heel to toe tilts about 26
+  // degrees down (measured on the user's camera, Nov 16). This is the default correction; Calibrate measures it per foot.
+  const FOOT0 = M.euler(0.46, 0, 0);
   const LEG = V.len(S.off[id.RightShin]) + V.len(S.off[id.RightFoot]);   // his own leg, hip joint to ankle
-  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0] }; root = { xy: [0, 0], lock: [null, null], on: [false, false] }; perf = { leg: null }; }
+  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); footCal = [FOOT0, FOOT0]; filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0] }; root = { xy: [0, 0], lock: [null, null], on: [false, false] }; perf = { leg: null }; }
   reset();
 
   // tracked points -> the game's axes (x to his left, y behind him, z up), steadied
@@ -50,8 +53,12 @@ export function makeSolver(S, opt = {}) {
   // forward (this removes the camera's own tilt), and the head's angle at this moment counts as level.
   function calibrate(lm) { const P = lm.map(l => [l.x, l.z, -l.y]), T = torso(P); if (!T.pelvis.every(Number.isFinite)) return false;
     cal = M.T(T.pelvis); const Pc = P.map(p => M.vec(cal, p)), T2 = torso(Pc), H = headOf(Pc);
-    headCal = H.every(Number.isFinite) ? M.mul(M.T(T2.chest), H) : M.I(); filt = null; mem.fw = {}; perf.leg = null; return true; }
+    headCal = H.every(Number.isFinite) ? M.mul(M.T(T2.chest), H) : M.I(); filt = null; mem.fw = {}; perf.leg = null;
+    SIDE.forEach((d, i) => { const Rt = footOf(Pc, d), f = Rt && V.perp([-Rt[1], -Rt[4], -Rt[7]], Z0); if (!Rt || !ok3(f)) return;   // he stands flat now: what the tracker shows is the correction
+      const C = M.mul(M.T(aim(f, Z0, [0, -1, 0], Z0)), Rt), ang = Math.acos(Math.max(-1, Math.min(1, (C[0] + C[4] + C[8] - 1) / 2))); if (ang < 1) footCal[i] = C; });
+    return true; }
 
+  const footOf = (P, d) => { const fwd = V.sub(P[d.to], P[d.he]); if (!ok3(fwd)) return null; const up = V.perp(V.sub(P[d.an], P[d.he]), V.norm(fwd)); return ok3(up) ? aim(fwd, up, [0, -1, 0], Z0) : null; };
   // two-bone IK for a leg: hip joint H, ankle wanted at Tg, bending around the side axis f0
   function legIK(d, H, Tg, f0) { const sn = id[d.SN], ft = id[d.FT], L1 = V.len(S.off[sn]), L2 = V.len(S.off[ft]), D = V.sub(Tg, H), dl = V.len(D); if (dl < 1e-4) return null;
     const dd = Math.max(Math.abs(L1 - L2) + 1e-3, Math.min(L1 + L2 - 1e-3, dl)), u = V.mul(D, 1 / dl), fp = V.perp(f0, u); if (!ok3(fp)) return null;
@@ -88,6 +95,7 @@ export function makeSolver(S, opt = {}) {
         if (o.hands && see(d.pk, d.ix)) { const dir = V.sub(V.mid(P[d.ix], P[d.pk]), P[d.wr]), nrm = V.mul(V.cross(dir, V.sub(P[d.ix], P[d.pk])), -d.s);
           if (ok3(dir) && ok3(V.perp(nrm, V.norm(dir)))) { const Rh = aim(dir, nrm, [d.s, 0, 0], Z0), qh = M.toQuat(M.mul(M.T(Rf), Rh));
             let tw = 2 * Math.atan2(qh[1], qh[0]); if (tw > Math.PI) tw -= 2 * Math.PI; if (tw < -Math.PI) tw += 2 * Math.PI;   // the hand's turn around the forearm goes into the forearm
+            tw = mem.tw[si] + Math.max(-0.25, Math.min(0.25, tw - mem.tw[si] - 2 * Math.PI * Math.round((tw - mem.tw[si]) / (2 * Math.PI))));   // no sudden turns: the hand points are noisy
             tw = Math.max(-1.6, Math.min(1.6, tw)); mem.tw[si] = tw; Rf = M.mul(Rf, M.euler(tw, 0, 0)); tgt[id[d.H]] = Rh; } }
         else Rf = M.mul(Rf, M.euler(mem.tw[si], 0, 0));
         tgt[id[d.FA]] = Rf; }
@@ -101,7 +109,7 @@ export function makeSolver(S, opt = {}) {
         const sc = o.fit && perf.leg ? Math.max(0.7, Math.min(1.45, LEG / perf.leg)) : 1, Hr = M.vec(Rp, S.off[id.RightLeg]), Hl = M.vec(Rp, S.off[id.LeftLeg]);
         const ik = o.fit ? legIK(d, d.s < 0 ? Hr : Hl, V.add(V.mid(Hr, Hl), V.mul(V.sub(P[d.an], V.mid(P[LM.lHip], P[LM.rHip])), sc)), f) : null;
         if (ik) { tgt[id[d.LG]] = ik[0]; tgt[id[d.SN]] = ik[1]; } else { tgt[id[d.LG]] = aim(a, f, rest(d.SN), X0); tgt[id[d.SN]] = aim(b, f, rest(d.FT), X0); }
-        if (foot && ok3(fwd)) { const up = V.perp(V.sub(P[d.an], P[d.he]), V.norm(fwd)); if (ok3(up)) tgt[id[d.FT]] = aim(fwd, up, [0, -1, 0], Z0); } }
+        if (foot) { const Rt = footOf(P, d); if (Rt) tgt[id[d.FT]] = M.mul(Rt, M.T(footCal[si])); } }
     });
     // world rotations -> hinge angles, joint by joint; a joint without a tracked rotation keeps its angles
     const out = new Float64Array(q), Rw = new Array(nb); Rw[0] = tgt[0];
@@ -132,7 +140,7 @@ export function makeSolver(S, opt = {}) {
     q = out; return out;
   }
   const home = () => { root.xy = [0, 0]; root.lock = [null, null]; };   // the hips back over the origin (a new recording starts here)
-  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get performerLeg() { return perf.leg; }, get held() { return SIDE.filter((d, i) => root.lock[i]).map(d => id[d.FT]); } };
+  return { solve, calibrate, reset, home, opt: o, get pose() { return q; }, get footCal() { return footCal; }, get performerLeg() { return perf.leg; }, get held() { return SIDE.filter((d, i) => root.lock[i]).map(d => id[d.FT]); } };
 }
 
 // A finished recording: frames taken at the camera's own times -> 30 frames a second, lightly smoothed.
