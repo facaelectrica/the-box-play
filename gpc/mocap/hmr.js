@@ -53,7 +53,7 @@ export async function loadHMR(ort, modelUrl, here, say = () => {}) {
     try { if (cache) await cache.put(url, new Response(buf, { headers: { 'content-type': 'application/octet-stream' } })); } catch (_) {}
     return buf.buffer;
   };
-  const jget = async f => (await fetch(here + f)).json(), map = await jget('mhr_map.json?v=1'), rig = await jget('mhr_rig.json?v=1'), netBuf = await get(modelUrl, 'the tracker');
+  const jget = async f => (await fetch(here + f)).json(), map = await jget('mhr_map.json?v=2'), rig = await jget('mhr_rig.json?v=1'), netBuf = await get(modelUrl, 'the tracker');
   say('Preparing the tracker on the GPU. The first time takes about 10 seconds.');
   let net, gpu = true; try { net = await ort.InferenceSession.create(netBuf, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all' }); }
   catch (e) { console.warn('No WebGPU for the tracker; using the CPU, which is slow', e); gpu = false; net = await ort.InferenceSession.create(netBuf, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' }); }

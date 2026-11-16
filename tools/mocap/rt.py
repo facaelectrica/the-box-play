@@ -44,7 +44,9 @@ def rest_offsets():
         ch = lambda c: [c] + (ch(next(k for k in range(127) if par[k] == c)) if any(par[k] == c for k in range(127)) else [])
         chains = [ch(c) for c in fingers]; info[side + ' chains'] = [len(c) for c in chains]
         A['_' + side] = (wr, chains)
-        mid, ix, pk = chains[2][0], chains[1][0], chains[4][1]           # middle and index knuckles, little-finger knuckle
+        # the rig's finger chains, in its joint order: little finger (with its hand bone first), ring, middle, index, thumb.
+        # Checked against InstantHMR's own keypoint table (mhr_j127_to_kp70): index knuckle 56 / 92, middle 52 / 88, little 44 / 80.
+        mid, ix, pk = chains[2][0], chains[3][0], chains[0][1]
         dirh = P0[mid] - P0[wr]; A[side + 'Hand'] = aim(dirh, np.cross(dirh, P0[ix] - P0[pk]) * -s, [s, 0, 0], Z0)
         d_th, d_sh = P0[kn] - P0[hip], P0[an] - P0[kn]; hx = hinge(kn, X0)
         A[side + 'Leg'] = aim(d_th, hx, off[ID[side + 'Shin']], X0); A[side + 'Shin'] = aim(d_sh, hx, off[ID[side + 'Foot']], X0)
@@ -75,10 +77,18 @@ def retarget(mhr_params):
     q = np.zeros(73); q[3:7] = mquat(W['Hips'])
     for b in range(1, 23): q[7 + 3 * (b - 1): 10 + 3 * (b - 1)] = euler_xyz(W[names[parent[b]]].T @ W[names[b]])
     return q, W, R, P
+def check_rest():
+    """A guard against a wrong mapping: with the rig in its rest pose, no joint of his may sit at an angle a body cannot reach.
+    (A wrong finger order once put the wrist at 138 degrees; this would have caught it.)"""
+    q, W, R, P = retarget(np.zeros(204))
+    for s in ('Right', 'Left'):
+        L = W[s + 'ForeArm'].T @ W[s + 'Hand']; a = np.degrees(np.arccos(np.clip((np.trace(L) - 1) / 2, -1, 1))); assert a < 45, f'{s} wrist at {a:.0f} degrees in the rest pose'
+        L = W[s + 'Shin'].T @ W[s + 'Foot']; a = np.degrees(np.arccos(np.clip((np.trace(L) - 1) / 2, -1, 1))); assert a < 45, f'{s} ankle at {a:.0f} degrees in the rest pose'
 def soma_fk(q):
     p = [q[:3].copy()]; w, x, y, z = q[3:7]; R = [qmat(np.array([x, y, z, w]))]
     for b in range(1, 23): a = parent[b]; p.append(p[a] + R[a] @ off[b]); R.append(R[a] @ eul(*q[7 + 3 * (b - 1): 10 + 3 * (b - 1)]))
     return np.array(p), R
+check_rest()
 if __name__ == '__main__':
     A, info = rest_offsets()
     for k, v in info.items(): print(k, v)
