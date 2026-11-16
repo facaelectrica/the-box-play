@@ -1,7 +1,7 @@
 // Checks for the camera recording maths (run: node gpc/mocap/test.mjs [clip ids...]). No camera is involved:
 // library moves are turned into the points a tracker would report, solved back into poses, and compared.
 import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'url';
-import { readBody, fk, M } from './skel.js'; import { makeSolver, toMove } from './solve.js'; import { fakePoints } from './synth.js';
+import { readBody, fk, M } from './skel.js'; import { makeSolver, toMove } from './solve.js'; import { fakePoints, fakeHands } from './synth.js';
 import { encodeQ } from './encq.js'; import { decodeQ } from '../libq.js';
 const here = path.dirname(fileURLToPath(import.meta.url)), S = readBody(fs.readFileSync(path.join(here, '../../body/soma23_box.xml'), 'utf8'));
 const clipDir = path.join(here, '../clips'), all = fs.readdirSync(clipDir).filter(f => f.endsWith('.q'));
@@ -11,14 +11,14 @@ if (di > 0) {   // poses and this file's body positions, for the MuJoCo comparis
   const d = await load(pick[0]), fr = [0, 10, 50, d.T - 1].map(t => ({ q: Array.from(d.q.slice(t * 73, t * 73 + 73)), p: fk(S, d.q, t * 73).p }));
   fs.writeFileSync(process.argv[di + 1], JSON.stringify({ names: S.names, fr })); process.exit(0); }
 const LIMBS = ['RightForeArm', 'RightHand', 'LeftForeArm', 'LeftHand', 'RightShin', 'RightFoot', 'LeftShin', 'LeftFoot', 'Head'];
-const TW = ['RightFoot', 'LeftFoot', 'RightLeg', 'RightShin', 'LeftLeg', 'LeftShin', 'RightArm', 'RightForeArm', 'LeftArm', 'LeftForeArm'], rot = {}; const usePic = !process.argv.includes('--nopic'); let onN = 0, missed = 0, offN = 0, falseHold = 0, slide = 0, heldN = 0, trav = 0, travLen = 0, zErr = 0; let n = 0, sum = 0, worst = 0, worstAt = '', sumL = 0, nL = 0, jump = 0, encWorst = 0, wraps = 0, big = 0; const per = {};
+const TW = ['RightHand', 'LeftHand', 'RightFoot', 'LeftFoot', 'RightLeg', 'RightShin', 'LeftLeg', 'LeftShin', 'RightArm', 'RightForeArm', 'LeftArm', 'LeftForeArm'], rot = {}; const usePic = !process.argv.includes('--nopic'), useHands = !process.argv.includes('--nohands'); let onN = 0, missed = 0, offN = 0, falseHold = 0, slide = 0, heldN = 0, trav = 0, travLen = 0, zErr = 0; let n = 0, sum = 0, worst = 0, worstAt = '', sumL = 0, nL = 0, jump = 0, encWorst = 0, wraps = 0, big = 0; const per = {};
 const S2 = JSON.parse(JSON.stringify(S)); for (const n of ['RightShin', 'RightFoot', 'LeftShin', 'LeftFoot']) S2.off[S2.id[n]] = S2.off[S2.id[n]].map(v => v * 0.89); for (const n of ['RightLeg', 'LeftLeg']) S2.off[S2.id[n]][0] *= 1.15;
 const other = process.argv.includes('--other'), SP = other ? S2 : S; if (other) console.log('performer with legs 11% shorter and hips 15% wider than his');
 for (const f of pick) {
   const d = await load(f), sol = makeSolver(S, { smooth: 0 }), frames = []; let prev = null, pk = null, ph = []; const truePrev = [null, null]; let floorZ = 1e9; for (let tt = 0; tt < d.T; tt++) { const Kt = fk(SP, d.q, tt * 73); for (const nm of ['RightFoot', 'LeftFoot']) floorZ = Math.min(floorZ, Kt.p[S.id[nm]][2] - 0.075); for (const nm of ['RightToeBase', 'LeftToeBase']) floorZ = Math.min(floorZ, Kt.p[S.id[nm]][2] - 0.025); }
   for (let t = 0; t < d.T; t++) {
     const o = t * 73, fp = fakePoints(SP, d.q, o), Kp = fk(SP, d.q, o), mid = [0, 1, 2].map(k => (Kp.p[S.id.RightLeg][k] + Kp.p[S.id.LeftLeg][k]) / 2);
-    const img = usePic ? fp.map(p => ({ x: 0.5 + (p.x + mid[0]) / 4, y: 0.5 + (p.y - mid[2]) / 4 + (p.z + mid[1]) / 12 })) : null, out = sol.solve(fp, t / 30, img, 1);   // a camera in front of him and a little above: depth shows as height in the picture
+    const img = usePic ? fp.map(p => ({ x: 0.5 + (p.x + mid[0]) / 4, y: 0.5 + (p.y - mid[2]) / 4 + (p.z + mid[1]) / 12 })) : null, out = sol.solve(fp, t / 30, img, 1, useHands ? fakeHands(SP, d.q, o) : null);   // a camera in front of him and a little above: depth shows as height in the picture
     { const c = sol.contacts; [['RightFoot', 'RightToeBase'], ['LeftFoot', 'LeftToeBase']].forEach(([f, tb], i) => { const zf = Kp.p[S.id[f]][2] - 0.075, zt = Kp.p[S.id[tb]][2] - 0.025, pvt = zt < zf ? Kp.p[S.id[tb]] : Kp.p[S.id[f]], pp = truePrev[i];
       if (pp) { const sp = Math.hypot(pvt[0] - pp[0], pvt[1] - pp[1]) * 30, on = Math.min(zf, zt) - floorZ < 0.04 && sp < 0.25, off = Math.min(zf, zt) - floorZ > 0.08 || sp > 0.6, got = c[i].g > 0.5; if (on) { onN++; if (!got) missed++; } if (off) { offN++; if (got) falseHold++; } } truePrev[i] = pvt; }); } frames.push({ t: t / 30, q: out });
     { const c = sol.contacts; c.forEach((k, i) => { const p = pk && pk[i]; if (k.g === 1 && k.pt && p && p.g === 1 && p.pt && p.pt[2] === k.pt[2]) { slide = Math.max(slide, Math.hypot(k.pt[0] - p.pt[0], k.pt[1] - p.pt[1]) * 100); heldN++; } }); pk = c; }

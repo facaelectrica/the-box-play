@@ -26,13 +26,15 @@ export function makeSolver(S, opt = {}) {
   const SIDE = [   // right, then left: the points and bodies of one arm and one leg
     { s: -1, sh: LM.rSh, el: LM.rEl, wr: LM.rWr, pk: LM.rPk, ix: LM.rIx, hip: LM.rHip, kn: LM.rKn, an: LM.rAn, he: LM.rHe, to: LM.rTo, A: 'RightArm', FA: 'RightForeArm', H: 'RightHand', SH: 'RightShoulder', LG: 'RightLeg', SN: 'RightShin', FT: 'RightFoot', TB: 'RightToeBase' },
     { s: 1, sh: LM.lSh, el: LM.lEl, wr: LM.lWr, pk: LM.lPk, ix: LM.lIx, hip: LM.lHip, kn: LM.lKn, an: LM.lAn, he: LM.lHe, to: LM.lTo, A: 'LeftArm', FA: 'LeftForeArm', H: 'LeftHand', SH: 'LeftShoulder', LG: 'LeftLeg', SN: 'LeftShin', FT: 'LeftFoot', TB: 'LeftToeBase' } ];
-  const RAD = S.names.map(n => /Toe/.test(n) ? 0.025 : /Foot/.test(n) ? 0.075 : n === 'Head' ? 0.11 : /Hand|ForeArm/.test(n) ? 0.04 : 0.08);   // rough distance from a joint to the skin
+  // distance from each joint down to the body's surface. Feet and toes: the game body's own soles (4.5 cm under the
+  // ankle joint; the toe joint lies 0.6 cm under the sole plane). The rest are rough.
+  const RAD = S.names.map(n => /Toe/.test(n) ? -0.006 : /Foot/.test(n) ? 0.045 : n === 'Head' ? 0.11 : /Hand|ForeArm/.test(n) ? 0.04 : 0.08);
   let q, cal, headCal, footCal, filt, tPrev, mem, root, perf;
   // The tracker's heel point sits higher than its toe point: on a flat foot the line from heel to toe tilts about 26
   // degrees down (measured on the user's camera, Nov 16). This is the default correction; Calibrate measures it per foot.
   const FOOT0 = M.euler(0.46, 0, 0);
   const LEG = V.len(S.off[id.RightShin]) + V.len(S.off[id.RightFoot]);   // his own leg, hip joint to ankle
-  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); footCal = [FOOT0, FOOT0]; filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0], foot: [null, null] }; root = { xy: [0, 0], lock: [null, null], toe: [false, false], g: null, pt: null }; perf = { leg: null }; }
+  function reset() { q = standPose(S); cal = M.I(); headCal = M.I(); footCal = [FOOT0, FOOT0]; filt = null; tPrev = null; mem = { fw: {}, tw: [0, 0], foot: [null, null], hf: [null, null] }; root = { xy: [0, 0], lock: [null, null], toe: [false, false], g: null, pt: null }; perf = { leg: null }; }
   reset();
 
   // tracked points -> the game's axes (x to his left, y behind him, z up), steadied
@@ -83,7 +85,18 @@ export function makeSolver(S, opt = {}) {
       mem.foot[i] = { c, v: m ? m.v : [0, 0], speed: m ? m.speed : 0 }; return st; });
   }
 
-  function solve(lm, t, img = null, aspect = 1) {
+  // The hand's direction and its knuckle line (little finger to index), in the game's axes. From the hand tracker's
+  // 21 points when it found the hand (wrist 0, index knuckle 5, middle knuckle 9, little-finger knuckle 17), otherwise
+  // from the body tracker's three rough hand points.
+  function handOf(d, si, hands, P, vis) {
+    const hp = hands && (d.s < 0 ? hands.right : hands.left), g = p => M.vec(cal, [p.x, p.z, -p.y]);
+    if (hp && hp.length >= 18) { const w = g(hp[0]), raw = [V.sub(g(hp[9]), w), V.sub(g(hp[5]), g(hp[17]))], f = mem.hf[si] || (mem.hf[si] = [0, 1, 2, 3, 4, 5].map(() => new Euro(2.5 / Math.max(0.25, o.smooth), 1.5)));
+      const dt = mem.dtH || 0, sm = raw.map((v, a) => v.map((x, k) => o.smooth > 0 ? f[3 * a + k].step(x * 10, dt) : x)); return { dir: sm[0], across: sm[1], sure: true }; }
+    mem.hf[si] = null; return vis[d.pk] >= o.minVis && vis[d.ix] >= o.minVis ? { dir: V.sub(V.mid(P[d.ix], P[d.pk]), P[d.wr]), across: V.sub(P[d.ix], P[d.pk]), sure: false } : null;
+  }
+
+  function solve(lm, t, img = null, aspect = 1, hands = null) {
+    mem.dtH = mem.tH === undefined ? 0 : t - mem.tH; mem.tH = t;
     const still = stillness(lm, img, aspect, t), { P: raw, vis } = points(lm, t), P = raw.map(p => M.vec(cal, p)), see = (...k) => k.every(i => vis[i] >= o.minVis);
     const tgt = new Array(nb).fill(null), wt = new Array(nb).fill(1), T = torso(P), Rp = T.pelvis, Rc = T.chest;
     if (!Rp.every(Number.isFinite) || !Rc.every(Number.isFinite)) return q;
@@ -102,15 +115,15 @@ export function makeSolver(S, opt = {}) {
       let f = V.perp(V.add(V.mul(dir, w), V.mul(base, 1 - w)), a); if (!ok3(f)) f = base; f = V.norm(f); mem.fw[key] = f; return f; };
     SIDE.forEach((d, si) => {
       tgt[id[d.SH]] = Rc;
-      const wa = trust(vis, [d.sh, d.el, d.wr]), wl = trust(vis, [d.hip, d.kn, d.an]); wt[id[d.A]] = wt[id[d.FA]] = wa; wt[id[d.H]] = 0.8 * Math.min(wa, trust(vis, [d.pk, d.ix]));   // the wrist always eases to its target: the hand points are the noisiest wt[id[d.LG]] = wt[id[d.SN]] = wt[id[d.FT]] = wl;
+      const wa = trust(vis, [d.sh, d.el, d.wr]), wl = trust(vis, [d.hip, d.kn, d.an]); wt[id[d.A]] = wt[id[d.FA]] = wa; const hv = o.hands ? handOf(d, si, hands, P, vis) : null; wt[id[d.H]] = hv && hv.sure ? wa : 0.8 * Math.min(wa, trust(vis, [d.pk, d.ix]));   // rough hand points: the wrist eases to its target wt[id[d.LG]] = wt[id[d.SN]] = wt[id[d.FT]] = wl;
       if (wa > 0) { const a = V.norm(V.sub(P[d.el], P[d.sh])), b = V.norm(V.sub(P[d.wr], P[d.el])), sgn = -d.s;
         const f = bendAxis(d.A, a, b, sgn, V.add(V.mul(V.cross(a, Fc), sgn), V.mul(Zc, 0.3)), false);
         tgt[id[d.A]] = aim(a, f, rest(d.FA), Z0); let Rf = aim(b, f, rest(d.H), Z0);
-        if (o.hands && see(d.pk, d.ix)) { const dir = V.sub(V.mid(P[d.ix], P[d.pk]), P[d.wr]), nrm = V.mul(V.cross(dir, V.sub(P[d.ix], P[d.pk])), -d.s);
+        if (hv) { const dir = hv.dir, nrm = V.mul(V.cross(dir, hv.across), -d.s), rate = hv.sure ? 0.8 : 0.35;
           if (ok3(dir) && ok3(V.perp(nrm, V.norm(dir)))) { const Rh = aim(dir, nrm, [d.s, 0, 0], Z0), qh = M.toQuat(M.mul(M.T(Rf), Rh));
             // palm down to palm up is half a turn of the forearm, so the twist may reach 160 degrees
             let tw = 2 * Math.atan2(qh[1], qh[0]); if (tw > Math.PI) tw -= 2 * Math.PI; if (tw < -Math.PI) tw += 2 * Math.PI;   // the hand's turn around the forearm goes into the forearm
-            tw = mem.tw[si] + Math.max(-0.35, Math.min(0.35, tw - mem.tw[si] - 2 * Math.PI * Math.round((tw - mem.tw[si]) / (2 * Math.PI))));   // no sudden turns: the hand points are noisy
+            tw = mem.tw[si] + Math.max(-rate, Math.min(rate, tw - mem.tw[si] - 2 * Math.PI * Math.round((tw - mem.tw[si]) / (2 * Math.PI))));   // no sudden turns: the hand points are noisy
             tw = Math.max(-2.8, Math.min(2.8, tw)); mem.tw[si] = tw; Rf = M.mul(Rf, M.euler(tw, 0, 0)); tgt[id[d.H]] = Rh; } }
         else Rf = M.mul(Rf, M.euler(mem.tw[si], 0, 0));
         tgt[id[d.FA]] = Rf; }
@@ -156,8 +169,12 @@ export function makeSolver(S, opt = {}) {
       else { const e = Math.hypot(at[0] - L[0], at[1] - L[1]), k = e > 0.2 ? 1 : Math.max(1 - g[i], clamp01((e - 0.03) / 0.1) * 0.4); L[0] += (at[0] - L[0]) * k; L[1] += (at[1] - L[1]) * k; } });   // a lifting or dragged foot takes its spot with it
     out[0] = root.xy[0]; out[1] = root.xy[1]; out[2] = -low;
     SIDE.forEach((d, i) => { const L = root.lock[i], f0 = mem.fw[d.LG]; if (!L || !f0 || !g[i]) return;
-      const lg = id[d.LG], sn = id[d.SN], ft = id[d.FT], H = [root.xy[0] + K.p[lg][0], root.xy[1] + K.p[lg][1], K.p[lg][2] - low];
-      const dx = (L[0] - root.xy[0] - pv[i][0]) * g[i], dy = (L[1] - root.xy[1] - pv[i][1]) * g[i], ik = legIK(d, H, [root.xy[0] + K.p[ft][0] + dx, root.xy[1] + K.p[ft][1] + dy, K.p[ft][2] - low], f0); if (!ik) return;
+      const lg = id[d.LG], sn = id[d.SN], ft = id[d.FT], tb = id[d.TB], H = [root.xy[0] + K.p[lg][0], root.xy[1] + K.p[lg][1], K.p[lg][2] - low];
+      // a held foot that is nearly flat is flat (the tracked foot angle wobbles by several degrees), and it rests on the floor
+      const fwd = [-Rw[ft][1], -Rw[ft][4], -Rw[ft][7]], fh = V.perp(fwd, Z0);
+      if (ok3(fh)) { const flat = aim(fh, Z0, [0, -1, 0], Z0), rel = M.mul(M.T(Rw[ft]), flat), ang = Math.acos(Math.max(-1, Math.min(1, (rel[0] + rel[4] + rel[8] - 1) / 2))); Rw[ft] = M.mul(Rw[ft], M.part(rel, g[i] * clamp01((0.44 - ang) / 0.17))); }   // fully flat within 15 degrees, tracked as it is from 25
+      const gap = Math.min(K.p[ft][2] - RAD[ft], K.p[ft][2] + M.vec(Rw[ft], S.off[tb])[2] - RAD[tb]) - low;   // how far the sole is above the floor
+      const dx = (L[0] - root.xy[0] - pv[i][0]) * g[i], dy = (L[1] - root.xy[1] - pv[i][1]) * g[i], ik = legIK(d, H, [root.xy[0] + K.p[ft][0] + dx, root.xy[1] + K.p[ft][1] + dy, K.p[ft][2] - low - g[i] * gap], f0); if (!ik) return;
       Rw[lg] = ik[0]; Rw[sn] = ik[1]; euler(lg); euler(sn); euler(ft); });
     root.g = g; root.pt = SIDE.map((d, i) => { if (!root.lock[i]) return null; const Kf = fk(S, out), p = Kf.p[root.toe[i] ? id[d.TB] : id[d.FT]]; return [p[0], p[1], root.toe[i] ? 1 : 0]; });   // where each held point ended up (for the checks)
     q = out; return out;

@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RECORD v10</title><link rel="icon" href="../icon-192.png">
+<title>RECORD v11</title><link rel="icon" href="../icon-192.png">
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #3a302a} header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
@@ -25,7 +25,7 @@
   #take[hidden]{display:none}
 </style></head>
 <body>
-<header><b>RECORD v10</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
+<header><b>RECORD v11</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
 <div id="views">
   <div class="view"><span class="lab">Camera</span><div id="vwrap" class="mir"><video id="video" playsinline muted></video><canvas id="over"></canvas></div>
     <div id="msg">Start the camera, step back until your whole body is in view, then calibrate.</div><div id="big" hidden></div><div id="recDot" hidden>REC</div></div>
@@ -40,7 +40,7 @@
     <span class="sp"></span>
     <label title="The figure shown in the pose view">Figure <select id="figSel"><option value="female">Female</option><option value="male">Male</option><option value="none">None</option></select></label>
     <label title="Show the joints and bones"><input type="checkbox" id="skelOn">Skeleton</label>
-    <label title="Tracking model: Heavy is the most accurate and the slowest">Model <select id="model"><option value="lite">Lite</option><option value="full" selected>Full</option><option value="heavy">Heavy</option></select></label>
+    <label title="Tracker. Body and hands also tracks each hand with 21 points, for wrists and palms. The three body-only models differ in accuracy and speed.">Tracker <select id="model"><option value="holistic" selected>Body and hands</option><option value="lite">Body, lite</option><option value="full">Body, full</option><option value="heavy">Body, heavy</option></select></label>
     <label title="Steadies the tracked points; higher values lag more">Smoothing <select id="smooth"><option value="0">Off</option><option value="0.5">Low</option><option value="1" selected>Medium</option><option value="2">High</option></select></label>
     <label title="Show the camera and the pose as in a mirror"><input type="checkbox" id="mirror" checked>Mirror view</label>
     <label title="Track wrist bend and forearm turn from the hand points"><input type="checkbox" id="hands" checked>Hands</label>
@@ -66,12 +66,13 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { lookFromGLTF } from '../sim/look.js';
 import { readBody, fk, M } from './mocap/skel.js?v=1';
-import { makeSolver, toMove } from './mocap/solve.js?v=10';
-import { fakePoints } from './mocap/synth.js?v=10';
+import { makeSolver, toMove } from './mocap/solve.js?v=11';
+import { fakePoints } from './mocap/synth.js?v=11';
 import { encodeQ } from './mocap/encq.js?v=1';
 import { decodeQ } from './libq.js?v=1';
 const $ = id => document.getElementById(id);
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3', MODEL = k => `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${k}/float16/latest/pose_landmarker_${k}.task`;
+const HOLISTIC = 'https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task';
 const TEST_MOVE = 'h_b_w_crouch_to_stand_270_start_003__A342', FPS = 30;
 const S = readBody(await (await fetch('../body/soma23_box.xml')).text()), sol = makeSolver(S);
 const st = { mode: 'off', stream: null, tracker: null, trackerKind: '', test: null, last: null, frames: null, t0: 0, take: null, play: false, frame: 0, in: 0, out: 0, count: 0, seen: 0, fpsT: 0, fpsN: 0, gen: 0 };
@@ -137,6 +138,10 @@ function drawPoints(pts, w, h) {   // pts: 33 points in the picture, x and y fro
   for (let i = 0; i < 33; i++) { if (i > 0 && i < 11 && i !== 7 && i !== 8) continue; const p = pts[i]; g.fillStyle = (p.visibility ?? 1) >= min ? '#ffd38a' : 'rgba(169,154,140,.6)'; g.beginPath(); g.arc(p.x * w, p.y * h, lw * 1.5, 0, 7); g.fill(); }
 }
 
+const HLINK = [[0, 5], [5, 9], [9, 13], [13, 17], [0, 17], [5, 8], [9, 12], [13, 16], [17, 20], [1, 4], [0, 1]];
+function drawHands(pic, w, h) { g.lineWidth = Math.max(1.5, w / 500); g.strokeStyle = '#7ddc8a';   // the hand tracker's points, in green
+  for (const hp of pic) { if (!hp) continue; for (const [a, b] of HLINK) { g.beginPath(); g.moveTo(hp[a].x * w, hp[a].y * h); g.lineTo(hp[b].x * w, hp[b].y * h); g.stroke(); } } }
+
 // ---------- status ----------
 function setState(txt, cls = '') { $('state').textContent = txt; $('state').className = cls; }
 function ui() {
@@ -158,8 +163,9 @@ function note() {   // what the tracker cannot see right now
 // ---------- tracking ----------
 async function loadTracker(kind) {
   if (st.tracker && st.trackerKind === kind) return; if (st.tracker) { st.tracker.close(); st.tracker = null; }
-  const { PoseLandmarker, FilesetResolver } = await import(MP + '/vision_bundle.mjs'), files = await FilesetResolver.forVisionTasks(MP + '/wasm');
-  const make = delegate => PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL(kind), delegate }, runningMode: 'VIDEO', numPoses: 1 });
+  const { PoseLandmarker, HolisticLandmarker, FilesetResolver } = await import(MP + '/vision_bundle.mjs'), files = await FilesetResolver.forVisionTasks(MP + '/wasm');
+  const make = delegate => kind === 'holistic' ? HolisticLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: HOLISTIC, delegate }, runningMode: 'VIDEO' })
+    : PoseLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: MODEL(kind), delegate }, runningMode: 'VIDEO', numPoses: 1 });
   try { st.tracker = await make('GPU'); } catch (e) { console.warn('GPU tracker failed, using the CPU', e); st.tracker = await make('CPU'); }
   st.trackerKind = kind;
 }
@@ -187,8 +193,9 @@ function camLoop(gen) {
   const tick = () => { if (gen !== st.gen) return; next();
     if (video.readyState >= 2 && video.currentTime !== lastT && st.mode !== 'take') { lastT = video.currentTime; const now = performance.now(); let res = null;
       try { res = st.tracker.detectForVideo(video, now); } catch (e) { console.warn(e); }
-      const world = res && res.worldLandmarks && res.worldLandmarks[0], img = res && res.landmarks && res.landmarks[0];
-      onPoints(world || null, img || null, now / 1000, video.videoWidth, video.videoHeight); } };
+      const one = a => (a && a[0]) || null, hol = res && res.poseWorldLandmarks, world = res && one(hol ? res.poseWorldLandmarks : res.worldLandmarks), img = res && one(hol ? res.poseLandmarks : res.landmarks);   // the two trackers name their results differently
+      const hands = hol ? { left: one(res.leftHandWorldLandmarks), right: one(res.rightHandWorldLandmarks), pic: [one(res.leftHandLandmarks), one(res.rightHandLandmarks)] } : null;
+      onPoints(world, img, now / 1000, video.videoWidth, video.videoHeight, hands); } };
   const next = () => video.requestVideoFrameCallback ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); next();
 }
 function testLoop(gen) {   // a library move stands in for the camera: its poses become tracked points
@@ -197,13 +204,14 @@ function testLoop(gen) {   // a library move stands in for the camera: its poses
     const world = fakePoints(S, d.q, f * 73), img = world.map(p => ({ x: 0.5 - p.x * 0.42, y: 0.52 + p.y * 0.42, visibility: 1 })); onPoints(world, img, now / 1000, 640, 640); };
   tick();
 }
-function onPoints(world, img, t, w, h) {
-  st.last = world ? { world, t } : null; drawPoints(img, w, h); st.fpsN++;
+function onPoints(world, img, t, w, h, hands = null) {
+  st.last = world ? { world, t, hands } : null; drawPoints(img, w, h); if (hands) drawHands(hands.pic, w, h); st.fpsN++;
   if (t * 1000 - st.fpsT > 1000) { $('fps').textContent = Math.round(st.fpsN * 1000 / (t * 1000 - st.fpsT)) + ' fps'; st.fpsT = t * 1000; st.fpsN = 0; note(); }
   if (!world) return;
   autoCal(world, t);
-  const q = sol.solve(world, t, st.test ? null : img, w / h); drawPose(q, 0, sol.held);
-  if (st.mode === 'rec') { st.frames.push({ t: t - st.t0, q: Float64Array.from(q), lm: world.map(p => [+p.x.toFixed(4), +p.y.toFixed(4), +p.z.toFixed(4), +(p.visibility ?? 1).toFixed(2)]), im: img ? img.map(p => [+p.x.toFixed(4), +p.y.toFixed(4)]) : null, asp: +(w / h).toFixed(4) });
+  const q = sol.solve(world, t, st.test ? null : img, w / h, hands); drawPose(q, 0, sol.held);
+  if (st.mode === 'rec') { st.frames.push({ t: t - st.t0, q: Float64Array.from(q), lm: world.map(p => [+p.x.toFixed(4), +p.y.toFixed(4), +p.z.toFixed(4), +(p.visibility ?? 1).toFixed(2)]), im: img ? img.map(p => [+p.x.toFixed(4), +p.y.toFixed(4)]) : null, asp: +(w / h).toFixed(4),
+      hd: hands ? [hands.left, hands.right].map(a => a ? a.map(p => [+p.x.toFixed(4), +p.y.toFixed(4), +p.z.toFixed(4)]) : null) : null });
     setState('Recording ' + (t - st.t0).toFixed(1) + ' s', 'rec'); if (t - st.t0 > 120) finish(); }
 }
 // Calibration happens by itself the first time he stands still and upright, facing the camera, with the whole body in
@@ -221,7 +229,7 @@ function autoCal(world, t) {
 function applyOpts() { sol.opt.smooth = +$('smooth').value; sol.opt.hands = $('hands').checked; sol.opt.travel = $('travel').checked; sol.opt.fit = $('fit').checked; }
 for (const k of ['smooth', 'hands', 'travel', 'fit']) $(k).onchange = applyOpts;
 $('mirror').onchange = () => { const m = $('mirror').checked; $('vwrap').classList.toggle('mir', m); world.scale.x = m ? -1 : 1; if (follow) { const dx = -2 * follow[0]; follow[0] += dx; cam.position.x += dx; orbit.target.x += dx; orbit.update(); } }; world.scale.x = -1;
-$('model').onchange = () => { if (st.mode === 'live' && !st.test) { stop(); start(); } };
+$('model').onchange = () => { if (st.mode === 'live' && !st.test) { stop(); start(); } };   // the tracker is replaced; calibration starts again
 $('cam').onclick = () => st.mode === 'off' ? start() : stop();
 
 // ---------- countdown, calibrate, record ----------
@@ -257,7 +265,7 @@ const save = (blob, file) => { const a = document.createElement('a'); a.href = U
 const fileName = () => ($('name').value.trim().replace(/[^\w.-]+/g, '_') || 'rec');
 function trimmed() { const { mv } = st.take, T = st.out - st.in + 1; return { T, q: mv.q.slice(st.in * 73, (st.out + 1) * 73) }; }
 $('dlQ').onclick = async () => { const m = trimmed(); save(new Blob([await encodeQ(m.q, m.T)], { type: 'application/octet-stream' }), fileName() + '.q'); };
-$('dlRaw').onclick = () => save(new Blob([JSON.stringify({ about: 'MediaPipe Pose Landmarker points of one recording: lm = world points (x, y, z in metres, visibility), im = the same points in the picture (x, y from 0 to 1), asp = picture width / height', model: st.trackerKind || 'test', frames: st.take.raw.map(f => ({ t: +f.t.toFixed(4), lm: f.lm, im: f.im, asp: f.asp })) })], { type: 'application/json' }), fileName() + '.tracking.json');
+$('dlRaw').onclick = () => save(new Blob([JSON.stringify({ about: 'MediaPipe Pose Landmarker points of one recording: lm = world points (x, y, z in metres, visibility), im = the same points in the picture (x, y from 0 to 1), asp = picture width / height, hd = the hand tracker\'s 21 world points for the left and the right hand', model: st.trackerKind || 'test', frames: st.take.raw.map(f => ({ t: +f.t.toFixed(4), lm: f.lm, im: f.im, asp: f.asp, hd: f.hd })) })], { type: 'application/json' }), fileName() + '.tracking.json');
 addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' && e.target.type === 'text') return; const k = e.key.toLowerCase();
   if (k === ' ') { e.preventDefault(); playPause(); } else if (k === 'r' && !$('rec').disabled) $('rec').click(); else if (st.mode === 'take' && k === 'i') $('trimIn').click(); else if (st.mode === 'take' && k === 'o') $('trimOut').click(); });
 ui();
