@@ -27,3 +27,31 @@ export async function attachGPC(brain, ort, say) {
   } };
   return st;
 }
+
+// The latest test page's driver seat (kin.html uses drive.update / reset / pins / noFlat / brain): here the NVIDIA
+// brain alone moves his joints. No recordings, no springs, no director. The page's human joint limits stay on.
+import { humanCap } from '../sim/springs.js';
+const STRONG = /[?&]strong/.test(location.search);   // ?strong = NVIDIA's training strength instead of a person's
+export class GpcDrive {
+  constructor(W, kin, brain) {
+    this.W = W; this.kin = kin; this.brain = brain; this.G = kin.W; this.pins = null; this.noFlat = true; this.stats = {}; this.mode = 'gpc';
+    kin.ext = W; brain.attach(); brain.told = true; this.cap();
+    this.self = { get pos() { return brain.pos; }, get rot() { return brain.rot; }, get vel() { return brain.vel; }, get ang() { return brain.ang; } };
+  }
+  reset() {
+    const W = this.W, d = W.d, g = this.G.d;
+    for (let k = 0; k < 73; k++) d.qpos[k] = g.qpos[k];
+    d.qvel.fill(0); d.xfrc_applied.fill(0); d.qfrc_applied.fill(0);
+    W.mj.mj_forward(W.m, d); W.tControl = d.time; this.brain.attach(); this.brain.told = true; this.cap();
+  }
+  // each muscle no stronger than a person's (the page's own table, sim/springs.js)
+  cap() { if (STRONG) return; const m = this.W.m; this.W.act.forEach((a, i) => { const c = humanCap(a.name); m.actuator_forcerange[2 * i] = -c; m.actuator_forcerange[2 * i + 1] = c; m.actuator_forcelimited[i] = 1; }); }
+  async update(dt, fingerPush) {
+    const W = this.W, d = W.d, B = this.brain, n = Math.min(40, Math.round(dt * 480));
+    for (let i = 0; i < n; i++) {
+      d.xfrc_applied.fill(0); if (fingerPush) fingerPush();
+      if (B.due()) { B.down = false; B.lost = 0; await B.think(this.self); if (B.down) { B.down = false; B.setTone(1); } }
+      W.step(B.control);
+    }
+  }
+}

@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
-<title>The Box</title>
+<title>The Box - Recordings</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#1a120b;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#f5e8d6}
   canvas{display:block;width:100%;height:100%}
@@ -32,7 +32,8 @@
   #note{position:fixed;left:50%;top:calc(22px + env(safe-area-inset-top));transform:translateX(-50%);z-index:2;max-width:82%;text-align:center;font-size:13px;line-height:1.4;background:rgba(28,18,10,.7);border:1px solid rgba(255,230,200,.2);border-radius:14px;padding:9px 14px;opacity:0;transition:opacity .6s;pointer-events:none}
   #note.show{opacity:1}
   #look{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(12px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
-  #look::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:rgba(255,235,205,.9)}
+  #look::before,#look::after{content:"";position:absolute;top:50%;width:3.5px;height:12px;margin-top:-6px;border-radius:1px;background:rgba(255,235,205,.95)}
+  #look::before{left:11px}#look::after{left:17.5px}
   #place{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(56px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #place::after{content:"";position:absolute;left:50%;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border:2px solid rgba(255,235,205,.9);border-radius:2px;box-sizing:border-box}
   #fig{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(100px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
@@ -42,14 +43,44 @@
   #dbg::after{content:"";position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border:1.5px dashed rgba(255,235,205,.95);border-radius:50%;box-sizing:border-box}
   #pose{display:none;position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(232px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #pose::before{content:"";position:absolute;left:13px;top:6px;width:6px;height:6px;border-radius:50%;background:rgba(255,235,205,.95)}
+  #snap{display:none;position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(276px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #snap::before{content:"";position:absolute;left:7px;top:10px;width:16px;height:11px;border:2px solid rgba(255,235,205,.95);border-radius:3px}
+  #snap::after{content:"";position:absolute;left:12px;top:13px;width:6px;height:6px;border:2px solid rgba(255,235,205,.95);border-radius:50%}
   #pose::after{content:"";position:absolute;left:10px;top:13px;width:9px;height:8px;border-left:2px solid rgba(255,235,205,.95);border-bottom:2px solid rgba(255,235,205,.95);transform:skewX(-12deg)}
+  #bal{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(320px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #bal::before{content:"";position:absolute;left:8px;top:20px;width:14px;height:2px;background:rgba(255,235,205,.95)}
+  #bal::after{content:"";position:absolute;left:12px;top:9px;width:6px;height:6px;border-radius:50%;background:rgba(255,235,205,.95)}
+  #bal.on{background:rgba(60,140,70,.7)}
+  #crk{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(188px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #crk svg{position:absolute;left:6px;top:6px;width:18px;height:18px}#crk svg path{stroke:rgba(255,235,205,.95)}
+  #crk.on{background:#ffd400;border-color:#ffd400}#crk.on svg path{stroke:#111}
+  #balTxt{display:none;position:fixed;left:calc(10px + env(safe-area-inset-left));bottom:calc(64px + env(safe-area-inset-bottom));z-index:6;font:12px/1.35 -apple-system,system-ui,sans-serif;color:rgba(255,235,205,.95);background:rgba(28,18,10,.55);padding:5px 8px;border-radius:8px;pointer-events:none;white-space:pre}
   #tilt{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(188px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
   #tilt::after{content:"";position:absolute;left:50%;top:50%;width:10px;height:16px;margin:-8px 0 0 -5px;border:2px solid rgba(255,235,205,.9);border-radius:3px;box-sizing:border-box}
   #tilt.on{background:#ffd400;border-color:#ffd400}#tilt.on::after{border-color:#111;transform:rotate(-25deg)}
   #pose.on{background:#ffd400;border-color:#ffd400}#pose.on::before{background:#111}#pose.on::after{border-color:#111}
   #dbg.on{background:#ffd400;border-color:#ffd400}#dbg.on::after{border-color:#111}
   #place.floor{background:#ffd400;border-color:#ffd400}#place.floor::after{border:0;height:3px;margin-top:2px;background:#111;width:16px;margin-left:-8px;border-radius:2px}
-  #look.on{background:#ffd400;border-color:#ffd400}#look.on::after{background:#111;width:10px;height:10px;border-radius:2px}
+  #look.on{background:#ffd400;border-color:#ffd400}#look.on::before{display:none}#look.on::after{left:12px;width:0;height:0;margin-top:-6.5px;border-radius:0;background:none;border-style:solid;border-width:6.5px 0 6.5px 11px;border-color:transparent transparent transparent #111}
+  /* (user 09:30: "a button that's like the debug button ... it shows the other buttons ... so the UI stays clean")
+     clean: pause, box, figure, tilt, cracking (K, Nov 15), debug; debug on: wireframe, balance, poses, snapshot below, and the state label */
+  #tilt{top:calc(144px + env(safe-area-inset-top))!important}
+  #dbgui{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(232px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #dbgui::before{content:"";position:absolute;left:50%;top:50%;width:10px;height:13px;margin:-5px 0 0 -5px;border-radius:5px 5px 6px 6px;background:rgba(255,235,205,.95)}
+  #dbgui::after{content:"";position:absolute;left:50%;top:6px;width:14px;height:7px;margin-left:-7px;border:2px solid rgba(255,235,205,.95);border-bottom:0;border-radius:7px 7px 0 0;box-sizing:border-box}
+  #dbgui.on{background:#ffd400;border-color:#ffd400}#dbgui.on::before{background:#111}#dbgui.on::after{border-color:#111}
+  body:not(.debug) #dbg,body:not(.debug) #bal,body:not(.debug) #pose,body:not(.debug) #snap,body:not(.debug) #balTxt,body:not(.debug) #brainver{display:none!important}
+  body.debug #pose,body.debug #snap{display:block!important}
+  #dbg{top:calc(276px + env(safe-area-inset-top))!important}
+  #bal{top:calc(320px + env(safe-area-inset-top))!important}
+  #pose{top:calc(364px + env(safe-area-inset-top))!important}
+  #snap{top:calc(408px + env(safe-area-inset-top))!important}
+  #ver{font-size:15px!important;padding:3px 9px!important}
+  /* (user 09:30: "once the game has finished loading, we see this text on top of everything for like 3 seconds") */
+  #title{position:fixed;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity 1.1s ease}
+  #title.show{opacity:1;transition:opacity .35s ease}
+  @font-face{font-family:"BoxTitle";font-weight:600;font-display:swap;src:url("https://cdn.jsdelivr.net/npm/@fontsource/jost@5.0.17/files/jost-latin-600-normal.woff2") format("woff2")}
+  #title div{font-family:"BoxTitle",Futura,"Futura PT","Century Gothic","Avenir Next",Jost,"Trebuchet MS",system-ui,sans-serif;font-weight:600;color:#fff;text-align:center;line-height:1.02;font-size:min(26vw,16vh);letter-spacing:-.005em;text-shadow:0 4px 30px rgba(0,0,0,.22)}
   #brainver{position:fixed;left:calc(12px + env(safe-area-inset-left));top:calc(46px + env(safe-area-inset-top));z-index:6;font-size:12px;font-weight:700;color:#111;background:#ffe866;border-radius:6px;padding:2px 8px;pointer-events:none;box-shadow:0 2px 6px rgba(0,0,0,.35)}
   #brainver:empty{display:none}
   #ver{position:fixed;left:calc(12px + env(safe-area-inset-left));top:calc(12px + env(safe-area-inset-top));z-index:6;font-size:16px;font-weight:800;letter-spacing:.5px;color:#111;background:#ffd400;border-radius:8px;padding:4px 10px;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.45)}
@@ -80,7 +111,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 1</div><div id="brainver"></div>
+<div id="ver">GPC live 3</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -88,46 +119,69 @@
 // further down picks them up with BOXLOAD.take(url): the same URL gets the same download, anything not started here
 // is fetched then. take() forgets the file, so no second copy stays in memory.
 window.BOXLOAD = (() => {
-  const MB = 1048576, rows = new Map(), started = new Map();
+  // (V40; user Nov 15 12:59: "the file sizes are wrong ... we should know the total size. If the brain is downloaded
+  // once, if it's the same version, does it have to be downloaded twice?") every file the page needs at start, with its
+  // size and a fingerprint of its contents (tools/kin/files.py writes this list at each release):
+  // - all of them start at once and the total is right from the first moment (the recordings used to be found one wave
+  //   at a time: 3 -> 5 -> 19.7 MB);
+  // - each is asked for as name?h=<fingerprint> and kept in the phone's own storage for this site (Cache Storage):
+  //   opened again, a file that did not change comes from the phone, not the internet; a changed file has a new
+  //   fingerprint and is downloaded once. Old copies are removed after the page is ready.
+  const FILES = /*FILES*/{"body/clips/kin/kin.json":{"s":13024,"h":"adfbb921d9","l":"Recordings"},"body/clips/seed_idle_soft_A077.bin":{"s":506848,"h":"95ed3576fb","l":"Recordings"},"body/clips/seed_idle_weight_A268.bin":{"s":729440,"h":"10c205c962","l":"Recordings"},"body/clips/seed_idle_back_A056.bin":{"s":807648,"h":"d1e4281db7","l":"Recordings"},"body/clips/seed_idle_rightleg_A419.bin":{"s":654240,"h":"1467079835","l":"Recordings"},"body/clips/seed_idle_weightL_A018.bin":{"s":1353600,"h":"a0fc8825b0","l":"Recordings"},"body/clips/kin/kreact_00.bin":{"s":117312,"h":"fc7ebd50e1","l":"Recordings"},"body/clips/kin/kreact_01.bin":{"s":117312,"h":"b14dd3d263","l":"Recordings"},"body/clips/kin/kreact_02.bin":{"s":117312,"h":"51c5e0e822","l":"Recordings"},"body/clips/kin/kreact_03.bin":{"s":117312,"h":"4826838e45","l":"Recordings"},"body/clips/kin/kreact_04.bin":{"s":117312,"h":"3a8c0899ef","l":"Recordings"},"body/clips/kin/kreact_05.bin":{"s":117312,"h":"7699f7ab10","l":"Recordings"},"body/clips/kin/kreact_06.bin":{"s":111296,"h":"3117882c1d","l":"Recordings"},"body/clips/kin/kreact_07.bin":{"s":108288,"h":"8a11e55452","l":"Recordings"},"body/clips/kin/kreact_08.bin":{"s":117312,"h":"44d1e5f57c","l":"Recordings"},"body/clips/kin/kreact_09.bin":{"s":117312,"h":"8655a468ce","l":"Recordings"},"body/clips/kin/kreact_10.bin":{"s":117312,"h":"6f1f9b398e","l":"Recordings"},"body/clips/kin/kreact_11.bin":{"s":117312,"h":"333c97515f","l":"Recordings"},"body/clips/kin/kreact_12.bin":{"s":117312,"h":"9509cf78ca","l":"Recordings"},"body/clips/kin/kreact_13.bin":{"s":117312,"h":"8915806439","l":"Recordings"},"body/clips/kin/kreact_14.bin":{"s":117312,"h":"a63725938d","l":"Recordings"},"body/clips/kin/kreact_15.bin":{"s":117312,"h":"46b08a8fd0","l":"Recordings"},"body/clips/kin/kreact_16.bin":{"s":85728,"h":"d73c4545ec","l":"Recordings"},"body/clips/kin/kreact_17.bin":{"s":111296,"h":"e439be2873","l":"Recordings"},"body/clips/kin/kreact_18.bin":{"s":117312,"h":"3ab17600dc","l":"Recordings"},"body/clips/kin/kreact_19.bin":{"s":117312,"h":"0213609dc1","l":"Recordings"},"body/clips/kin/kreact_20.bin":{"s":117312,"h":"7b7654f08f","l":"Recordings"},"body/clips/kin/kreact_21.bin":{"s":117312,"h":"6e9c93d78c","l":"Recordings"},"body/clips/kin/kreact_22.bin":{"s":117312,"h":"24ea0c5565","l":"Recordings"},"body/clips/kin/kreact_23.bin":{"s":112800,"h":"47ccc17394","l":"Recordings"},"body/clips/kin/kreact_24.bin":{"s":93248,"h":"5df6161100","l":"Recordings"},"body/clips/kin/kreact_25.bin":{"s":117312,"h":"e1b20d5627","l":"Recordings"},"body/clips/kin/kreact_26.bin":{"s":117312,"h":"7e8eaf5959","l":"Recordings"},"body/clips/kin/kreact_27.bin":{"s":117312,"h":"e3f3976b82","l":"Recordings"},"body/clips/kin/kreact_28.bin":{"s":117312,"h":"96b641f022","l":"Recordings"},"body/clips/kin/kreact_29.bin":{"s":117312,"h":"9de6608eb0","l":"Recordings"},"body/clips/kin/kreact_30.bin":{"s":117312,"h":"8174ea40cf","l":"Recordings"},"body/clips/kin/kreact_31.bin":{"s":112800,"h":"a03ffc21aa","l":"Recordings"},"body/clips/kin/kreact_32.bin":{"s":93248,"h":"cac6412116","l":"Recordings"},"body/clips/kin/kreact_33.bin":{"s":117312,"h":"8bcfed9401","l":"Recordings"},"body/clips/kin/kreact_34.bin":{"s":117312,"h":"a3386fc046","l":"Recordings"},"body/clips/kin/kreact_35.bin":{"s":117312,"h":"052e5984bd","l":"Recordings"},"body/clips/kin/kreact_36.bin":{"s":117312,"h":"024109d1bf","l":"Recordings"},"body/clips/kin/kreact_37.bin":{"s":117312,"h":"b9c1d1698a","l":"Recordings"},"body/clips/kin/kreact_38.bin":{"s":117312,"h":"3e5186a137","l":"Recordings"},"body/clips/kin/kreact_39.bin":{"s":117312,"h":"0eff065249","l":"Recordings"},"body/clips/kin/kreact_40.bin":{"s":117312,"h":"798f0eed55","l":"Recordings"},"body/clips/kin/kreact_41.bin":{"s":117312,"h":"d27af0ece4","l":"Recordings"},"body/clips/kin/kreact_42.bin":{"s":96256,"h":"7cd1673a95","l":"Recordings"},"body/clips/kin/kreact_43.bin":{"s":115808,"h":"9c8fec1e45","l":"Recordings"},"body/clips/kin/kreact_44.bin":{"s":115808,"h":"aae09bb071","l":"Recordings"},"body/clips/kin/kback_A028.bin":{"s":114304,"h":"4043e4e465","l":"Recordings"},"body/clips/kin/kback_A030.bin":{"s":136864,"h":"9a08d53a23","l":"Recordings"},"body/clips/kin/kback_A044.bin":{"s":103776,"h":"c07739e384","l":"Recordings"},"body/clips/kin/getup_back_A472.bin":{"s":279744,"h":"100aa8d00e","l":"Recordings"},"body/clips/kin/getup_back_A473.bin":{"s":275232,"h":"fe83447539","l":"Recordings"},"body/clips/kin/getup_back_A474.bin":{"s":339904,"h":"8432614eae","l":"Recordings"},"body/clips/kin/getup_front_A472.bin":{"s":351936,"h":"9a4175d8a0","l":"Recordings"},"body/clips/kin/getup_front_A473.bin":{"s":415104,"h":"3a6c0599a2","l":"Recordings"},"body/clips/kin/getup_front_A474.bin":{"s":395552,"h":"c23e23df52","l":"Recordings"},"body/clips/kin/getup_side_A472.bin":{"s":315840,"h":"3aa5d67761","l":"Recordings"},"body/clips/kin/getup_side_A473.bin":{"s":296288,"h":"7d74485733","l":"Recordings"},"body/clips/kin/getup_side_A474.bin":{"s":281248,"h":"fb6b5cbd59","l":"Recordings"},"body/clips/kin/getup_side_A475.bin":{"s":299296,"h":"d59428dc70","l":"Recordings"},"body/clips/kin/sit_back_A063_1.bin":{"s":117312,"h":"26b5000a6c","l":"Recordings"},"body/clips/kin/sit_back_A244_1.bin":{"s":194016,"h":"b7efc73cf9","l":"Recordings"},"body/clips/kin/sit_back_A245_1.bin":{"s":162432,"h":"483dc79530","l":"Recordings"},"body/clips/kin/sit_back_A248_1.bin":{"s":175968,"h":"0dca3c2a3e","l":"Recordings"},"body/clips/kin/sit_back_A245_2.bin":{"s":117312,"h":"5ef1dda0ff","l":"Recordings"},"body/clips/kin/sit_back_A064_3.bin":{"s":124832,"h":"d0ba3a2d65","l":"Recordings"},"body/clips/kin/sit_back_A063_4.bin":{"s":97760,"h":"0f0f455ccc","l":"Recordings"},"body/clips/kin/sit_back_A167_4.bin":{"s":145888,"h":"0fea5d0032","l":"Recordings"},"body/clips/kin/sit_front_A051_1.bin":{"s":135360,"h":"16fe74d46a","l":"Recordings"},"body/clips/kin/sit_front_A063_2.bin":{"s":130848,"h":"8b0b343907","l":"Recordings"},"body/clips/kin/sit_front_A165_4.bin":{"s":181984,"h":"2ec1e593e3","l":"Recordings"},"body/clips/kin/sit_front_A167_4.bin":{"s":142880,"h":"15a04a83b1","l":"Recordings"},"body/clips/kin/sit_back_A100_2.bin":{"s":121824,"h":"6b1a261338","l":"Recordings"},"body/clips/kin/sit_back_A101_3.bin":{"s":138368,"h":"899ea1a045","l":"Recordings"},"body/clips/kin/sit_back_A184_1.bin":{"s":135360,"h":"65ca4ec572","l":"Recordings"},"body/clips/kin/sit_back_A410_1.bin":{"s":260192,"h":"54202c726b","l":"Recordings"},"body/clips/kin/sit_back_A411_1.bin":{"s":151904,"h":"a3078837d8","l":"Recordings"},"body/clips/kin/sit_back_A412_1.bin":{"s":227104,"h":"082441672f","l":"Recordings"},"body/clips/kin/sit_back_A413_1.bin":{"s":209056,"h":"41224d3787","l":"Recordings"},"body/clips/kin/sit_back_A414_1.bin":{"s":156416,"h":"0ab16e880f","l":"Recordings"},"body/clips/kin/sit_front_A098_2.bin":{"s":124832,"h":"a254d996d4","l":"Recordings"},"body/clips/kin/sit_front_A098_3.bin":{"s":129344,"h":"5d21976775","l":"Recordings"},"body/clips/kin/sit_front_A188_3.bin":{"s":129344,"h":"34f9163df5","l":"Recordings"},"body/clips/kin/sit_front_A410_1.bin":{"s":257184,"h":"33c9ea123d","l":"Recordings"},"body/clips/kin/sit_front_A411_1.bin":{"s":174464,"h":"065e6c449e","l":"Recordings"},"body/clips/kin/sit_front_A412_2.bin":{"s":166944,"h":"59e758d311","l":"Recordings"},"body/clips/kin/sit_front_A414_1.bin":{"s":204544,"h":"4654d60297","l":"Recordings"},"body/clips/kin/sitx_front_A063_2.bin":{"s":132352,"h":"9b66aa9858","l":"Recordings"},"body/clips/kin/sitx_front_A064_1.bin":{"s":135360,"h":"ec056fd122","l":"Recordings"},"body/clips/kin/sitx_front_A101_3.bin":{"s":121824,"h":"48f461331e","l":"Recordings"},"body/clips/kin/sitx_front_A184_3.bin":{"s":136864,"h":"e8c227b745","l":"Recordings"},"body/clips/kin/sitx_front_A185_1.bin":{"s":132352,"h":"c9ff2f8414","l":"Recordings"},"body/clips/kin/sitx_front_A185_2.bin":{"s":133856,"h":"e0f9e20e63","l":"Recordings"},"body/clips/kin/sitx_side_A063_1.bin":{"s":124832,"h":"07e31482f8","l":"Recordings"},"body/clips/kin/sitx_side_A099_2.bin":{"s":135360,"h":"1a65301c06","l":"Recordings"},"body/clips/kin/sitx_side_A184_5.bin":{"s":123328,"h":"769894c5aa","l":"Recordings"},"body/clips/kin/sitx_side_A184_6.bin":{"s":123328,"h":"969ef083f3","l":"Recordings"},"body/clips/kin/sitx_side_A185_4.bin":{"s":184992,"h":"1f2efc0e5d","l":"Recordings"},"body/clips/kin/sitx_side_A188_4.bin":{"s":171456,"h":"03ec4976eb","l":"Recordings"},"body/clips/kin/sitx_side_A188_5.bin":{"s":112800,"h":"9334a43800","l":"Recordings"},"body/clips/kin/sitx_side_A188_6.bin":{"s":166944,"h":"8aa8b55fa7","l":"Recordings"},"body/clips/kin/sitx_side_A189_2.bin":{"s":129344,"h":"5b7f4b6c98","l":"Recordings"},"body/clips/kin/sitx_side_A189_3.bin":{"s":139872,"h":"2b1b4b1a1d","l":"Recordings"},"body/clips/kin/sitx_side_A190_3.bin":{"s":145888,"h":"42226fac00","l":"Recordings"},"body/clips/kin/sitx_side_A191_1.bin":{"s":150400,"h":"65742dc373","l":"Recordings"},"body/clips/kin/faintup_lying_A493_1.bin":{"s":165440,"h":"41b630d343","l":"Recordings"},"body/clips/kin/faintup_lying_A494_1.bin":{"s":157920,"h":"563a98c818","l":"Recordings"},"body/clips/kin/faintup_lying_side_A492_1.bin":{"s":242144,"h":"92d22352ed","l":"Recordings"},"body/clips/kin/faintup_lying_side_A493_1.bin":{"s":233120,"h":"7e8734dd91","l":"Recordings"},"body/clips/kin/faintup_lying_stomach_A494_1.bin":{"s":192512,"h":"cb6789e427","l":"Recordings"},"body/clips/kin/rest_back_A411.bin":{"s":165440,"h":"a5899c22ac","l":"Recordings"},"body/clips/kin/rest_back_A412.bin":{"s":231616,"h":"c259d38629","l":"Recordings"},"body/clips/kin/rest_front_A412.bin":{"s":183488,"h":"c6da21d993","l":"Recordings"},"body/clips/kin/rest_heels_A406.bin":{"s":335392,"h":"acdcf872cc","l":"Recordings"},"body/soma23_box.xml":{"s":24157,"h":"1d9ddd1c11","l":"Body"},"body/clips/kin/limits.json":{"s":117523,"h":"8c8e21c484","l":"Body"},"body/models/b08/soma_tracker.json":{"s":1268,"h":"d45a3948de","l":"Brain"},"body/models/b08/soma_tracker.onnx":{"s":25211904,"h":"dfb6ad4f2b","l":"Brain"},"body/soma_tracker.json":{"s":1265,"h":"30bc967c8a","l":"Brain"},"body/soma_tracker.onnx":{"s":12610426,"h":"729407d0cb","l":"Brain"},"body/bodychan.glb":{"s":879116,"h":"4fbeb28a0c","l":"Figure"},"body/bodykun.glb":{"s":944728,"h":"6b94c9e427","l":"Figure"},"https://cdn.jsdelivr.net/npm/@mujoco/mujoco@4.0.1/mujoco.wasm":{"s":11201302,"l":"Physics engine"},"https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort-wasm-simd-threaded.wasm":{"s":14848852,"l":"Brain engine"}}/*END FILES*/;
+  const MB = 1048576, rows = new Map(), started = new Map(), used = new Set();
   const list = document.getElementById('loadRows'), pctEl = document.getElementById('loadPct');
   const bar = document.querySelector('#loadBar i');
+  const STORE = 'thebox-files-1';
+  const store = (async () => { try { return self.caches ? await caches.open(STORE) : null; } catch (_) { return null; } })();
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist().catch(() => {}); } catch (_) {}
   let shown = 0, finished = false, queued = false;
   function row(label) {
     let r = rows.get(label);
     if (!r) {
-      r = { label, got: 0, total: 0, left: 0, state: 'wait', el: document.createElement('div') };
+      r = { label, got: 0, total: 0, left: 0, n: 0, kept: 0, state: 'wait', el: document.createElement('div') };
       r.el.className = 'lr'; r.el.innerHTML = '<span></span><span></span>'; r.el.firstChild.textContent = label;
       list.appendChild(r.el); rows.set(label, r);
     }
     return r;
   }
-  const mb = v => (v / MB).toFixed(1);
+  const mb = v => (v / MB).toFixed(1), size = v => v < MB / 10 ? Math.max(1, Math.round(v / 1024)) + ' KB' : mb(v) + ' MB';
   function paint() {
     queued = false;
     let got = 0, total = 0;
     for (const r of rows.values()) {
       got += Math.min(r.got, r.total || r.got); total += Math.max(r.total, r.got);
+      const onPhone = r.n > 0 && r.kept === r.n;
       let t;
       if (r.state === 'load') t = r.total ? mb(r.got) + ' / ' + mb(r.total) + ' MB  ' + Math.min(99, Math.floor(100 * r.got / r.total)) + '%' : (r.got ? mb(r.got) + ' MB' : '…');
+      else if ((r.state === 'got' || r.state === 'ready') && r.total) t = size(r.total) + '  ' + (onPhone ? 'on phone ✓' : r.state === 'ready' ? '✓' : '100%');
       else t = { wait: 'waiting', got: '100%', start: 'starting…', build: 'building…', ready: '✓', fail: 'didn’t load' }[r.state];
       r.el.lastChild.textContent = t; r.el.className = 'lr ' + r.state;
     }
     // the total only moves forward (a file's real size can arrive after its estimate)
     const p = finished ? 100 : Math.min(99, total ? 100 * got / total : 0);
     shown = Math.max(shown, p);
-    pctEl.textContent = Math.floor(shown) + '%'; bar.style.width = shown + '%';
+    pctEl.textContent = (total ? mb(Math.min(got, total)) + ' of ' + mb(total) + ' MB  ' : '') + Math.floor(shown) + '%'; bar.style.width = shown + '%';
   }
   function repaint() { if (!queued) { queued = true; requestAnimationFrame(paint); } }
-  // fetch with progress; `hint` = expected size in bytes (needed where the server compresses: the reader counts
-  // unpacked bytes)
+  // the address a file is asked for: its fingerprint added (files the list doesn't know: as they are)
+  function url(p) { const f = FILES[p]; return f && f.h ? p + (p.includes('?') ? '&' : '?') + 'h=' + f.h : p; }
+  // fetch with progress, from the phone's storage when it is there; `hint` = expected size in bytes (needed where the
+  // server compresses: the reader counts unpacked bytes)
   async function download(url, label, hint = 0) {
-    const r = row(label);
-    r.left++; if (r.state === 'wait' || r.state === 'got') r.state = 'load';
+    const r = row(label), abs = new URL(url, location.href).href;
+    used.add(abs);
+    r.left++; r.n++; if (r.state === 'wait' || r.state === 'got') r.state = 'load';
     let total = hint, got = 0;
     r.total += hint; repaint();
     try {
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(url + ': HTTP ' + res.status);
+      const c = await store;
+      let res = null, kept = false;
+      if (c) try { res = await c.match(abs); kept = !!res; } catch (_) { res = null; }
+      if (!res) {
+        res = await fetch(url);
+        if (!res.ok) throw new Error(url + ': HTTP ' + res.status);
+      }
+      if (kept) r.kept++;
       const len = +res.headers.get('content-length') || 0;
       if (!hint && len && !res.headers.get('content-encoding')) { r.total += len; total = len; }
       let out;
@@ -142,6 +196,9 @@ window.BOXLOAD = (() => {
         for (const p of parts) { out.set(p, o); o += p.length; }
       } else { out = new Uint8Array(await res.arrayBuffer()); got = out.length; r.got += got; }
       r.total += got - total;   // the real size
+      // keep a copy on the phone (only files with a fixed address: fingerprinted, or a pinned version from the CDN); made
+      // from the bytes already read (a second reader on the download stalled the copy of the 24 MB brain)
+      if (c && !kept && (FILES[url] || /[?&]h=/.test(url))) { try { c.put(abs, new Response(out, { headers: { 'content-type': res.headers.get('content-type') || 'application/octet-stream' } })).catch(e => console.warn('could not keep ' + url + ' on the phone', e)); } catch (_) {} }
       if (--r.left === 0 && r.state === 'load') r.state = 'got';
       repaint();
       return out.buffer;
@@ -150,34 +207,47 @@ window.BOXLOAD = (() => {
       throw e;
     }
   }
-  function start(url, label, hint) {
-    const p = download(url, label, hint); p.catch(() => {});
-    started.set(url, p); return p;
+  function start(u, label, hint) {
+    const p = download(u, label, hint); p.catch(() => {});
+    started.set(u, p); return p;
+  }
+  // once he is ready: copies of files this page no longer uses (older fingerprints) leave the phone; this release's
+  // files stay even when not used this time (the other brain, the other figure: switching back costs nothing)
+  async function tidy() {
+    try {
+      const c = await store; if (!c) return;
+      const keep = new Set(used); for (const p in FILES) keep.add(new URL(url(p), location.href).href);
+      for (const q of await c.keys()) if (!keep.has(q.url)) await c.delete(q);
+    } catch (_) {}
   }
   const L = {
-    take(url, label, hint) { const p = started.get(url); if (p) { started.delete(url); return p; } return download(url, label, hint); },
+    url,
+    take(u, label, hint) { const p = started.get(u); if (p) { started.delete(u); return p; } return download(u, label, hint ?? (FILES[u.split('?')[0]] || {}).s); },
     state(label, s) { const r = row(label); r.state = s; repaint(); },
-    finish() { finished = true; paint(); document.getElementById('load').classList.add('done'); },
+    finish() { finished = true; paint(); document.getElementById('load').classList.add('done'); setTimeout(tidy, 5000); },
   };
-  // what the page needs, in the order it's listed; the URLs must match the ones the module script asks for
-  const MJ = 'https://cdn.jsdelivr.net/npm/@mujoco/mujoco@4.0.1/', ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/';
+  // what the page needs; the URLs must match the ones the module script asks for (LOAD.url(path))
   row('Page code').state = 'load';
-  start(MJ + 'mujoco.wasm', 'Physics engine', 11201302);
-  start(ORT + 'ort-wasm-simd-threaded.wasm', 'Brain engine', 14848852);
-  // the brain the page will pick: ?model=<id>, else the one picked in Options, else the default (as in the module)
-  start('body/models/index.json', 'Brain').then(buf => {
-    const M = JSON.parse(new TextDecoder().decode(buf));
-    let id = new URLSearchParams(location.search).get('model');
-    if (!id) try { id = localStorage.getItem('thebox.model'); } catch (_) {}
-    const m = M.models.find(x => x.id === id) || M.models.find(x => x.id === M.default) || M.models[0];
-    start(m.dir + 'soma_tracker.json', 'Brain');
-    start(m.dir + 'soma_tracker.onnx', 'Brain', m.onnx_bytes || 0);   // real size from the picker list (0: the server's)
-  }, () => {});
+  // (V40, user 12:54) which brain moves his body while he stands: 08 (ours), NVIDIA's original, or none; Options > Brain
+  const BRAINS = { b08: ['body/models/b08/', 25211904], nvidia: ['body/', 12610426], none: null, phys: null };   // phys (V43): sim/physctl.js, nothing to download
+  // (V49, user 14:32: "the physics controller should be the default one") physics is the default; a pick is remembered
+  // under a new key so earlier picks of 08 don't keep anyone off the new default
+  let brainId = 'phys';
+  try { brainId = new URLSearchParams(location.search).get('brain') || localStorage.getItem('box.kinBrain2') || 'phys'; } catch (_) {}
+  if (!(brainId in BRAINS)) brainId = 'phys';
+  brainId = 'nvidia';   // test page: always NVIDIA's body settings (same servo gains and joint convention as the GPC prior)
+  window.BOXBRAIN = { id: brainId, dir: BRAINS[brainId] && BRAINS[brainId][0], bytes: BRAINS[brainId] && BRAINS[brainId][1] };
   let fig = 'female';
   try { fig = localStorage.getItem('box.figure') || fig; } catch (_) {}
   const FIGF = { female: 'body/bodychan.glb', male: 'body/bodykun.glb' };   // = FIGS in the module
-  if (FIGF[fig]) start(FIGF[fig] + '?v=' + encodeURIComponent(document.getElementById('ver').textContent), 'Figure');
-  start('body/soma23_box.xml', 'Body');
+  for (const lab of ['Physics engine', 'Brain engine', 'Brain', 'Recordings', 'Figure', 'Body'])
+    for (const p in FILES) {
+      const f = FILES[p]; if (f.l !== lab) continue;
+      if (lab === 'Figure' && p !== FIGF[fig]) continue;   // only the figure he uses
+      if (lab === 'Brain engine' && !BRAINS[brainId]) continue;   // no brain: no brain engine
+      if (lab === 'Brain' && !(BRAINS[brainId] && p.startsWith(BRAINS[brainId][0]) && !p.slice(BRAINS[brainId][0].length).includes('/'))) continue;   // only the brain he picked
+      start(url(p), lab, f.s);
+    }
   repaint();
   return L;
 })();
@@ -187,7 +257,13 @@ window.BOXLOAD = (() => {
 <button id="fig" aria-label="Change the figure"></button>
 <button id="dbg" aria-label="Wireframe and skeleton views"></button>
 <button id="pose" aria-label="Test poses (look mode)"></button>
-<button id="tilt" aria-label="Phone tilt moves the box (off: gravity stays straight down)"></button>
+<button id="snap" aria-label="Save a snapshot for Claude (paused)"></button>
+<button id="bal" aria-label="Balance view: where his weight is vs what holds him up, and how hard his muscles work"></button>
+<div id="balTxt"></div>
+<button id="crk" aria-label="Cracking mode: hard hits crack his parts, the third breaks them off"><svg viewBox="0 0 18 18" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 1.5 L7.2 6.5 L10.4 8.6 L7.6 12.4 L9.4 16.5"/><path d="M10.4 8.6 L14.5 7.4"/><path d="M7.2 6.5 L3.6 5.2"/></svg></button>
+<button id="dbgui" aria-label="Debug: wireframe, balance, poses, snapshot and what he is doing"></button>
+<div id="title" aria-hidden="true"><div>YOU<br>CAN’T<br>BREAK<br>ME.</div></div>
+<button id="tilt" class="on" aria-label="Phone tilt moves the box (off: gravity stays straight down)"></button>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -218,13 +294,20 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import loadMujoco from '@mujoco/mujoco';
-import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js';
+import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=57';
 import { makeController, STAND } from './sim/control.js';
-import * as ort from 'onnxruntime-web';
-ort.env.wasm.numThreads = 1;
-if ('serviceWorker' in navigator && !self.crossOriginIsolated && !sessionStorage.getItem('swtry2')) { sessionStorage.setItem('swtry2', '1'); navigator.serviceWorker.register(new URL('gpc/sw.js', document.baseURI).href).then(() => navigator.serviceWorker.ready).then(() => location.reload()); }
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js';
-import { Director } from './sim/director.js';
+import { Kin, loadKinLibrary } from './sim/kin.js?v=57';
+import { Springs, humanCap } from './sim/springs.js?v=57';
+import { Balance } from './sim/balance.js?v=57';
+import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=57';
+import { AnatGuard } from './sim/anat.js?v=57';
+import { PhysBrain } from './sim/physctl.js?v=57';
+import { addPins } from './sim/pins.js?v=57';
+import { rigHand, poseHand } from './sim/fingers.js?v=57';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=57';
+import * as ort from 'onnxruntime-web';
+if ('serviceWorker' in navigator && !self.crossOriginIsolated && !sessionStorage.getItem('swtry3')) { sessionStorage.setItem('swtry3', '1'); navigator.serviceWorker.register(new URL('gpc/sw.js', document.baseURI).href).then(() => navigator.serviceWorker.ready).then(() => location.reload()); }
 import { POSES, applyPose } from './sim/poses.js';
 import { buildLook, lookFromGLTF } from './sim/look.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
@@ -244,7 +327,7 @@ const OPTS = [
   { k: 'view', label: 'View depth', min: 0, max: 1.5, step: 0.01, def: 0.3, fmt: pct, help: 'How much the view shifts as you turn the phone.' },
   { k: 'viewReturn', label: 'View re-centre', min: 0.5, max: 12, step: 0.1, def: 3, fmt: v => v.toFixed(1) + ' s', help: 'How fast the view settles back after you turn.' },
   { grp: 'Look and sound' },
-  { k: 'hiQ', label: 'High detail', tog: true, def: false, help: 'Sharper picture and shadows. Slower on phones.' },
+  { k: 'hiQ', label: 'High detail', tog: true, def: false, help: 'Sharper picture and shadows, and every frame a 120 Hz screen can show (otherwise 60 there). Uses more battery.' },
   { k: 'sound', label: 'Sound', tog: true, def: true, help: 'Footsteps, scuffs, hands on the wood, bumps and slides.' },
 ];
 const SET = {};
@@ -468,7 +551,12 @@ scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12));
 const lightUp = new THREE.Vector3(0, 1, 0);
 // open floor: the view (and the key light with it) pans sideways to follow him (user 14:58); 0 in the box
 let camPan = 0; const _panV = new THREE.Vector3();
+// (user 09:30: "when we are in pause mode and I rotate the camera, the lighting always respects the camera, so I can
+// examine the model and always have a nice top-down lighting") paused: the key light rides with the camera, above and a
+// little in front of it, aimed at what the camera looks at
+let lookLight = null;
 function placeLight() {
+  if (lookLight) { lookLight(); return; }
   const dir = new THREE.Vector3(lightUp.x * 0.75, lightUp.y * 0.75, 0.85);
   if (dir.z < 0.55) dir.z = 0.55;
   dir.normalize();
@@ -491,7 +579,10 @@ function updateEnv() {
   const was = movers.map(m => m.visible);
   for (const m of movers) m.visible = false;
   scene.background = ROOM;   // what comes in through the glass: the room
-  cubeCam.update(renderer, scene);
+  // (V39) the key light's shadow map is the same for all six faces (it is drawn from the light, not the camera): drawn
+  // once for the first face, kept for the other five (was six times; same picture)
+  const sm = renderer.shadowMap, au = sm.autoUpdate; sm.autoUpdate = false; sm.needsUpdate = true;
+  try { cubeCam.update(renderer, scene); } finally { sm.autoUpdate = au; sm.needsUpdate = false; }
   scene.background = bgNow();
   // each one back as it was (v15.35: this used to switch them all on, so the skeleton, once built, came back frozen
   // over the figure whenever the bounce light was redrawn: pause, resize, app switch; user Nov 13 20:18)
@@ -515,7 +606,7 @@ const mjP = (async () => {
   LOAD.state('Physics engine', 'ready');
   return m;
 })();
-const bodyP = LOAD.take(BODY_FILE, 'Body').then(b => new TextDecoder().decode(b));
+const bodyP = LOAD.take(LOAD.url(BODY_FILE), 'Body').then(b => new TextDecoder().decode(b));
 // figure looks the user can switch between (third round button, top right); all are drawn on the same SOMA bodies
 const FIGS = [
   { id: 'female', label: 'Female', file: 'body/bodychan.glb' },   // Body-chan (vinchau, CC0; the user's file, 10:22)
@@ -532,72 +623,73 @@ async function loadFig(id) {
   if (!(id in figCache)) {
     // the release number in the URL, so a phone never keeps an older figure file from its cache
     // (the URL, with the release number in it, must stay the one BOXLOAD starts early)
-    try { figCache[id] = await new GLTFLoader().parseAsync(await LOAD.take(f.file + '?v=' + encodeURIComponent($('ver').textContent), 'Figure'), 'body/'); }
+    try { figCache[id] = await new GLTFLoader().parseAsync(await LOAD.take(LOAD.url(f.file), 'Figure'), 'body/'); }
     catch (e) { console.warn(f.file + ' did not load', e); figCache[id] = null; }
     LOAD.state('Figure', figCache[id] ? 'ready' : 'fail');
   }
   return figCache[id];
 }
 const figP = loadFig(FIG);
-// the trained brain: NVIDIA's SOMA motion tracker (sim/brain.js, body/soma_tracker.onnx). If it can't load, the
-// hand-written stand (sim/control.js) takes over.
+// "Recordings" mode (sim/kin.js): no brain. He plays real people's recordings (idles, push recoveries, get-ups),
+// leans with a balance model, and falls as a MuJoCo ragdoll. The library downloads with the rest (kin/kin.json first).
 let brain = null;
-ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/';
-ort.env.wasm.numThreads = 1;
-// which brain (user, 10:29: see each trained model live): ?model=<id>, else the one picked in Options > Brain
-// (BOXLOAD picks the same way to start its download early)
-let MODELS = { default: 'nvidia', models: [{ id: 'nvidia', label: 'NVIDIA original', dir: 'body/', onnx_bytes: 12610426 }] };
-try { MODELS = JSON.parse(new TextDecoder().decode(await LOAD.take('body/models/index.json', 'Brain'))); } catch (_) {}
-const modelId = new URLSearchParams(location.search).get('model') || (() => { try { return localStorage.getItem('thebox.model'); } catch (_) { return null; } })() || MODELS.default;
-const MODEL = { id: 'nvidia', label: 'NVIDIA GPC', dir: 'body/', onnx_bytes: 12610426 };
-// v15.39 (user Nov 14 10:28): which brain is loaded, under the version label (so a reload shows if it is the latest)
-try { document.getElementById('brainver').textContent = 'brain ' + (MODEL.short || MODEL.label); } catch (_) {}
-// the brain's network starts up while the physics engine does (= Brain.create, with the files from BOXLOAD)
-const sessionP = (async () => {
-  const [meta, model] = await Promise.all([
-    LOAD.take(MODEL.dir + 'soma_tracker.json', 'Brain').then(b => JSON.parse(new TextDecoder().decode(b))),
-    LOAD.take(MODEL.dir + 'soma_tracker.onnx', 'Brain', MODEL.onnx_bytes || 0)]);
-  // brains trained on idle recordings (train/relax1.py, meta.idle = the clip's name) follow that recording, played back
-  // and forth, instead of the frozen standing pose (user 23:23: "people are always moving because they're breathing")
-  let idle = null;
-  if (MODEL.idle) meta.idle = MODEL.idle;   // a picker entry can give any brain a recording to follow
-  if (meta.idle) try { idle = await LOAD.take('body/clips/' + meta.idle + '.bin', 'Brain', 514368); } catch (e) { console.warn('idle clip', e); }
-  try { ort.env.wasm.wasmBinary = await LOAD.take('https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort-wasm-simd-threaded.wasm', 'Brain engine', 14848852); }
-  catch (e) { console.warn('ORT wasm preload failed, ORT fetches it itself', e); }
-  LOAD.state('Brain engine', 'start'); LOAD.state('Brain', 'start');
-  const session = await ort.InferenceSession.create(new Uint8Array(model), { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
-  LOAD.state('Brain engine', 'ready'); LOAD.state('Brain', 'ready');
-  return { meta, session, idle };
-})();
-sessionP.catch(() => {});
+const MODEL = { id: 'recordings', label: 'Recordings (no brain)', short: 'recordings R1' };
+try { document.getElementById('brainver').textContent = ''; } catch (_) {}
+try { const bb = (window.BOXBRAIN || {}).id; if (bb) document.getElementById('ver').textContent += bb === 'nvidia' ? '' : bb === 'phys' ? ' · physics' : bb === 'b08' ? ' · brain 08' : ' · no brain'; } catch (_) {}
+const KINV = 57;
+const libP = loadKinLibrary('body/clips/', u => LOAD.take(LOAD.url(u), 'Recordings'));   // (V40) address = name + fingerprint (BOXLOAD)
+libP.catch(e => console.warn('recordings library', e));
 const mj = await mjP;
 let DOLL = await figP;
-const W = new BoxWorld(mj, await bodyP);
+const bodyXml = addPins(await bodyP);
+const W = new BoxWorld(mj, bodyXml);
+// physics mode (user 17:30): the recordings run on a ghost copy of the world; his real body (W) is physical and
+// springs pull it toward the ghost (sim/springs.js)
+const PHYSICAL = true;   // (user 18:05: "I want a single version": no mode switches)
+const G = PHYSICAL ? new BoxWorld(mj, bodyXml) : W;
 LOAD.state('Body', 'ready');
 let control = null;
-try { const { meta, session, idle } = await sessionP; brain = new Brain(W, ort, session, meta); brain.setStandPose(BRAIN_STAND); if (idle) brain.setIdleClip(new Float32Array(idle)); }
-catch (e) { console.warn('brain did not load, using the hand-written stand', e); brain = null; LOAD.state('Brain', 'fail'); try { document.getElementById('brainver').textContent = 'brain failed to load'; } catch (_) {} }
-// --- test page: NVIDIA's GPC prior in the brain's seat (gpc/live.js) ---
-if (brain) try { const { attachGPC } = await import(new URL('gpc/live.js', document.baseURI).href); window.__gpc = await attachGPC(brain, ort, t => { try { document.getElementById('brainver').textContent = t; } catch (_) {} }); } catch (e) { console.warn('GPC', e); try { document.getElementById('brainver').textContent = 'NVIDIA brain failed: ' + e.message; } catch (_) {} }
-// director (v15.35, user 20:14): recovery recordings, loaded after start (2.3 MB, not on the loading screen's path)
-let director = null;
-if (brain) (async () => {
-  try {
-    const R = await (await fetch('body/clips/react.json')).json();
-    const clips = await Promise.all(R.clips.map(async c => ({ ...c, buf: new Float32Array(await (await fetch('body/clips/' + c.file)).arrayBuffer()) })));
-    // v15.38: idle recordings to rotate through (soft knees, weight on one leg, hands on the back), loaded after start
-    let idles = [], every;
-    try {
-      const J = await (await fetch('body/clips/idles.json')).json(); every = J.every;
-      idles = await Promise.all(J.idles.map(async c => ({ ...c, buf: new Float32Array(await (await fetch('body/clips/' + c.file)).arrayBuffer()) })));
-    } catch (e) { console.warn('idle rotation clips did not load', e); }
-    director = new Director(brain, clips, { idles, every });
-  } catch (e) { console.warn('director clips did not load', e); }
-})();
-function newController() {
-  if (brain) { brain.attach(); brain.told = false; control = brain.control; }
-  else { control = makeController(W); control.hz = 240; }
-}
+let kin = null, springs = null;
+try { kin = new Kin(G, mj, await libP); kin.onWarn = m => logErr(m); LOAD.state('Recordings', 'ready'); }
+catch (e) { console.warn('recordings did not load', e); LOAD.state('Recordings', 'fail'); }
+let anat = null;   // (V50, user 14:32 shoulders) each ball joint kept inside the combinations real people reach (sim/anat.js)
+try { const L = JSON.parse(new TextDecoder().decode(await LOAD.take(LOAD.url('body/clips/kin/limits.json'), 'Body'))); applyHumanLimits(W, L); try { anat = new AnatGuard(W, L); anat.install(); } catch (e) { console.warn('joint envelopes', e); anat = null; } } catch (e) { console.warn('joint limits', e); }
+if (kin && PHYSICAL) springs = new Springs(W, kin, { help: 0.2, stiff: 1, getupCap: 0 });   // only for get-ups now: 0.2 is the least that still gets him up (avg ~50% of his weight)
+// round 4 (Nov 14 ~18:00): springs alone could not balance him (no help: down in 2 s; enough help to stay up = a puppet).
+// The trained network balances his body with his joints only and follows the recordings engine's pose; the springs
+// only carry him through get-ups (the network was never taught to get up).
+let drive = null;
+const BB = window.BOXBRAIN || { id: 'phys', dir: null, bytes: 0 };   // (V40) chosen in Options > Brain
+if (kin && PHYSICAL && BB.dir) try {
+  ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/'; ort.env.wasm.numThreads = 1;
+  const dir = BB.dir, ORT_WASM = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.1/dist/ort-wasm-simd-threaded.wasm';
+  const meta = JSON.parse(new TextDecoder().decode(await LOAD.take(LOAD.url(dir + 'soma_tracker.json'), 'Brain')));
+  const bytes = new Uint8Array(await LOAD.take(LOAD.url(dir + 'soma_tracker.onnx'), 'Brain', BB.bytes));
+  LOAD.state('Brain', 'start');
+  // (V40) the brain engine's own program (~15 MB) through the loading list too: its size counts in the total and it is
+  // kept on the phone like the other files
+  try { ort.env.wasm.wasmBinary = await LOAD.take(ORT_WASM, 'Brain engine'); } catch (e) { console.warn('brain engine preload failed, it fetches itself', e); }
+  const session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
+  const brainNet = new Brain(W, ort, session, meta); brainNet.setStandPose(BRAIN_STAND);
+  // --- test page: NVIDIA's GPC prior alone drives him (gpc/live.js) ---
+  const { attachGPC, GpcDrive } = await import(new URL('gpc/live.js', document.baseURI).href);
+  const gst = document.createElement('div'); gst.id = 'gpcst'; gst.style.cssText = 'position:fixed;left:12px;right:60px;top:calc(48px + env(safe-area-inset-top));z-index:6;font:700 12px system-ui;color:#111;background:#ffd400;border-radius:8px;padding:5px 8px;pointer-events:none'; document.body.appendChild(gst);
+  window.__gpc = await attachGPC(brainNet, ort, t => { gst.textContent = t + (/[?&]strong/.test(location.search) ? ' · full strength' : ' · human strength and joint limits'); });
+  drive = new GpcDrive(W, kin, brainNet);
+  LOAD.state('Brain', 'ready');
+} catch (e) { console.warn('brain did not load: springs only', e); LOAD.state('Brain', 'fail'); drive = null; }
+// (V43, user 13:05-13:26) the physics controller instead of a brain: inverse dynamics + the floor's push through his
+// soles + a person's strength; the director, recordings, IK and rules are the same (sim/physctl.js)
+if (kin && PHYSICAL && BB.id === 'phys') try {
+  drive = new BrainDrive(W, kin, new PhysBrain(W, kin), springs); drive.noFlat = true;
+} catch (e) { console.warn('physics controller did not start: springs only', e); drive = null; }
+if (drive) { kin.ext = W; brain = drive.brain; }   // gaze() picks where he looks for this brain
+// cracking mode (sim/crack.js; user, Nov 15 09:33): hard hits crack the part that hit, the third breaks it off; the
+// button turns it on and off (remembered); a double tap makes him new
+const crack = drive ? new Cracks(W, { drive }) : null;
+let crackView = null, crackSnd = null;
+try { if (crack) crack.on = localStorage.getItem('box.crack') === '1'; } catch (_) {}
+function newController() { control = null; }
 let S = 1;   // drawing units per metre
 function figureScale() {
   // he is about 70% of the box's height, and fits its width and depth
@@ -606,7 +698,7 @@ function figureScale() {
 // the box, in metres, from the screen's shape; he stays where he is (only the walls move)
 function physBox() {
   S = figureScale();
-  W.setBox(2 * ix / S, 2 * iy / S, D / S);
+  W.setBox(2 * ix / S, 2 * iy / S, D / S); if (G !== W) G.setBox(2 * ix / S, 2 * iy / S, D / S);
   figRoot.scale.setScalar(S);
   keepInside();
   applyPlaceVis();
@@ -624,9 +716,12 @@ function keepInside() {
   mj.mj_forward(W.m, d);
 }
 function standUp() {
+  if (crack) { crack.reset(); if (crackView) crackView.reset(); }
   levelPending = true; levelT = 0;   // the phone's angle right now becomes "level" (see setLevel)
-  W.standAt(brain ? BRAIN_STAND : STAND); W.started = true; W.tControl = 0;
-  if (brain) { W.d.qpos[1] = Math.max(0.3, W.d.qpos[1] - brain.settleBack); mj.mj_forward(W.m, W.d); }   // he settles back
+  W.standAt(STAND); W.started = true; W.tControl = 0;
+  if (G !== W) { G.standAt(STAND); G.started = true; }
+  if (kin) kin.reset();
+  if (drive) drive.reset(); else if (springs) springs.reset();
   newController();
   syncFigure();
 }
@@ -688,16 +783,119 @@ function buildFigure() {
       ball.castShadow = true; grp.add(ball);
     }
   }
+  skinTorso(look && DOLL ? look : null);
   syncFigure();
   applyDebug();
+  rigHands();
+  if (crackView) crackView.rebuild(crack);
 }
+// (user 09:15, Nov 15: "The torso and neck parts are bent in a way that seems broken ... it's the way the pieces of the
+// mannequin rotate or are assembled or they're pivoted in relation to the skeleton") the figure file has one rigid
+// piece per part, but no piece for Spine2 or Neck2: the "Spine1" piece covers both lower-back joints and the "Neck1"
+// piece both neck joints, so a bend at Spine2 or Neck2 opened a step between the belly and the chest, and the neck stuck
+// out with the head floating off it. The trunk pieces (hips, belly, chest, neck) are now skinned across the seven
+// spine joints: each point follows the joint below it, blended over 2.5 cm at each joint, like a bending mannequin.
+// The head and the limbs stay rigid. The rigid pieces stay (hidden) for touching him.
+const TORSO = ['Hips', 'Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head'];
+let torso = null;   // { bones, meshes }
+function skinTorso(look) {
+  const m = W.m;
+  if (torso) { for (const o of [...torso.meshes, ...(torso.meshes.wires || []), ...torso.bones]) { figRoot.remove(o); if (o.isMesh && !o.userData.wire) o.geometry.dispose(); } torso = null; }
+  if (!look) return;
+  // the rest pose: every SOMA body frame world-aligned, at the sum of its parents' offsets (Hips at 0)
+  const rest = {};
+  for (const n of W.bodyNames) { let b = W.bodyId[n], p = [0, 0, 0]; while (b > 0 && W.isFig[b]) { const par = m.body_parentid[b]; if (W.isFig[par]) for (let k = 0; k < 3; k++) p[k] += m.body_pos[3 * b + k]; b = par; } rest[n] = p; }
+  const zj = TORSO.map(n => rest[n][2]), axY = rest.Neck1[1], B = 0.025;
+  const sm = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+  // which spine segments each piece may follow (its own and its neighbours'); the head stays the head's
+  const ALLOW = { Hips: [0, 1], Spine1: [0, 1, 2, 3], Chest: [2, 3, 4], Neck1: [3, 4, 5, 6] };
+  const bones = TORSO.map(n => { const bn = new THREE.Bone(); bn.name = n; bn.position.set(...rest[n]); figRoot.add(bn); return bn; });
+  figRoot.updateMatrixWorld(true);
+  const skel = new THREE.Skeleton(bones), meshes = [];
+  for (const piece of Object.keys(ALLOW)) {
+    const items = look[piece] || [], grp = bodyGroup[W.bodyId[piece]], own = TORSO.indexOf(piece);
+    items.forEach((it, idx) => {
+      const geo = it.geo.clone(); geo.translate(...rest[piece]);
+      const P = geo.attributes.position, n = P.count, si = new Uint16Array(4 * n), sw = new Float32Array(4 * n);
+      for (let v = 0; v < n; v++) {
+        const x = P.getX(v), y = P.getY(v), z = P.getZ(v);
+        // the share above each joint j (smooth over +-B), the segment weights are the differences
+        const t = zj.map((zz, j) => j === 0 ? 1 : sm((z - (zz - B)) / (2 * B)));
+        let w = t.map((tj, k) => tj - (k + 1 < t.length ? t[k + 1] : 0));
+        // the chest piece's shoulders don't follow the neck: only its middle (within ~7 cm of the neck's axis) does
+        if (piece === 'Chest') { const r = Math.hypot(x, y - axY), f = 1 - sm((r - 0.06) / 0.03); for (let k = 4; k < 7; k++) { w[3] += w[k] * (1 - f); w[k] *= f; } }
+        w = w.map((wk, k) => ALLOW[piece].includes(k) ? wk : 0);
+        let sum = w.reduce((a, b) => a + b, 0); if (sum < 1e-6) { w = w.map((_, k) => k === own ? 1 : 0); sum = 1; }
+        const top = w.map((wk, k) => [wk / sum, k]).sort((a, b) => b[0] - a[0]).slice(0, 4);
+        top.forEach(([wk, k], c) => { si[4 * v + c] = k; sw[4 * v + c] = wk; });
+      }
+      geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+      geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+      const mat = it.mat === 'shell' || it.mat === 'joint' ? SHELL : it.mat === 'dark2' ? JOINT2 : JOINT;
+      const sk = new THREE.SkinnedMesh(geo, mat); sk.castShadow = true; sk.receiveShadow = true; sk.frustumCulled = false;
+      sk.userData.torsoPiece = piece;
+      figRoot.add(sk); sk.updateMatrixWorld(true); sk.bind(skel, sk.matrixWorld); meshes.push(sk);
+      // the rigid piece stays for touching him (raycasts), not drawn
+      const rig = grp && grp.children.filter(o => o.isMesh)[idx]; if (rig) { rig.visible = false; rig.userData.hiddenRigid = true; }
+    });
+  }
+  torso = { bones, meshes };
+}
+// fingers (sim/fingers.js; user 21:33): spread on a wall or the floor, together and a little curled when relaxed
+const handRig = {}, handPose = { Left: { s: 0.1, c: 0.35 }, Right: { s: 0.1, c: 0.35 } };
+function rigHands() {
+  for (const side of ['Left', 'Right']) { const g = bodyGroup[W.bodyId[side + 'Hand']]; handRig[side] = null; try { if (g) handRig[side] = rigHand(THREE, g, side); } catch (e) { console.warn('fingers', e); } }
+}
+function poseHands(dt) {
+  const on = (drive && drive.pins && drive.pins.on) || {};
+  for (const side of ['Left', 'Right']) {
+    const P = handPose[side], pressed = !!on[side + 'Hand'], k = Math.min(1, dt / 0.18);
+    P.s += ((pressed ? 1 : 0.1) - P.s) * k; P.c += ((pressed ? 0.04 : 0.35) - P.c) * k;
+    poseHand(handRig[side], P.s, P.c);
+  }
+}
+// ================= balance view (user 23:09: "Do you have ways of measuring that where the weight distribution goes along
+// the legs and he's stable?"; 23:17: "keeping your body stiff like this ... is a lot of energy"): sim/balance.js measures
+// his real body each frame. The button shows it on the floor under him: the outline of what holds him up (feet, hands,
+// knees... pressing on the box), his centre of mass seen straight down (dot) and his capture point (ring: where his
+// weight is heading); green = inside (he can stay), red = outside (he must step, grab or fall). Bottom left: the numbers.
+let bal = null, balOn = false, balG = null;
+function balanceView(dt) {
+  if (!W || !bal) return;
+  const r = bal.update(dt, drive && drive.pins);
+  if (!balOn) return;
+  if (!balG) {
+    balG = new THREE.Group(); figRoot.add(balG);
+    const mk = c => new THREE.MeshBasicMaterial({ color: c, depthTest: false, transparent: true, opacity: 0.9 });
+    balG.userData.line = new THREE.LineLoop(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x66dd77, depthTest: false }));
+    balG.userData.com = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 8), mk(0x66dd77));
+    balG.userData.cp = new THREE.Mesh(new THREE.TorusGeometry(0.03, 0.006, 6, 20), mk(0x66dd77));
+    for (const k of ['line', 'com', 'cp']) { balG.userData[k].renderOrder = 10; balG.add(balG.userData[k]); }
+  }
+  const D = r.draw(), U = balG.userData, col = r.cpMargin >= 0 ? 0x66dd77 : r.margin >= 0 ? 0xf0c040 : 0xee5544;
+  U.line.geometry.setFromPoints(D.hull.map(p => new THREE.Vector3(p[0], p[1], p[2] + 0.003)));
+  U.com.position.set(...D.com); U.cp.position.set(...D.cp);
+  const g = W.m.opt.gravity, n = new THREE.Vector3(-g[0], -g[1], -g[2]).normalize(); U.cp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+  U.line.material.color.setHex(col); U.com.material.color.setHex(r.margin >= 0 ? 0x66dd77 : 0xee5544); U.cp.material.color.setHex(col);
+  const pc = v => (v * 100).toFixed(0) + '%';
+  $('balTxt').textContent = `weight ${r.margin >= 0 ? (r.margin * 100).toFixed(0) + ' cm inside' : (-r.margin * 100).toFixed(0) + ' cm OUTSIDE'} what holds him up` +
+    `\nheading ${r.cpMargin >= 0 ? 'inside (he can stay)' : 'OUTSIDE (step, grab or fall)'}` +
+    `\ncarried by: left foot ${pc(r.L)}, right foot ${pc(r.R)}, hands ${pc(r.hands)}, knees ${pc(r.knees)}, rest ${pc(r.rest)}` +
+    (r.held > 0.05 ? `\nheld by a weld more than a real touch could: ${pc(r.held)}` : '') +
+    (r.eff !== undefined ? `\nmuscles: ${pc(r.eff)} of a person's strength on average, hardest ${r.effJ} ${pc(r.effMax)}` : '');
+}
+$('bal').onclick = e => { e.stopPropagation(); balOn = !balOn; $('bal').classList.toggle('on', balOn); $('balTxt').style.display = balOn ? 'block' : 'none'; if (balG) balG.visible = balOn; };
+for (const ev of ['pointerdown', 'pointerup']) $('bal').addEventListener(ev, e => e.stopPropagation());
+
 function syncFigure() {
   const d = W.d;
+  poseHands(1 / 60);
   for (const name of W.bodyNames) {
     const b = W.bodyId[name], g = bodyGroup[b]; if (!g) continue;
     g.position.set(d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]);
     g.quaternion.set(d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]);
   }
+  if (torso) for (const bn of torso.bones) { const b = W.bodyId[bn.name]; bn.position.set(d.xpos[3 * b], d.xpos[3 * b + 1], d.xpos[3 * b + 2]); bn.quaternion.set(d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]); }
   if (dbgMode === 2) updateSkel();
   footShadows();
 }
@@ -724,6 +922,7 @@ function footShadows() {
   ['Left', 'Right'].forEach((side, k) => {
     const pad = footPads[k], a = W.bodyId[side + 'Foot'], t = W.bodyId[side + 'ToeBase'];
     if (a === undefined || t === undefined) { pad.visible = false; return; }
+    if (crack && crack.broken.has(a)) { pad.visible = false; return; }   // that foot broke off
     let lo = 9;   // the foot's lowest collision point
     for (let g = 0; g < m.ngeom; g++) {
       const b = m.geom_bodyid[g]; if (b !== a && b !== t) continue;
@@ -779,12 +978,17 @@ function updateSkel() {
 }
 function applyDebug() {
   for (const g of bodyGroup) if (g) for (const o of [...g.children]) {
-    if (!o.isMesh || o.userData.wire) continue;
+    if (!o.isMesh || o.userData.wire || o.userData.hiddenRigid) continue;
     let w = o.userData.wireMesh;
     if (!w && dbgMode === 1) {
       w = new THREE.Mesh(o.geometry, WIRE); w.userData.wire = true;
       w.position.copy(o.position); w.quaternion.copy(o.quaternion); w.scale.copy(o.scale); g.add(w); o.userData.wireMesh = w;
     }
+    if (w) w.visible = dbgMode === 1;
+  }
+  if (torso) for (const sk of torso.meshes) {
+    let w = sk.userData.wireMesh;
+    if (!w && dbgMode === 1) { w = new THREE.SkinnedMesh(sk.geometry, WIRE); w.userData.wire = true; w.frustumCulled = false; figRoot.add(w); w.bind(sk.skeleton, sk.bindMatrix); sk.userData.wireMesh = w; torso.meshes.wires = (torso.meshes.wires || []).concat(w); }
     if (w) w.visible = dbgMode === 1;
   }
   const ghost = dbgMode === 2 || dbgMode === 3, bones = dbgMode === 2;
@@ -842,7 +1046,7 @@ function levelG(g, out) {
 }
 // user 17:45: by default the phone's tilt does NOT change his gravity (he is tested with the finger: touch pushes, drag
 // pulls); the round phone button turns the tilt on (the angle you hold it at then becomes level)
-let tiltOn = false;
+let tiltOn = true;   // Recordings page: the phone's tilt is on from the start (the button turns it off)
 const eul = new THREE.Euler();
 
 function screenAngle() {
@@ -889,7 +1093,7 @@ const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 function figureAt(cx, cy) {
   ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, camera);
-  const hits = ray.intersectObjects(bodyGroup.filter(Boolean), true);
+  const hits = ray.intersectObjects(bodyGroup.filter(g => g && g.visible), true);   // (a broken-off part is hidden)
   if (!hits.length) return null;
   let o = hits[0].object; while (o && o.userData.body === undefined) o = o.parent;
   if (!o) return null;
@@ -1107,6 +1311,56 @@ function sfxUpdate(dt) {
 }
 
 
+// ================= cracking mode: what happens after each frame's physics =================
+function crackFrame(dt) {
+  const t0 = performance.now();
+  // no damage counted during get-ups (his body is placed by the recording); feet and hands are support while he is on his feet
+  const ev = crack.update(dt, !crack.dead && kin && kin.state === 'getup', !crack.dead && kin && (kin.state === 'stand' || kin.state === 'react'));
+  if (!crackView) return;
+  if (ev.length && actx && SET.sound && !crackSnd) crackSnd = new CrackSound(actx);
+  const snd = actx && SET.sound ? crackSnd : null;
+  for (const e of ev) {
+    // (user 15:41) the print of the part on the wall is taken now, while the part is where it hit
+    let fp = null; try { if (e.hit && e.hit.wall) fp = crackView.footprint(e.hit); } catch (err) { console.warn('print', err); }
+    // (user 11:04: no freeze when it cracks or breaks) the pieces appear at once; drawing the crack and the dent waits
+    // for the next frames (a few ms each)
+    if (e.type === 'crack') {
+      for (const P of e.chips || []) crackView.addDebris(P);
+      crackView.later(() => { const tg = e.hit.chunk ? crackView.chunkPart(e.hit.chunk, e.hit.body) : null; if (!e.hit.chunk || tg) crackView.addCrack(e.hit, tg); });
+      crackView.later(() => crackView.wallMark(e.hit.wall, e.hit.s, e.hit.seed, fp)); if (snd) snd.crack(e.hit.s, e.level);
+    } else if (e.type === 'split' || e.type === 'shatter') {   // a broken-off piece breaks further (user 11:07)
+      if (e.type === 'split') crackView.split(e); else crackView.removeDebris(e.P);
+      for (const P of e.shards) crackView.addDebris(P);
+      crackView.later(() => crackView.wallMark(e.hit.wall, Math.min(1, e.hit.s + 0.3), e.hit.seed, fp)); if (snd) snd.shatter(e.hit.s);
+    }
+    else if (e.type === 'break') {
+      crackView.addDebris(e.chunk); for (const P of e.shards) crackView.addDebris(P); crackView.later(() => { const tg = crackView.chunkPart(e.chunk, e.hit.body); if (tg) crackView.addCrack(e.hit, tg); }); crackView.later(() => crackView.wallMark(e.hit.wall, Math.min(1, e.hit.s + 0.3), e.hit.seed, fp));
+      if (snd) snd.shatter(e.hit.s);
+      note(e.dead ? 'His ' + partName(e.piece) + ' broke. He has stopped. Double-tap for a new one.' : 'His ' + partName(e.piece) + ' broke off.', 2600);
+    } else if (e.type === 'clink' && snd) snd.clink(e.v, e.m);
+  }
+  crackView.sync(crack);
+  const ms = performance.now() - t0; crackFrame.max = Math.max(crackFrame.max || 0, ms); if (ms > 8) crackFrame.slow = (crackFrame.slow || 0) + 1;
+  // the skinned trunk (skinTorso) draws the hips/belly/chest/neck: a broken-off piece of it is drawn by its debris copy
+  if (torso && (crack.broken.size || crack.torsoHid)) { crack.torsoHid = crack.broken.size > 0; for (const sk of torso.meshes) sk.visible = !crack.broken.has(W.bodyId[sk.userData.torsoPiece]); }
+}
+function partName(p) {
+  const side = /^Left/.test(p) ? 'left ' : /^Right/.test(p) ? 'right ' : '', b = p.replace(/^(Left|Right)/, '');
+  return side + ({ Arm: 'arm', ForeArm: 'forearm', Hand: 'hand', Leg: 'thigh', Shin: 'leg', Foot: 'foot', Head: 'head', Neck1: 'neck', Neck2: 'neck', Chest: 'chest', Spine1: 'body', Spine2: 'body', Hips: 'hips' }[b] || b.toLowerCase());
+}
+$('crk').classList.toggle('on', !!(crack && crack.on));
+if (!crack) $('crk').style.display = 'none';
+$('crk').onclick = e => {
+  e.stopPropagation(); if (!crack) return;
+  const on = !crack.on, hurt = crack.broken.size > 0 || crack.dead;
+  crack.setOn(on); if (!on && crackView) crackView.reset();
+  if (!on && hurt) standUp();
+  $('crk').classList.toggle('on', on);
+  try { localStorage.setItem('box.crack', on ? '1' : '0'); } catch (_) {}
+  note(on ? 'Cracking on: hard hits crack him where he hits; the third hit on a part breaks it off. Double-tap for a new one.' : 'Cracking off.', on ? 3200 : 1200);
+};
+for (const ev of ['pointerdown', 'pointerup']) $('crk').addEventListener(ev, e => e.stopPropagation());
+
 // ================= full screen =================
 async function goFull() {
   const de = document.documentElement;
@@ -1154,12 +1408,16 @@ function changed(k) {
 }
 $('optBtn').onclick = () => $('opts').classList.add('open');
 $('optClose').onclick = () => $('opts').classList.remove('open');
-// the brain picker (body/models/index.json)
 {
+  // (V40, user 12:54: "give me the option to test it too, so I can judge it myself") the recordings decide every move;
+  // the brain only works his muscles so his physical body follows them while he stands. Picking reloads the page.
   const sel = $('brainPick');
-  for (const m of MODELS.models) { const o = document.createElement('option'); o.value = m.id; o.textContent = m.label; if (m.id === MODEL.id) o.selected = true; sel.appendChild(o); }
-  $('brainNow').textContent = brain ? MODEL.label : 'hand-written stand';
-  sel.onchange = () => { try { localStorage.setItem('thebox.model', sel.value); } catch (_) {} const u = new URL(location.href); u.searchParams.set('model', sel.value); location.href = u.toString(); };
+  const OPTS = [['nvidia', "NVIDIA GPC · the only brain on this page"]];
+  for (const [id, label] of OPTS) { const o = document.createElement('option'); o.value = id; o.textContent = label; sel.appendChild(o); }
+  sel.value = BB.id;
+  $('brainNow').textContent = 'NVIDIA GPC' + ((BB.dir || BB.id === 'phys') && !drive ? ' (did not load)' : '');
+  sel.parentNode.querySelector('.help').textContent = "NVIDIA's brain alone moves him: no recordings, no other brain. Its big part thinks in the background, its small part drives his joints every frame.";
+  sel.disabled = true; sel.onchange = () => { return; try { localStorage.setItem('box.kinBrain2', sel.value); } catch (_) {} const u = new URL(location.href); u.searchParams.delete('brain'); location.replace(u.toString()); };
 }
 // test buttons: the scorecard's situations, one tap away (a shove at the chest from a random side; lying on his back)
 let kick = null;
@@ -1191,6 +1449,16 @@ $('dbg').onclick = e => {
   applyDebug();
 };
 for (const ev of ['pointerdown', 'pointerup']) $('dbg').addEventListener(ev, e => e.stopPropagation());
+function setDebugUI(on) {
+  document.body.classList.toggle('debug', on); $('dbgui').classList.toggle('on', on);
+  // hidden debug buttons leave nothing switched on behind them (balance overlay, wireframe/skeleton)
+  if (!on && balOn) $('bal').onclick(new Event('click'));
+  if (!on && dbgMode) { dbgMode = 0; $('dbg').classList.remove('on'); applyDebug(); }
+  try { localStorage.setItem('box.debugui', on ? '1' : '0'); } catch (_) {}
+}
+$('dbgui').onclick = e => { e.stopPropagation(); setDebugUI(!document.body.classList.contains('debug')); };
+for (const ev of ['pointerdown', 'pointerup']) $('dbgui').addEventListener(ev, e => e.stopPropagation());
+try { setDebugUI(localStorage.getItem('box.debugui') === '1'); } catch (_) { setDebugUI(false); }
 $('resetVals').onclick = () => { for (const o of OPTS) if (o.k) SET[o.k] = o.def; saveSettings(); buildOptions(); applyQuality(); };
 for (const ev of ['pointerdown', 'pointermove', 'touchmove']) $('opts').addEventListener(ev, e => e.stopPropagation(), { passive: true });
 
@@ -1263,17 +1531,20 @@ function bgNow() { return look.on ? GREY : place === 'floor' ? ROOM : DARK; }
 function applyPlaceVis() {
   const box = place === 'box';
   if (place === 'floor' && (!floorGroup || floorGroup.userData.S !== S || floorGroup.userData.iy !== iy)) { buildFloor(); floorGroup.userData = { S, iy }; }
-  if (boxGroup) boxGroup.visible = box && !look.on;
-  if (floorGroup) floorGroup.visible = !box && !look.on;
+  const hide = look.on && !look.box;   // paused: the box hidden (plain grey) unless the box button turned it back on
+  if (boxGroup) boxGroup.visible = box && !hide;
+  if (floorGroup) floorGroup.visible = !box && !hide;
   scene.background = bgNow();
-  scene.fog = box || look.on ? null : new THREE.Fog(ROOM, 8, 34);
+  scene.fog = box || hide ? null : new THREE.Fog(ROOM, 8, 34);
   envDirty = 0;
 }
 $('place').onclick = e => {
   e.stopPropagation();
+  // (user 22:20) paused: this button shows or hides the box around him (the world itself doesn't change)
+  if (look.on) { look.box = !look.box; applyPlaceVis(); note(look.box ? 'Box shown' : 'Box hidden', 1200); return; }
   place = place === 'box' ? 'floor' : 'box';
   $('place').classList.toggle('floor', place === 'floor');
-  W.setOpen(place === 'floor');
+  W.setOpen(place === 'floor'); if (G !== W) G.setOpen(place === 'floor');
   applyPlaceVis();
   standUp();
   note(place === 'box' ? 'Back in the box.' : 'Open floor: no walls. Double-tap to stand him up again.', 2400);
@@ -1306,7 +1577,6 @@ function restoreBody(s) {
 $('look').onclick = e => {
   e.stopPropagation();
   look.on = !look.on; $('look').classList.toggle('on', look.on);
-  $('pose').style.display = look.on ? 'block' : 'none';
   if (!look.on && poseIdx !== 0 && look.snap) restoreBody(look.snap);   // carry on from the paused moment, not a test pose
   poseIdx = 0; $('pose').classList.remove('on');
   if (look.on) {
@@ -1314,19 +1584,69 @@ $('look').onclick = e => {
     const p = bodyPoint('Hips'), h = bodyPoint('Head');
     look.tgt.copy(p).lerp(h, 0.25);
     look.yaw = 0; look.pitch = 0.1; look.dist = 1.75 * S * 1.75;
+    look.box = true;   // (user 09:30: "when it pauses, by default, it should stay on the box. I have to click again to hide the box")
     poke.on = false; drag = null;
-    note('Paused. Slide to look around him; tap the circle to carry on.', 2600);
+    note('Paused. Slide to look around him; tap again to carry on.', 2600);
   } else { acc = 0; last = performance.now(); }
+  lookLight = look.on ? lookCameraLight : null;
   applyPlaceVis();   // looking him over: a plain 50% grey behind him, no box or floor
 };
 for (const ev of ['pointerdown', 'pointerup']) $('look').addEventListener(ev, e => e.stopPropagation());
+// ================= snapshot (user 22:20: "pause, grab snapshot and paste it ... whatever the format makes more sense") =========
+// Everything needed to see exactly what he saw: his body (every joint), the recording he follows, gravity, the box,
+// what he was doing and why, the last 3 s of his body, and the camera. Shared as a small .json file (phone share sheet:
+// send it straight to the chat), or downloaded; window.__loadSnap(json) puts a page back into that moment.
+const hist = [];   // last 3 s of his body, 30 times a second (filled by the frame loop)
+function recordHist() {
+  if (look.on || !W) return;
+  const t = W.d.time;
+  if (hist.length && t < hist[hist.length - 1][0] - 1e-6) hist.length = 0;   // (V52) time went back (reset): start over - before, the history stopped recording after a reset
+  if (hist.length && t - hist[hist.length - 1][0] < 1 / 30 - 1e-6) return;
+  // (V39) kept as raw numbers (was ~2,200 number->text->number roundings a second); rounded when a snapshot is made
+  const q = W.d.qpos, h = new Float64Array(q.length + 1); h[0] = t; h.set(q, 1);
+  hist.push(h); if (hist.length > 90) hist.shift();
+}
+function makeSnap() {
+  const r = a => Array.from(a, v => +(+v).toFixed(5)), d = look.snap || snapBody();
+  const K = kin, cl = K && K.anim && K.anim.clip;
+  return { what: 'the-box snapshot', version: $('ver').textContent, at: new Date().toISOString(), simTime: +W.d.time.toFixed(3),
+    box: W.box, open: !!W.open, gravity: r(W.m.opt.gravity), ground: K && K.G ? K.G.name : null,
+    state: K && K.state, fallWhy: K && K.fallWhy, braceW: K && +(K.braceW || 0).toFixed(3),
+    clip: K && K.anim ? { file: (K.lib && Object.values(K.lib.getups || {}).flat().concat(K.lib.reacts || [], K.lib.idles || []).find(e => e.clip === cl) || {}).file || null, frame: +K.anim.x.toFixed(2) } : null,
+    events: K ? K.log.slice(-15) : [], pins: drive && drive.pins ? Object.keys(drive.pins.on) : [],
+    qpos: r(d.qpos), qvel: r(d.qvel), ghostQpos: G && G !== W ? r(G.d.qpos) : null,
+    camera: { yaw: +look.yaw.toFixed(3), pitch: +look.pitch.toFixed(3), dist: +look.dist.toFixed(3), target: [look.tgt.x, look.tgt.y, look.tgt.z].map(v => +v.toFixed(3)), box: !!look.box },
+    balance: bal && bal.last ? Object.fromEntries(Object.entries(bal.last).filter(([k, v]) => typeof v !== 'function').map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(4) : v])) : null,
+    hist: hist.map(h => Array.from(h, (v, i) => +v.toFixed(i ? 4 : 3))), errors: ERRS.slice(), wasmMB: +(W.d.qpos.buffer.byteLength / 1048576).toFixed(1) };
+}
+$('snap').onclick = async e => {
+  e.stopPropagation();
+  const js = JSON.stringify(makeSnap()), name = 'box-snapshot-' + new Date().toISOString().slice(11, 19).replace(/:/g, '') + '.json';
+  const file = new File([js], name, { type: 'application/json' });
+  try { if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Box snapshot' }); note('Snapshot shared', 1500); return; } } catch (err) { if (err && err.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  try { await navigator.clipboard.writeText(js); } catch (_) {}
+  note('Snapshot saved to Downloads (also copied): attach it in the chat', 2600);
+};
+for (const ev of ['pointerdown', 'pointerup']) $('snap').addEventListener(ev, e => e.stopPropagation());
+// (for Claude's checks) open a snapshot: his body as it was, paused, camera as it was
+window.__loadSnap = sn => {
+  if (typeof sn === 'string') sn = JSON.parse(sn);
+  if (!look.on) $('look').onclick(new Event('click'));
+  const d = W.d; d.qpos.set(sn.qpos); if (sn.qvel) d.qvel.set(sn.qvel); W.m.opt.gravity.set(sn.gravity);
+  if (sn.ghostQpos && G !== W) { G.d.qpos.set(sn.ghostQpos); mj.mj_forward(G.m, G.d); }
+  mj.mj_forward(W.m, d); syncFigure(); look.snap = snapBody();
+  if (sn.camera) { look.yaw = sn.camera.yaw; look.pitch = sn.camera.pitch; look.dist = sn.camera.dist; look.tgt.set(...sn.camera.target); look.box = !!sn.camera.box; }
+  applyPlaceVis();
+};
+
 // test poses in look mode (user, 12:43: "a new button below for poses ... so we can test how it looks in the
 // extremes"): each tap puts him in the next pose of sim/poses.js (sitting, star, bending to pick up, squat, lunge,
 // reaching up twisting, back to standing); physics stays paused
 let poseIdx = 0;
 $('pose').onclick = e => {
   e.stopPropagation();
-  if (!look.on) return;
+  if (!look.on) $('look').onclick(new Event('click'));   // the test poses need the world paused
   poseIdx = (poseIdx + 1) % POSES.length;
   if (poseIdx === 0 && look.snap) restoreBody(look.snap);   // the cycle ends back where he was paused
   else applyPose(W, mj, POSES[poseIdx], brain ? BRAIN_STAND : STAND);
@@ -1345,6 +1665,13 @@ el.addEventListener('pointermove', e => {
   look.pitch = clamp(look.drag.pitch + (e.clientY - look.drag.y) * k, -1.2, 1.35);
 }, true);
 el.addEventListener('pointerup', e => { if (look.on) look.drag = null; }, true);
+function lookCameraLight() {
+  const t = look.tgt, c = new THREE.Vector3().subVectors(camera.position, t).normalize();
+  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion).normalize();
+  const dir = c.multiplyScalar(0.55).addScaledVector(up, 0.85).normalize(), dist = Math.max(look.dist * 1.8, 2.5);
+  spot.position.copy(t).addScaledVector(dir, dist); spot.target.position.copy(t);
+  spot.angle = Math.atan(1.3 * S / dist) + 0.15;
+}
 function lookCamera() {
   const c = Math.cos(look.pitch);
   camera.position.set(look.tgt.x + look.dist * c * Math.sin(look.yaw), look.tgt.y + look.dist * Math.sin(look.pitch), look.tgt.z + look.dist * c * Math.cos(look.yaw));
@@ -1358,7 +1685,75 @@ function lookCamera() {
 let acc = 0, last = performance.now(), frameN = 0;
 const lu = new THREE.Vector3();
 const calmG = makeCalmGravity();
+// ---- freeze guards (helper F, Nov 15; user: "the figure froze while the menu still worked") ----
+// The loop asked for its next frame only at the very end of frame(): one exception anywhere in it (MuJoCo's wasm
+// out of memory - see sim/physics.js freeContactCopies - a NaN in his body, a bug in a rare state) and no frame came
+// again: the figure stood still, the buttons (plain page) still worked. Now: the next frame is always asked for, the
+// problem is kept (last 20, in snapshots as `errors`), a body gone NaN/Infinity is stood up again, an exception that
+// keeps coming back resets him, and a frame waiting over 4 s on something that never comes back is left behind.
+const ERRS = [];
+function logErr(what, e) {
+  let t = null; try { t = +W.d.time.toFixed(2); } catch (_) {}
+  const s = { t, at: new Date().toISOString().slice(11, 19), what, state: kin ? kin.state : null,
+    msg: e ? String((e && e.message) || e).slice(0, 200) : undefined, stack: e && e.stack ? String(e.stack).split('\n').slice(0, 4).join(' | ').slice(0, 400) : undefined };
+  const p = ERRS[ERRS.length - 1];
+  if (p && p.what === s.what && p.msg === s.msg) { p.n = (p.n || 1) + 1; p.lastT = t; return; }
+  ERRS.push(s); if (ERRS.length > 20) ERRS.shift();
+  console.warn('[box] ' + what, e || '');
+}
+const allFinite = a => { for (let i = 0; i < a.length; i++) if (!Number.isFinite(a[i])) return false; return true; };
+function bodyOK() { return allFinite(W.d.qpos) && allFinite(W.d.qvel) && (G === W || allFinite(G.d.qpos)); }
+let loopGen = 0, frameT0 = 0, frameBusy = false, failRun = 0;
+// ---- battery (V39; user Nov 15 12:25: "optimizations ... to help preserve phone battery, performance") ----
+// - paused (look mode) nothing moves unless you touch the screen: the picture is drawn only when the view changes or
+//   in the 0.7 s after a touch/button/turn of the phone, instead of 60-120 times a second
+// - phones with 90-144 Hz screens asked for a frame up to 144 times a second: the whole page (his drawing, shadows) ran
+//   twice for the same 60 frames people see in games; now at most ~1 frame per 10 ms (120 Hz -> 60, 90 Hz stays 90).
+//   Options > High detail lifts the cap (the screen's full rate). His physics runs the same number of steps a second
+//   either way (480 a second, each frame steps for the time since the last one).
+let drawnAt = -1e9, lookSig = '', wakeUntil = 0, lookDrawn = -1e9;
+const wake = () => { wakeUntil = performance.now() + 700; };
+for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'click', 'wheel', 'keydown', 'resize', 'orientationchange', 'visibilitychange'])
+  addEventListener(ev, wake, { capture: true, passive: true });
+function skipFrame(now) {
+  if (look.on) {
+    const t = look.tgt, sig = [look.yaw, look.pitch, look.dist, t.x, t.y, t.z, look.box, poseIdx, dbgMode, balOn, place, innerWidth, innerHeight, dpr].join();
+    const pn = performance.now();
+    if (sig === lookSig && pn > wakeUntil && pn - lookDrawn < 2000) return true;
+    lookDrawn = pn;   // (and a fresh picture every 2 s, just in case)
+    lookSig = sig;
+  } else lookSig = '';
+  if (!SET.hiQ && now - drawnAt < 10) return true;
+  drawnAt = now; return false;
+}
 async function frame(now) {
+  const gen = loopGen;
+  if (skipFrame(now)) { if (gen === loopGen) requestAnimationFrame(frame); return; }
+  frameBusy = true; frameT0 = performance.now();
+  try {
+    await frameStep(now);
+    failRun = 0;
+    if (!look.on && !bodyOK()) { logErr('NaN/Infinity in his body: stood up again'); standUp(); }
+  } catch (e) {
+    failRun++; logErr('frame threw', e);
+    try {
+      if (!bodyOK()) { logErr('NaN/Infinity in his body: stood up again'); standUp(); }
+      else if (failRun === 30) { logErr('frame keeps throwing: stood up again'); standUp(); }
+      else if (failRun === 120) note('Something broke - the reset button or reloading the page brings him back', 4000);
+    } catch (e2) { if (failRun < 3 || failRun === 30) logErr('recovery threw', e2); }
+    try { renderer.render(scene, camera); } catch (_) {}
+  } finally {
+    if (gen === loopGen) { frameBusy = false; requestAnimationFrame(frame); }
+  }
+}
+// a frame waiting on a promise that never comes back (4 s, page visible): start a fresh loop; the old frame, if it ever
+// wakes, finishes without asking for another
+setInterval(() => {
+  if (document.hidden || !frameBusy || performance.now() - frameT0 < 4000) return;
+  logErr('frame waited ' + ((performance.now() - frameT0) / 1000).toFixed(0) + ' s on something that never came back: loop restarted');
+  loopGen++; frameBusy = false; last = performance.now(); requestAnimationFrame(frame);
+}, 1000);
+async function frameStep(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
 
   // which way is down? (in g, screen axes; shakes included)
@@ -1370,6 +1765,9 @@ async function frame(now) {
     if (levelPending && (levelT += dt) > 0.4) { setLevel(gS); levelPending = false; }
     levelG(gS, gL);
     gx = gL.x; gy = gL.y; gz = gL.z;
+    // until the held angle has been taken as level (0.4 s after a start or reset), down is straight down: the raw angle
+    // you hold the phone at read as a 30-50 deg slope and he fell over at once (phone test, version 6)
+    if (levelPending) { gx = 0; gy = -1; gz = 0; }
   } else {
     const a = Math.min(1, dt * 10);
     dragS.roll += (dragRot.roll - dragS.roll) * a; dragS.pitch += (dragRot.pitch - dragS.pitch) * a;
@@ -1386,26 +1784,32 @@ async function frame(now) {
   lightUp.lerp(lu, Math.min(1, dt * 4)).normalize();
   placeLight();
 
-  if (PLAY) { playRecording(dt); acc = 0; } else gaze(dt);
-  // physics in real time, in small steps
-  acc += (look.on || PLAY) ? 0 : dt;
-  let n = 0;
-  const nMax = Math.round(0.034 / PHYS.dt);
-  while (acc >= PHYS.dt && n < nMax) {
-    if (poke.on) poke.t += PHYS.dt;
+  // the recordings engine: kinematic while he stands, steps and gets up; MuJoCo physics while he falls
+  if (brain) gaze(dt);   // where he looks: at you, now and then the floor, where he's falling (drives brain.lookAt)
+  if (crack && crack.dead && !look.on) { if (poke.on) poke.t += dt; crack.stepDead(dt, fingerPush); showState(); }   // he has stopped: physics only
+  else if (kin && !look.on) {
+    // your finger: its push (into the box and the way you drag) goes to his balance; while he falls, to the physics
     fingerPush();
-    testKick();
-    if (brain && control === brain.control && brain.due()) {
-      await brain.think();   // the network, 30 times a second
-      if (director) director.update(1 / 30);   // losing balance? switch to a real recovery recording
-      if (brain.down && !brain.told) { brain.told = true; note("He can't get up on his own yet. Double-tap to stand him up.", 3500); }
+    const x = W.d.xfrc_applied; let fx = 0, fy = 0, fz = 0;
+    for (let b = 0; b < W.m.nbody; b++) { fx += x[6 * b]; fy += x[6 * b + 1]; fz += x[6 * b + 2]; }
+    if (poke.on) poke.t += dt;
+    kin.pushF = kin.state === 'fall' ? [0, 0, 0] : kin.dirLocal([fx, fy, fz]);
+    if (springs) {
+      // the ghost feels the same gravity; then his real body follows it (your finger pushes his real body)
+      const g = W.m.opt.gravity; G.setGravity([g[0], g[1], g[2]]);
+      kin.update(dt);
+      if (drive) await drive.update(dt, fingerPush); else springs.update(dt, fingerPush);
+      if (!bal && W) bal = new Balance(W, { cap: humanCap });
+      balanceView(dt);
+    } else {
+      kin.update(dt);
+      if (kin.state !== 'fall') x.fill(0);
     }
-    W.step(control);
-    AUDIT.check();
-    acc -= PHYS.dt; n++;
+    showState();
   }
-  if (n === nMax) acc = 0;   // a slow phone: let time slip rather than fall behind
+  if (crack && !look.on) crackFrame(dt);
   sfxUpdate(dt);
+  recordHist();
   syncFigure();
 
   if (look.on) lookCamera(); else updateCamera(dt);
@@ -1414,7 +1818,6 @@ async function frame(now) {
   if (envDirty < 2 || (lightUp.angleTo(envUp) > 4 * DEG && frameN - envFrame > 12)) { updateEnv(); envDirty++; envUp.copy(lightUp); envFrame = frameN; }
   renderer.render(scene, camera);
   adaptSharpness(dt);
-  requestAnimationFrame(frame);
 }
 
 // ================= "Recording only (no physics)" (user, Nov 13 09:26: "This is extremely far from anything remotely
@@ -1422,7 +1825,7 @@ async function frame(now) {
 // physics, no brain, like a game animation. If this looks natural, the brain is the problem; if not, the body, the
 // conversion of the recordings or the figure is. Picker entry with "playback": "<clip>". =================
 let PLAY = null;
-if (MODEL.playback) try {
+if (false) try {
   const buf = new Float32Array(await LOAD.take('body/clips/' + MODEL.playback + '.bin', 'Brain', 514368));
   const F = 376, n = Math.floor(buf.length / F), q0 = buf.subarray(299, 372);
   // turn it so frame 0's hips face the glass (body forward = its -y), and put frame 0's hips mid-box on the floor
@@ -1489,6 +1892,13 @@ function gaze(dt) {
   brain.lookAt = GZ.pt; brain.lookW = 1;
 }
 
+// what he's doing, under the release label (recording names help tell the user what he sees)
+let stateShown = '';
+function showState() {
+  const t = crack && crack.dead ? 'broken' : kin.state === 'stand' ? 'standing' : kin.state === 'react' ? 'recovering' : kin.state === 'fall' ? 'falling' : 'getting up';
+  if (t !== stateShown) { stateShown = t; try { document.getElementById('brainver').textContent = t; } catch (_) {} }
+}
+window.__kin = () => kin; window.__crack = () => crack; window.__crackMs = () => ({ max: crackFrame.max || 0, slow: crackFrame.slow || 0 });
 // ================= start =================
 $('go').onclick = async () => {
   goFull();
@@ -1500,10 +1910,13 @@ $('go').onclick = async () => {
   window.addEventListener('devicemotion', onMotion);
   $('start').classList.add('hide');
   $('hud').classList.add('show');
+  $('title').classList.add('show'); setTimeout(() => $('title').classList.remove('show'), 3000);
   fullSync();
   setTimeout(() => { if (mode !== 'sensor') { mode = 'touch'; note('No motion sensors here, so drag to turn the box.', 4500); } }, 1300);
 };
 
+// (V39) another app or the screen off: the sound engine sleeps (it kept the phone's audio running, silent); back on return
+document.addEventListener('visibilitychange', () => { if (!actx) return; try { (document.hidden ? actx.suspend() : actx.resume()).catch(() => {}); } catch (_) {} });
 // a resize (the phone's bars, the address bar) only reshapes the box: he carries on where he is
 let reshapeT = 0;
 addEventListener('resize', () => { resizeAll(); clearTimeout(reshapeT); reshapeT = setTimeout(() => buildBox(), 250); });
@@ -1513,11 +1926,13 @@ LOAD.state('Building the room', 'build');
 await new Promise(r => requestAnimationFrame(() => setTimeout(r, 0)));
 buildOptions();
 buildBox();
+if (crack) { crackView = new CrackView(THREE, figRoot, () => bodyGroup, o => o.material === SHELL && !o.userData.joint && !o.userData.crack, movers, SHELL); crackView.prewarm([0, W.box.D / 2, 0]); }
 buildFigure();
 standUp();
 applyQuality();
 LOAD.state('Building the room', 'ready');
 LOAD.finish();
+try { document.fonts && document.fonts.load('600 40px BoxTitle'); } catch (_) {}
 $('go').disabled = false; $('go').textContent = 'Start';
 requestAnimationFrame(frame);
 </script>
