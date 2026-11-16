@@ -119,13 +119,16 @@ export async function attachGPC(brain, ort, say) {
       const n = Math.floor(buf.length / 376), s0 = shapeOf(buf, 3); let h = 0, k = 0;
       for (const a of brain.W.act) { h += Math.abs(d.qpos[a.qadr] - buf[299 + a.qadr]); k++; }
       const pose = Math.hypot(me[0] - s0[0], me[1] - s0[1], me[2] - s0[2]) + 0.3 * h / k;
-      const ov = overflow(buf, n, { G: brain.G, xy: [P[0], P[1]], yaw, h0: hdg(buf, 3), mid: [buf[0], buf[1]] }, brain.W.box, brain.ground);
+      const ov = brain.W.open ? { worst: 0 } : overflow(buf, n, { G: brain.G, xy: [P[0], P[1]], yaw, h0: hdg(buf, 3), mid: [buf[0], buf[1]] }, brain.W.box, brain.ground);   // open floor: no walls to go through
       out.push({ id, buf, n, pose: +pose.toFixed(3), wall: +ov.worst.toFixed(2) }); }
     // the start pose comes first (a move he is not in cannot be followed); among moves within 0.15 of the best start,
     // the one that goes least through the walls
     const best = Math.min(...out.map(x => x.pose));
     out.sort((a, b) => ((a.pose > best + 0.15) - (b.pose > best + 0.15)) || (a.pose > best + 0.15 ? a.pose - b.pose : a.wall - b.wall || a.pose - b.pose)); return out;
   }
+  // a move eases in from where his body is now, not from the last target (user Nov 16 16:40: the right leg thrashed at
+  // every get-up: on the open floor the last target, the standing spot, was 3 m away, and the first 0.4 s dragged him there)
+  const fromBody = () => { const L = brain.lastRef; if (!L) return; L.pos.set(brain.pos); L.rot.set(brain.rot); L.vel.set(brain.vel); L.ang.set(brain.ang); };
   async function startRecording(o) {
     const D = o.do || {}; let file = D.file;
     if (D.moves && D.moves.length) {
@@ -133,7 +136,7 @@ export async function attachGPC(brain, ort, say) {
       if (!b || b.n < 10) { st.rec = { failed: D.moves.join(' ') }; return; }
       const P = brain.pos, buf = b.buf;
       brain.react = { buf, n: b.n, end: b.n - 1, fps: 30, mid: [buf[0], buf[1]], h0: hdg(buf, 3), t: 0, xy: [P[0], P[1]], yaw: hdg(brain.rot, 0) };
-      if (brain.blendStart) brain.blendStart();
+      fromBody(); if (brain.blendStart) brain.blendStart();
       st.rec = { file: b.id, n: b.n, o, wall: b.wall, pose: b.pose, others: L.slice(1, 4).map(x => [x.id, x.pose, x.wall]) }; st.fresh = false; return;
     }
     if (!file && D.category) {
@@ -148,7 +151,7 @@ export async function attachGPC(brain, ort, say) {
     const buf = await st.clip(file); if (st.active !== o || buf.length < 376 * 10) { st.rec = { failed: file }; return; }
     const n = Math.floor(buf.length / 376), P = brain.pos;
     brain.react = { buf, n, end: n - 1, fps: 30, mid: [buf[0], buf[1]], h0: hdg(buf, 3), t: 0, xy: [P[0], P[1]], yaw: hdg(brain.rot, 0) };
-    if (brain.blendStart) brain.blendStart();
+    fromBody(); if (brain.blendStart) brain.blendStart();
     st.rec = { file, n, o }; st.fresh = false;
   }
   // the signs: heights above the floor (m), lean of his trunk from upright (deg), speed of his hips (m/s), box tilt (deg)
