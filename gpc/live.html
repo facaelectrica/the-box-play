@@ -555,7 +555,10 @@ scene.add(spot, spot.target);
 scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12));
 const lightUp = new THREE.Vector3(0, 1, 0);
 // open floor: the view (and the key light with it) pans sideways to follow him (user 14:58); 0 in the box
-let camPan = 0; const _panV = new THREE.Vector3();
+let camPan = 0, camDepth = 0; const _panV = new THREE.Vector3();
+// open floor: where the view and light follow him to (x across, depth along the floor), smoothed over 0.5 s
+function followHim(dt) { const on = place === 'floor', p = on ? bodyPoint('Hips', _panV) : null, a = 1 - Math.exp(-dt / 0.5);
+  camPan += ((on ? p.x : 0) - camPan) * a; camDepth += ((on ? p.z + D / 2 : 0) - camDepth) * a; }
 // (user 09:30: "when we are in pause mode and I rotate the camera, the lighting always respects the camera, so I can
 // examine the model and always have a nice top-down lighting") paused: the key light rides with the camera, above and a
 // little in front of it, aimed at what the camera looks at
@@ -566,8 +569,8 @@ function placeLight() {
   if (dir.z < 0.55) dir.z = 0.55;
   dir.normalize();
   const dist = 4.6;
-  spot.position.set(dir.x * dist + camPan, dir.y * dist, -D / 2 + dir.z * dist);
-  spot.target.position.set(camPan, 0, -D * 0.7);
+  spot.position.set(dir.x * dist + camPan, dir.y * dist, -D / 2 + dir.z * dist + camDepth);
+  spot.target.position.set(camPan, 0, -D * 0.7 + camDepth);
   spot.angle = Math.atan((Math.max(hw, hh) + 0.4) / dist) + 0.12;
 }
 
@@ -1143,7 +1146,7 @@ if (EDITOR) {
   el.addEventListener('contextmenu', e => e.preventDefault());
   el.addEventListener('pointerdown', e => {
     if (!roomView() || (e.button === 0 && !e.shiftKey && figureAt(e.clientX, e.clientY))) return;
-    RV.drag = { pan: e.button !== 0 || e.shiftKey, x: e.clientX, y: e.clientY, yaw: RV.yaw, pitch: RV.pitch, p: RV.pan.clone() };
+    RV.drag = { pan: e.button !== 0 || e.shiftKey, x: e.clientX, y: e.clientY, t: performance.now(), yaw: RV.yaw, pitch: RV.pitch, p: RV.pan.clone() };
     try { el.setPointerCapture(e.pointerId); } catch (_) {} e.stopImmediatePropagation(); e.preventDefault();
   }, true);
   el.addEventListener('pointermove', e => {
@@ -1153,7 +1156,8 @@ if (EDITOR) {
       RV.pan.copy(RV.drag.p).add(new THREE.Vector3(-cy * dx * k - sy * sp * dy * k, cp * dy * k, sy * dx * k - cy * sp * dy * k)); }
     e.stopImmediatePropagation();
   }, true);
-  const endRV = e => { if (window.__box && RV.drag) { RV.drag = null; e.stopImmediatePropagation(); } };
+  const endRV = e => { if (window.__box && RV.drag) { const D0 = RV.drag; RV.drag = null; e.stopImmediatePropagation();
+    if (e.type === 'pointerup' && performance.now() - D0.t < 300 && Math.hypot(e.clientX - D0.x, e.clientY - D0.y) < 24) doubleTap(); } };
   el.addEventListener('pointerup', endRV, true); el.addEventListener('pointercancel', endRV, true);
   el.addEventListener('wheel', e => { if (!roomView()) return; RV.zoom = clamp(RV.zoom * Math.exp(e.deltaY * 0.0012), 0.12, 3); e.preventDefault(); e.stopImmediatePropagation(); }, { capture: true, passive: false });
   addEventListener('keydown', e => { if ((e.key === 'f' || e.key === 'F') && roomView()) { RV.yaw = 0; RV.pitch = 0.12; RV.zoom = 1; RV.pan.set(0, 0, 0); } });
@@ -1185,10 +1189,10 @@ let lastTap = 0, tapAt = null;
 el.addEventListener('pointerdown', e => { tapAt = figureAt(e.clientX, e.clientY) ? null : { x: e.clientX, y: e.clientY, t: performance.now() }; });
 el.addEventListener('pointerup', e => {
   if (!tapAt || performance.now() - tapAt.t > 300 || Math.hypot(e.clientX - tapAt.x, e.clientY - tapAt.y) > 24) return;
-  const now = performance.now();
-  if (look.on) return;
-  if (now - lastTap < 350) { standUp(); lastTap = 0; note('Reset', 900); } else lastTap = now;
+  doubleTap();
 });
+function doubleTap() { const now = performance.now(); if (look.on) return;
+  if (now - lastTap < 350) { standUp(); lastTap = 0; note('Reset', 900); } else lastTap = now; }
 el.addEventListener('pointercancel', endDrag);
 
 // ================= pinch to zoom (user, 11:05). Two fingers: pinch = zoom (1x to 5x) about the point between them,
@@ -1529,9 +1533,8 @@ function updateCamera(dt) {
   const lim = 1.4, gain = EYE * SET.view;
   ex = lim * Math.tanh(gain * ex / lim); ey = lim * Math.tanh(gain * ey / lim);
   const ez = EYE;
-  const panTo = place === 'floor' ? bodyPoint('Hips', _panV).x : 0;
-  camPan += (panTo - camPan) * (1 - Math.exp(-dt / 0.5));
-  camera.position.set(ex + camPan, ey, ez);
+  followHim(dt);
+  camera.position.set(ex + camPan, ey, ez + camDepth);
   camera.quaternion.identity();
   camera.updateMatrixWorld();
   const n = 0.05, f = 40, k = n / ez;
@@ -1706,7 +1709,7 @@ const RV = { yaw: 0, pitch: 0.12, zoom: 1, pan: new THREE.Vector3(), drag: null 
 const _o = new THREE.Vector3(), _t = new THREE.Vector3();
 function worldCamera() {
   _qx.setFromAxisAngle(_v.set(1, 0, 0), dragS.pitch); _q.setFromAxisAngle(_v.set(0, 0, 1), dragS.roll).multiply(_qx);
-  _c.set(0, 0, -D / 2); const dist = (3.1 * Math.hypot(hw, hh) + D / 2) * RV.zoom;
+  _c.set(camPan, 0, -D / 2 + camDepth); const dist = (3.1 * Math.hypot(hw, hh) + D / 2) * RV.zoom;
   _o.set(Math.sin(RV.yaw) * Math.cos(RV.pitch), Math.sin(RV.pitch), Math.cos(RV.yaw) * Math.cos(RV.pitch)).multiplyScalar(dist).add(RV.pan).applyQuaternion(_q);
   _t.copy(RV.pan).applyQuaternion(_q).add(_c);
   camera.position.copy(_c).add(_o);
@@ -1855,7 +1858,7 @@ async function frameStep(now) {
   recordHist();
   syncFigure();
 
-  if (look.on) lookCamera(); else if (window.__box && window.__box.worldView) worldCamera(); else updateCamera(dt);
+  if (look.on) lookCamera(); else if (window.__box && window.__box.worldView) { followHim(dt); worldCamera(); } else updateCamera(dt);
   // bounce light: redrawn only when the light has moved
   frameN++;
   if (envDirty < 2 || (lightUp.angleTo(envUp) > 4 * DEG && frameN - envFrame > 12)) { updateEnv(); envDirty++; envUp.copy(lightUp); envFrame = frameN; }
