@@ -76,6 +76,7 @@
   #pose{top:calc(364px + env(safe-area-inset-top))!important}
   #snap{top:calc(408px + env(safe-area-inset-top))!important}
   #ver{font-size:15px!important;padding:3px 9px!important}
+  html.editor #ver,html.editor #gpcst,html.editor #brainver,html.editor #title,html.editor #hud{display:none!important}
   /* (user 09:30: "once the game has finished loading, we see this text on top of everything for like 3 seconds") */
   #title{position:fixed;inset:0;z-index:9;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:0;transition:opacity 1.1s ease}
   #title.show{opacity:1;transition:opacity .35s ease}
@@ -111,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 11</div><div id="brainver"></div>
+<div id="ver">GPC live 13</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -500,9 +501,12 @@ function woodMat(t) {
 
 // ================= the box =================
 let boxGroup = null;
+const EDITOR = /[?&]editor/.test(location.search);
+if (EDITOR) document.documentElement.classList.add('editor');
 function buildBox() {
   const s = Math.min(innerWidth, innerHeight);
   hw = innerWidth / s; hh = innerHeight / s;
+  if (EDITOR) { hw = 1; hh = 915 / 412; }   // the editor's box is always a phone's (Pixel-class, 412 x 915): the frame around it can be any shape
   ix = hw - LIP; iy = hh - LIP;
   if (boxGroup) {
     boxGroup.traverse(o => { if (o.isMesh) { o.geometry.dispose(); o.material.map?.dispose(); o.material.bumpMap?.dispose(); o.material.dispose(); } });
@@ -672,7 +676,7 @@ if (kin && PHYSICAL && BB.dir) try {
   const session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
   const brainNet = new Brain(W, ort, session, meta); brainNet.setStandPose(BRAIN_STAND);
   // --- test page: NVIDIA's GPC prior alone drives him (gpc/live.js) ---
-  const { attachGPC, GpcDrive } = await import(new URL('gpc/live.js?v=11', document.baseURI).href);
+  const { attachGPC, GpcDrive } = await import(new URL('gpc/live.js?v=13', document.baseURI).href);
   const gst = document.createElement('div'); gst.id = 'gpcst'; gst.style.cssText = 'position:fixed;left:12px;right:60px;top:calc(48px + env(safe-area-inset-top));z-index:6;font:700 12px system-ui;color:#111;background:#ffd400;border-radius:8px;padding:5px 8px;pointer-events:none'; document.body.appendChild(gst);
   window.__gpc = await attachGPC(brainNet, ort, t => { gst.textContent = t + (/[?&]strong/.test(location.search) ? ' · full strength' : ' · human strength and joint limits'); });
   window.__brainNet = brainNet;
@@ -1673,6 +1677,17 @@ function lookCameraLight() {
   spot.position.copy(t).addScaledVector(dir, dist); spot.target.position.copy(t);
   spot.angle = Math.atan(1.3 * S / dist) + 0.15;
 }
+// (editor) the box seen from the room: the camera keeps the room's up; the box turns with the tilt (dragS, smoothed)
+const _q = new THREE.Quaternion(), _qx = new THREE.Quaternion(), _v = new THREE.Vector3(), _c = new THREE.Vector3();
+function worldCamera() {
+  _qx.setFromAxisAngle(_v.set(1, 0, 0), dragS.pitch); _q.setFromAxisAngle(_v.set(0, 0, 1), dragS.roll).multiply(_qx);
+  _c.set(0, 0, -D / 2); const dist = 3.1 * Math.hypot(hw, hh) + D / 2;
+  camera.position.copy(_v.set(0, 0.12 * hh, dist).applyQuaternion(_q)).add(_c);
+  camera.up.set(0, 1, 0).applyQuaternion(_q); camera.lookAt(_c); camera.updateMatrixWorld();
+  const n = 0.05, top = n * Math.tan(20 * DEG), right = top * innerWidth / innerHeight;
+  camera.projectionMatrix.makePerspective(-right, right, top, -top, n, 60);
+  camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+}
 function lookCamera() {
   const c = Math.cos(look.pitch);
   camera.position.set(look.tgt.x + look.dist * c * Math.sin(look.yaw), look.tgt.y + look.dist * Math.sin(look.pitch), look.tgt.z + look.dist * c * Math.cos(look.yaw));
@@ -1813,7 +1828,7 @@ async function frameStep(now) {
   recordHist();
   syncFigure();
 
-  if (look.on) lookCamera(); else updateCamera(dt);
+  if (look.on) lookCamera(); else if (window.__box && window.__box.worldView) worldCamera(); else updateCamera(dt);
   // bounce light: redrawn only when the light has moved
   frameN++;
   if (envDirty < 2 || (lightUp.angleTo(envUp) > 4 * DEG && frameN - envFrame > 12)) { updateEnv(); envDirty++; envUp.copy(lightUp); envFrame = frameN; }
@@ -1912,7 +1927,7 @@ $('go').onclick = async () => {
   window.addEventListener('devicemotion', onMotion);
   $('start').classList.add('hide');
   $('hud').classList.add('show');
-  $('title').classList.add('show'); setTimeout(() => $('title').classList.remove('show'), 3000);
+  if (!/[?&]editor/.test(location.search)) { $('title').classList.add('show'); setTimeout(() => $('title').classList.remove('show'), 3000); }
   fullSync();
   setTimeout(() => { if (mode !== 'sensor') { mode = 'touch'; note('No motion sensors here, so drag to turn the box.', 4500); } }, 1300);
 };

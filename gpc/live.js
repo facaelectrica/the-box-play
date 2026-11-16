@@ -33,30 +33,57 @@ export async function attachGPC(brain, ort, say) {
   //   getup    he is down: the big brain's picks (background, a few a second, nudged toward standing) until he is up.
   // The switch goes by his body (head and hips height). ?dance = the big brain alone, as in live 9.
   const Q = new URLSearchParams(location.search), DANCE = Q.has('dance'), BETA = +(Q.get('nudge') ?? 0.3);
-  st.mode = DANCE ? 'dance' : 'idle'; st.switches = []; let lowN = 0, upN = 0, last = 0; st.fresh = false;
-  // the director's rule for the idle order (editor: gpc/editor.html; game: orders saved there). Ticks are 30 a second.
-  st.rules = { downHeadBelow: 1.05, downFor: 0.3, upHeadAbove: 1.30, upHipsAbove: 0.80, upFor: 0.2 };
-  st.order = 'idle';
-  // an orders file (version 1): one order, 'Idle' - a pose (hinge angles by name) and the rule above
-  st.apply = O => { const o = O && O.orders && O.orders.find(x => x.name === 'Idle'); if (!o) return false;
-    if (o.do && o.do.pose) brain.setStandPose(o.do.pose); if (o.when) Object.assign(st.rules, o.when); st.ordersFile = O; return true; };
+  st.mode = DANCE ? 'dance' : 'idle'; st.switches = []; let last = 0; st.fresh = false;
+  // ---------- the director: a list of orders (written in gpc/editor.html) ----------
+  // Each order: start (all of its conditions true for `for` s) and stop (all true for `for` s; none = when the start
+  // stops being true), and a pose. The first order in the list whose start holds is the one given; while it is given,
+  // only an order above it can take over. No order given: the chooser decides. Checked 30 times a second.
+  const IDLE = { name: 'Idle', start: { all: [{ s: 'head', c: '>', v: 1.30 }, { s: 'hips', c: '>', v: 0.80 }], for: 0.2 }, stop: { all: [{ s: 'head', c: '<', v: 1.05 }], for: 0.3 },
+    pose: { RightArm_y: -1.25, LeftArm_y: 1.25, RightArm_z: -0.2, LeftArm_z: 0.2 } };
+  st.orders = [IDLE]; st.active = DANCE ? null : IDLE; st.force = null; const tm = new Map();
+  const v1 = O => { const o = O.orders.find(x => x.name === 'Idle'), w = o.when || {};   // the editor's first file format
+    return { version: 2, orders: [{ name: 'Idle', start: { all: [{ s: 'head', c: '>', v: w.upHeadAbove ?? 1.3 }, { s: 'hips', c: '>', v: w.upHipsAbove ?? 0.8 }], for: w.upFor ?? 0.2 }, stop: { all: [{ s: 'head', c: '<', v: w.downHeadBelow ?? 1.05 }], for: w.downFor ?? 0.3 }, pose: o.do.pose }] }; };
+  st.apply = O => { if (!O || !O.orders) return false; if (O.version !== 2) O = v1(O);
+    st.orders = O.orders; for (const o of st.orders) o._stand = null; tm.clear();
+    st.active = DANCE ? null : (st.orders.find(o => st.active && o.name === st.active.name) || null); standFor(st.active); st.ordersFile = O; return true; };
+  st.setPose = (o, pose) => { o.pose = pose; o._stand = null; if (st.active === o) standFor(o); };
+  function standFor(o) { if (!o) return; if (!o._stand) { brain.setStandPose(o.pose || {}); o._stand = brain.stand; } else brain.stand = o._stand; }
+  // the signs: heights above the floor (m), lean of his trunk from upright (deg), speed of his hips (m/s), box tilt (deg)
+  const BI = { head: 6, chest: 3, hips: 0, rightHand: 10, leftHand: 14, rightFoot: 17, leftFoot: 21 };
+  st.signs = {};
+  function readSigns() {
+    const S = st.signs, P = brain.pos, g = brain.ground;
+    for (const k in BI) S[k] = P[3 * BI[k] + 2] - g;
+    const R = brain.rot, q = 4 * 3; S.lean = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * (R[q] * R[q] + R[q + 1] * R[q + 1])))) * 180 / Math.PI;
+    const V = brain.vel; S.speed = Math.hypot(V[0], V[1], V[2]);
+    const G = brain.W.m.opt.gravity; S.tilt = Math.acos(Math.max(-1, Math.min(1, -G[2] / (Math.hypot(G[0], G[1], G[2]) || 1)))) * 180 / Math.PI;
+  }
+  const holds = c => c && c.all && c.all.length ? c.all.every(x => { const v = st.signs[x.s]; return v !== undefined && (x.c === '<' ? v < x.v : v > x.v); }) : false;
+  function held(key, ok, secs) { const n = ok ? (tm.get(key) || 0) + 1 : 0; tm.set(key, n); return n >= Math.max(1, Math.round((secs || 0) * 30)); }
+  function direct() {
+    readSigns(); const t = +((performance.now() - st.t0) / 1000).toFixed(1);
+    const startOK = st.orders.map((o, k) => held('s' + k, holds(o.start), o.start && o.start.for));
+    let next = st.active, ai = st.orders.indexOf(st.active);
+    if (st.active) { const o = st.active, stop = o.stop && o.stop.all && o.stop.all.length ? holds(o.stop) : !holds(o.start);
+      if (held('x' + ai, stop, o.stop ? o.stop.for : 0.3)) next = null; }
+    const k = startOK.findIndex(Boolean); if (k >= 0 && (next === null || k < st.orders.indexOf(next))) next = st.orders[k];
+    if (st.force) next = st.orders.find(o => o.name === st.force) || next;
+    if (next !== st.active) { st.switches.push([t, next ? next.name : 'chooser', +st.signs.head.toFixed(2)]); if (st.switches.length > 60) st.switches.shift();
+      st.active = next; standFor(next); st.mode = next ? 'idle' : 'getup'; st.fresh = false; for (const key of [...tm.keys()]) if (key[0] === 'x') tm.delete(key); }
+  }
+  st.mode = DANCE ? 'dance' : 'idle'; standFor(st.active);
   try { const saved = JSON.parse(localStorage.getItem('gpc.orders') || 'null'); if (saved) st.apply(saved); else fetch(here + 'orders.json?t=' + Date.now()).then(r => r.ok ? r.json() : null).then(O => O && st.apply(O)).catch(() => {}); } catch (_) {}
   brain.session = { run: async feeds => {
-    const all = feeds.obs.data, o = new Float32Array(all.subarray(0, 343)), head = o[0] + o[18], hips = o[0];
-    st.ticks++; st.head = head; st.hips = hips;
+    const all = feeds.obs.data, o = new Float32Array(all.subarray(0, 343));
+    st.ticks++;
     const want = DANCE ? null : (await enc.run({ block: new ort.Tensor('float32', new Float32Array(all.subarray(343, 895)), [1, 552]) })).codes.data;
-    if (!DANCE) {
-      const R = st.rules; lowN = head < R.downHeadBelow ? lowN + 1 : 0; upN = head > R.upHeadAbove && hips > R.upHipsAbove ? upN + 1 : 0;
-      if (st.mode === 'idle' && lowN >= Math.round(R.downFor * 30)) { st.mode = 'getup'; st.fresh = false; st.switches.push([+((performance.now() - st.t0) / 1000).toFixed(1), 'down', +head.toFixed(2)]); }
-      else if (st.mode === 'getup' && upN >= Math.round(R.upFor * 30)) { st.mode = 'idle'; st.switches.push([+((performance.now() - st.t0) / 1000).toFixed(1), 'up', +head.toFixed(2)]); }
-      if (st.switches.length > 60) st.switches.shift();
-    }
+    if (!DANCE) { direct(); st.head = st.signs.head; st.hips = st.signs.hips; }
     if (st.mode !== 'idle' && st.ready && !st.busy) {
       st.busy = true; st.sent = performance.now(); st.askMode = st.mode;
       w.postMessage({ obs: o, want: want ? Float32Array.from(want, v => v + 4) : null, beta: DANCE ? 0 : BETA });
     }
     const now = performance.now(); if (now - last > 1000) { st.rate = st.picks - st.since; st.since = st.picks; last = now;
-      say(`${fps.toFixed(0)} fps · ${st.mode === 'idle' ? 'idle (small part every frame)' : st.mode === 'getup' ? `getting up · big brain ${st.rate} picks a second, ${st.ms.toFixed(0)} ms each` : `big brain alone · ${st.rate} picks a second, ${st.ms.toFixed(0)} ms each`}${st.ready ? '' : ' · big brain still loading'} · ${threads} core${threads > 1 ? 's' : ''}`); }
+      say(`${fps.toFixed(0)} fps · ${st.mode === 'idle' ? `order: ${st.active ? st.active.name : '?'} (small part every frame)` : st.mode === 'getup' ? `getting up · big brain ${st.rate} picks a second, ${st.ms.toFixed(0)} ms each` : `big brain alone · ${st.rate} picks a second, ${st.ms.toFixed(0)} ms each`}${st.ready ? '' : ' · big brain still loading'} · ${threads} core${threads > 1 ? 's' : ''}`); }
     let codes = want;
     if (st.mode !== 'idle') { if (st.fresh) codes = st.codes; else if (DANCE) return tracker.run(feeds); }   // until this episode's first pick: the translator (dance: the old tracker)
     return dec.run({ obs: new ort.Tensor('float32', o, [1, 343]), codes: new ort.Tensor('float32', Float32Array.from(codes), [1, 40]) });

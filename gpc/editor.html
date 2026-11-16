@@ -1,18 +1,18 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Director's orders · editor</title>
+<title>EDITOR v14</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
-  #right{display:flex;flex-direction:column;align-items:center;padding:12px;gap:8px;background:#120f0c;flex:none;width:44vw;min-width:260px;overflow:hidden}
+  #right{display:flex;flex-direction:column;padding:8px;gap:6px;background:#120f0c;flex:none;width:44vw;min-width:260px;overflow:hidden}
   #split{flex:none;width:7px;cursor:col-resize;background:#2a221c;border-left:1px solid #3a302a;border-right:1px solid #3a302a} #split:hover,#split.on{background:#e0a34a}
   #left{min-width:690px}
   header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #3a302a}
   header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
   select{font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:3px 6px}
   button{font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:8px;padding:6px 10px;cursor:pointer}
-  button:hover{background:#352b23} button.pri{background:#e0a34a;color:#1b1612;border-color:#e0a34a}
-  #main{flex:1;display:grid;grid-template-columns:110px minmax(0,1fr) 270px;min-height:0}
+  button:hover{background:#352b23} #mMove.on,#mRot.on{background:#e0a34a;color:#1b1612} button.pri{background:#e0a34a;color:#1b1612;border-color:#e0a34a}
+  #main{flex:1;display:grid;grid-template-columns:110px minmax(0,1fr) 300px;min-height:0}
   #orders{border-right:1px solid #3a302a;padding:10px}
   .ord{padding:7px 9px;border-radius:8px;margin-bottom:4px} .ord.on{background:#e0a34a;color:#1b1612;font-weight:600} .ord.off{color:#6f6359}
   #puppet{padding:10px;display:flex;flex-direction:column;min-height:0}
@@ -22,66 +22,66 @@
   .jrow{display:grid;grid-template-columns:120px 1fr 70px;gap:8px;align-items:center;font-size:12px;color:#d8cdc2} .jrow input[type=range]{width:100%}
   .piv{color:#ff9f43} .tgt{color:#ffd38a}
   #side{border-left:1px solid #3a302a;padding:12px;overflow:auto}
-  h3{margin:4px 0 6px;font-size:14px} .sent{line-height:2.1;color:#d8cdc2}
+  h3{margin:4px 0 6px;font-size:14px} .crow{display:flex;gap:4px;align-items:center;margin-bottom:4px;font-size:12px} .crow select,.crow input{font:inherit;font-size:12px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:2px 4px}
+  .crow input{width:56px;color:#ffd38a;text-align:right} .crow .u{color:#8a7d72;width:24px} .crow button{padding:1px 6px}
+  .cfor{font-size:12px;color:#a99a8c;margin:2px 0 12px} .cfor input{width:46px;font:inherit;font-size:12px;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 4px;text-align:right}
+  .sg td{font-size:12px;padding:1px 4px;color:#d8cdc2} .sg td:last-child{text-align:right;color:#ffd38a}
+  .ord{cursor:pointer} .ord.act::after{content:" ●";color:#7ddc8a} .on.test{outline:2px solid #ff9f43}
   .sent input{width:58px;font:inherit;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 5px;text-align:center}
-  .note{font-size:12px;color:#a99a8c;margin:6px 0 14px}
-  #frame{border:0;border-radius:18px;background:#000;transition:transform .12s linear;transform-origin:50% 50%}
-  #stage{display:flex;align-items:center;justify-content:center}
-  #tiltUI{width:100%;max-width:420px;display:grid;gap:4px} .trow{display:grid;grid-template-columns:100px 1fr 44px;gap:8px;align-items:center;font-size:12px;color:#d8cdc2} .trow input{width:100%}
-  #level{justify-self:center} #status{font-size:12px;color:#d8cdc2;text-align:center;max-width:100%}
+  .note{font-size:12px;color:#a99a8c;margin:6px 0 14px} #oTest.on{background:#ff9f43;color:#1b1612}
+  #frame{border:0;border-radius:14px;background:#000}
+  #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+  #bar{flex:none;display:grid;gap:3px} .trow{display:grid;grid-template-columns:96px 1fr 40px;gap:8px;align-items:center;font-size:12px;color:#d8cdc2} .trow input{width:100%}
+  .brow{display:flex;gap:10px;align-items:center;font-size:12px;color:#d8cdc2} #status{font-size:12px;color:#d8cdc2;text-align:center;max-width:100%}
   #active{font-weight:600} .idle{color:#7ddc8a} .none{color:#ff9f7a}
   #help{font-size:11px;color:#a99a8c;text-align:center;line-height:1.6}
   #tbl{font-size:12px;width:100%;border-collapse:collapse} #tbl td{padding:1px 4px;border-bottom:1px solid #2e2620} #tbl td:last-child{text-align:right;color:#ffd38a} #tbl .old{color:#8a7d72;cursor:pointer;margin-left:4px} #tbl .old:hover{color:#eee;text-decoration:underline}
 </style></head>
 <body>
 <div id="left">
-  <header><b>Director's orders</b><span class="dim" id="file">loading the box…</span><span class="sp"></span>
-    <button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open file</button><button id="save" class="pri">Save for the game</button></header>
+  <header><b>EDITOR v14</b><span class="dim" id="file"></span><span class="sp"></span>
+    <button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
-    <div id="orders"><div class="ord on">Idle</div><div class="ord off">Down<br><small>(no order: the chooser decides)</small></div></div>
+    <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Otherwise<br><small>chooser</small></div></div>
     <div id="puppet">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:13px">Figure:
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:13px">
         <select id="figSel"><option value="female">Female</option><option value="male">Male</option><option value="shapes">Mannequin</option><option value="none">None</option></select>
-        <label><input type="checkbox" id="skelOn" checked> Skeleton</label><label><input type="checkbox" id="ghostOn" checked> Original pose</label></div>
-      <div id="views"><div class="view" id="v3"><span class="lab" id="hint">click a joint or body part · drag empty space to turn · wheel to zoom</span></div></div>
-      <div id="jp" class="dim" style="min-height:92px;padding-top:8px">Pick a joint to see what pivots and to set its angles exactly.</div>
+        <label><input type="checkbox" id="skelOn" checked> Skeleton</label><label><input type="checkbox" id="ghostOn" checked> Original</label><span class="sp"></span><button id="mMove" class="on" title="W">Move</button><button id="mRot" title="E">Rotate</button></div>
+      <div id="views"><div class="view" id="v3"><span class="lab" id="hint"></span></div></div>
     </div>
     <div id="side">
-      <h3>When</h3>
-      <div class="sent">Idle applies unless he is down.<br>
-        He counts as <b>down</b> when his head is lower than <input id="downHeadBelow" type="number" step="0.05"> m for <input id="downFor" type="number" step="0.1"> s.<br>
-        He counts as <b>up</b> again when his head is higher than <input id="upHeadAbove" type="number" step="0.05"> m and his hips higher than <input id="upHipsAbove" type="number" step="0.05"> m for <input id="upFor" type="number" step="0.1"> s.</div>
-      <div class="note">This is exactly the rule the game uses today. Heights are above the floor; standing, his head is about 1.55 m and his hips about 0.98 m. Changes apply at once.</div>
-      <h3>Do</h3>
-      <div class="sent">Move toward the pose on the left, every frame. The chooser is off.<br>While he is down, no order applies and the chooser decides.</div>
-      <div class="note">Joints changed from the original pose, in degrees. Click a grey value to put that joint back.</div>
-      <table id="tbl"></table>
-      <h3 style="margin-top:16px">Live</h3>
-      <div class="note" id="live">–</div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><input id="oname" style="flex:1;font:inherit;font-weight:600;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:4px 8px">
+        </div><div style="display:flex;gap:4px;margin:-4px 0 10px"><button id="oUp" title="higher priority">▲</button><button id="oDn" title="lower priority">▼</button><button id="oTest" title="force this order in the box">Test</button><span class="sp"></span><button id="oDel" title="delete">✕</button></div>
+      <h3>Start</h3><div id="cStart"></div>
+      <h3>Stop</h3><div id="cStop"></div>
+      <h3>Changed joints</h3><table id="tbl"></table>
+      <h3 style="margin-top:14px">Signs</h3><table id="signs" class="sg"></table>
     </div>
   </div>
 </div>
 <div id="split" title="drag to give the editor or the box more room"></div>
 <div id="right">
   <div id="stage"><iframe id="frame" src="live.html?editor"></iframe></div>
-  <div id="tiltUI">
+  <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
-    <button id="level">Level</button>
+    <div class="brow"><button id="level" title="L">Level</button><label title="the view a player has: the camera moves with the phone"><input type="checkbox" id="lock"> Phone view</label><span class="sp"></span><span id="active">–</span></div>
   </div>
-  <div id="status">Active order: <span id="active">–</span></div>
-  <div id="help">Mouse: drag him to push · double-click to reset · sliders tilt the box<br>Keys: arrows move the sliders · L level · R reset · space pause / play</div>
 </div>
 <input id="fileIn" type="file" accept=".json,application/json" style="display:none">
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type="module">
 const $ = id => document.getElementById(id), DEG = 180 / Math.PI;
 const ORIG = { RightArm_y: -1.25, LeftArm_y: 1.25, RightArm_z: -0.2, LeftArm_z: 0.2 };   // the game's standing pose (sim/brain.js BRAIN_STAND)
-const RULES0 = { downHeadBelow: 1.05, downFor: 0.3, upHeadAbove: 1.30, upHipsAbove: 0.80, upFor: 0.2 };
+const SIGNS = { head: ['head height', 'm'], chest: ['chest height', 'm'], hips: ['hips height', 'm'], rightHand: ['right hand height', 'm'], leftHand: ['left hand height', 'm'],
+  rightFoot: ['right foot height', 'm'], leftFoot: ['left foot height', 'm'], lean: ['trunk lean', '°'], speed: ['hips speed', 'm/s'], tilt: ['box tilt', '°'] };
+let orders = [], cur = 0;
 const fr = $('frame');
 // the box keeps the phone's shape; the stage is square so the box can turn all the way round without moving the page
-function fit() { const S = Math.max(240, Math.min(innerHeight - 170, $('right').clientWidth - 24)), h = Math.round(S * 0.96), w = Math.round(h * 412 / 915);
-  fr.style.height = h + 'px'; fr.style.width = w + 'px'; const st = $('stage'); st.style.width = S + 'px'; st.style.height = S + 'px'; }
+// phone view: the frame is the phone, as large as fits; room view: the frame fills the whole play area
+function fit() { const st = $('stage'), W0 = st.clientWidth, H0 = st.clientHeight; if (!W0 || !H0) return;
+  if ($('lock').checked) { const h = Math.min(H0, W0 * 915 / 412); fr.style.height = Math.floor(h) + 'px'; fr.style.width = Math.floor(h * 412 / 915) + 'px'; }
+  else { fr.style.width = W0 + 'px'; fr.style.height = H0 + 'px'; } }
 try { const w = +localStorage.getItem('gpc.editorSplit'); if (w > 200) $('right').style.width = w + 'px'; } catch (_) {}
 fit(); addEventListener('resize', () => { fit(); draw(); });
 { const sp = $('split'); let x0 = 0, w0 = 0;
@@ -92,18 +92,15 @@ fit(); addEventListener('resize', () => { fit(); draw(); });
 // ---------- wait for the box to load, press its Start ----------
 let F, B, G, W, mj, m, d2, acts, pose, history = [];
 async function boot() {
-  for (;;) { await new Promise(r => setTimeout(r, 500)); F = fr.contentWindow; try { if (F.__box && F.__brainNet && F.__gpc && F.document.getElementById('go') && !F.document.getElementById('go').disabled) break; } catch (_) {} $('file').textContent = 'loading the box (first time: about 200 MB)…'; }
+  for (;;) { await new Promise(r => setTimeout(r, 500)); F = fr.contentWindow; try { if (F.__box && F.__brainNet && F.__gpc && F.__gpc.orders && F.document.getElementById('go') && !F.document.getElementById('go').disabled) break; } catch (_) {} $('file').textContent = 'loading…'; }
+  $('file').textContent = '';
   const de = F.document.documentElement; de.requestFullscreen = undefined; de.webkitRequestFullscreen = undefined;   // the box stays in its frame
   F.document.getElementById('go').click();
   B = F.__brainNet; G = F.__gpc; W = F.__box.W; mj = W.mj; m = W.m; d2 = new mj.MjData(m);
   acts = W.act.map(a => ({ name: a.name, qadr: a.qadr, j: mj.mj_name2id(m, mj.mjtObj.mjOBJ_JOINT.value, a.name) }));
-  const saved = (() => { try { return JSON.parse(localStorage.getItem('gpc.orders') || 'null'); } catch (_) { return null; } })();
-  const o = saved && saved.orders && saved.orders.find(x => x.name === 'Idle');
-  pose = Object.assign({}, o && o.do && o.do.pose ? o.do.pose : ORIG);
-  Object.assign(G.rules, RULES0, o && o.when ? o.when : {});
-  for (const k in RULES0) { $(k).value = G.rules[k]; $(k).oninput = () => { const v = parseFloat($(k).value); if (isFinite(v)) { G.rules[k] = v; dirty(); } }; }
-  $('file').textContent = saved ? 'orders from your last save' : 'the game\'s current orders';
+  orders = G.orders; cur = 0; pose = orders[0].pose; listOrders(); showOrder();
   applyPose(); draw(); keys(F); tick();
+  $('mMove').onclick = () => setMode('translate'); $('mRot').onclick = () => setMode('rotate');
   $('figSel').onchange = () => buildFig($('figSel').value); $('skelOn').onchange = draw; $('ghostOn').onchange = draw; buildFig('female');
 }
 boot();
@@ -123,33 +120,51 @@ function fk(p) {
     else if (t === 3) dz = Math.abs(R[9 * g + 8]) * sz[3 * g + 1] + sz[3 * g]; else dz = sz[3 * g];
     lo = Math.min(lo, d2.geom_xpos[3 * g + 2] - dz);
   }
-  for (const n of BODIES) out[n][2] -= lo;   // the floor is z = 0 in the drawing
-  fk.lo = lo;
+  // the drawing stands him with his soles on the floor and the point between his feet over the origin
+  const fa = W.bodyId.RightFoot, fb = W.bodyId.LeftFoot, mx = (d2.xpos[3 * fa] + d2.xpos[3 * fb]) / 2, my = (d2.xpos[3 * fa + 1] + d2.xpos[3 * fb + 1]) / 2;
+  for (const n of BODIES) { out[n][0] -= mx; out[n][1] -= my; out[n][2] -= lo; const id = out[n].id; out[n].q = [d2.xquat[4 * id + 1], d2.xquat[4 * id + 2], d2.xquat[4 * id + 3], d2.xquat[4 * id]]; }
+  fk.lo = lo; fk.sh = [mx, my, lo];
   return out;
 }
-// each dot moves the joints above it in the body: e.g. the elbow dot moves the shoulder; the hand dot moves shoulder and elbow
-const HANDLES = { Head: ['Neck1', 'Neck2', 'Head'], Chest: ['Spine1', 'Spine2', 'Chest'],
-  RightForeArm: ['RightShoulder', 'RightArm'], RightHand: ['RightShoulder', 'RightArm', 'RightForeArm'],
-  LeftForeArm: ['LeftShoulder', 'LeftArm'], LeftHand: ['LeftShoulder', 'LeftArm', 'LeftForeArm'],
-  RightShin: ['RightLeg'], RightFoot: ['RightLeg', 'RightShin'], LeftShin: ['LeftLeg'], LeftFoot: ['LeftLeg', 'LeftShin'] };
+// ---------- posing like a 3D package: select a joint, W move (IK), E rotate (FK) ----------
+// MOVE: which joints bend when a joint is moved, and what must stay put. The collarbone never moves for a hand; a moved
+// foot stays flat; moved hips keep both feet planted where they are.
+const MOVE = {
+  RightHand: { j: ['RightArm', 'RightForeArm'] }, LeftHand: { j: ['LeftArm', 'LeftForeArm'] },
+  RightForeArm: { j: ['RightArm'] }, LeftForeArm: { j: ['LeftArm'] },
+  RightArm: { j: ['RightShoulder'] }, LeftArm: { j: ['LeftShoulder'] },
+  RightFoot: { j: ['RightLeg', 'RightShin', 'RightFoot'], keep: ['RightFoot'] }, LeftFoot: { j: ['LeftLeg', 'LeftShin', 'LeftFoot'], keep: ['LeftFoot'] },
+  RightShin: { j: ['RightLeg'] }, LeftShin: { j: ['LeftLeg'] },
+  Head: { j: ['Neck1', 'Neck2'], keep: ['Head'], kj: ['Head'] }, Chest: { j: ['Spine1', 'Spine2'] },
+  Hips: { hips: true, j: ['RightLeg', 'RightShin', 'RightFoot', 'LeftLeg', 'LeftShin', 'LeftFoot'] },
+};
+const HANDLES = MOVE;
 const clampA = (a, v) => (a.j >= 0 && m.jnt_limited[a.j]) ? Math.max(m.jnt_range[2 * a.j], Math.min(m.jnt_range[2 * a.j + 1], v)) : v;
-// drag: move one body toward a target in the view's two axes (damped least squares, numeric Jacobian, human joint limits)
-function ik(handle, axes, target) {
-  const chain = acts.filter(a => HANDLES[handle].some(b => a.name.startsWith(b + '_')));
-  for (let it = 0; it < 12; it++) {
-    const P0 = fk(pose)[handle], e = axes.map((ax, i) => target[i] - P0[ax]);
-    if (Math.hypot(...e) < 0.002) break;
-    const J = chain.map(a => { const s = pose[a.name] || 0; pose[a.name] = s + 1e-3; const P = fk(pose)[handle]; pose[a.name] = s; return axes.map(ax => (P[ax] - P0[ax]) / 1e-3); });
-    const lam = 0.02, A = [[lam, 0], [0, lam]];
-    for (const r of J) { A[0][0] += r[0] * r[0]; A[0][1] += r[0] * r[1]; A[1][0] += r[1] * r[0]; A[1][1] += r[1] * r[1]; }
-    const det = A[0][0] * A[1][1] - A[0][1] * A[1][0], y = [(A[1][1] * e[0] - A[0][1] * e[1]) / det, (A[0][0] * e[1] - A[1][0] * e[0]) / det];
-    chain.forEach((a, i) => { pose[a.name] = clampA(a, (pose[a.name] || 0) + J[i][0] * y[0] + J[i][1] * y[1]); });
+const actsOf = names => acts.filter(a => names.some(b => a.name.startsWith(b + '_')));
+// raw forward kinematics (hips at the origin, no drawing shift): positions and rotations of some bodies
+function fkRaw(p, names) { d2.qpos.fill(0); d2.qpos[3] = 1; for (const a of acts) d2.qpos[a.qadr] = p[a.name] || 0; mj.mj_kinematics(m, d2);
+  const o = {}; for (const n of names) { const id = W.bodyId[n]; o[n] = { p: [d2.xpos[3 * id], d2.xpos[3 * id + 1], d2.xpos[3 * id + 2]], q: new THREE.Quaternion(d2.xquat[4 * id + 1], d2.xquat[4 * id + 2], d2.xquat[4 * id + 3], d2.xquat[4 * id]) }; } return o; }
+// targets: [{ n, p?: [x,y,z], q?: Quaternion, w? }]; damped least squares over the given joints, human limits each step
+function solve(jointNames, targets, iters = 16) {
+  const J0 = actsOf(jointNames), names = targets.map(t => t.n);
+  const err = F => { const e = []; for (const t of targets) { const f = F[t.n];
+      if (t.p) for (let k = 0; k < 3; k++) e.push(t.p[k] - f.p[k]);
+      if (t.q) { const d = t.q.clone().multiply(f.q.clone().invert()); if (d.w < 0) { d.x = -d.x; d.y = -d.y; d.z = -d.z; d.w = -d.w; } const w = t.w ?? 0.25, s = 2 * Math.acos(Math.min(1, d.w)), k2 = s > 1e-6 ? s / Math.sin(s / 2) : 2; e.push(w * d.x * k2, w * d.y * k2, w * d.z * k2); } }
+    return e; };
+  for (let it = 0; it < iters; it++) {
+    const e0 = err(fkRaw(pose, names)); if (Math.hypot(...e0) < 1e-3) break;
+    const Jc = J0.map(a => { const s0 = pose[a.name] || 0; pose[a.name] = s0 + 1e-3; const e1 = err(fkRaw(pose, names)); pose[a.name] = s0; return e1.map((v, k) => (e0[k] - v) / 1e-3); });
+    const mR = e0.length, A = Array.from({ length: mR }, (_, i) => Array.from({ length: mR }, (_, k) => (i === k ? 0.01 : 0) + Jc.reduce((s, c) => s + c[i] * c[k], 0)));
+    const y = gauss(A, e0.slice()); J0.forEach((a, i) => { pose[a.name] = clampA(a, (pose[a.name] || 0) + Jc[i].reduce((s, v, k) => s + v * y[k], 0)); });
   }
 }
-
+function gauss(A, b) { const n = b.length; for (let i = 0; i < n; i++) { let p = i; for (let r = i + 1; r < n; r++) if (Math.abs(A[r][i]) > Math.abs(A[p][i])) p = r; [A[i], A[p]] = [A[p], A[i]]; [b[i], b[p]] = [b[p], b[i]];
+    for (let r = i + 1; r < n; r++) { const f = A[r][i] / A[i][i]; for (let k = i; k < n; k++) A[r][k] -= f * A[i][k]; b[r] -= f * b[i]; } }
+  const x = new Array(n).fill(0); for (let i = n - 1; i >= 0; i--) { let s = b[i]; for (let k = i + 1; k < n; k++) s -= A[i][k] * x[k]; x[i] = s / A[i][i]; } return x; }
 // ---------- 3D view: his skeleton in game coordinates (z up), orbit with the mouse ----------
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { lookFromGLTF } from '../sim/look.js';
@@ -221,97 +236,120 @@ function skinTorso(look) {
   torso = { bones: bonesT, meshes };
 }
 function poseFig() {   // d2 holds the pose's forward kinematics (fk(pose) just ran); the floor is at fk.lo
-  const lo = fk.lo, set = (o, b) => { o.position.set(d2.xpos[3 * b], d2.xpos[3 * b + 1], d2.xpos[3 * b + 2] - lo); o.quaternion.set(d2.xquat[4 * b + 1], d2.xquat[4 * b + 2], d2.xquat[4 * b + 3], d2.xquat[4 * b]); };
+  const [sx, sy, lo] = fk.sh, set = (o, b) => { o.position.set(d2.xpos[3 * b] - sx, d2.xpos[3 * b + 1] - sy, d2.xpos[3 * b + 2] - lo); o.quaternion.set(d2.xquat[4 * b + 1], d2.xquat[4 * b + 2], d2.xquat[4 * b + 3], d2.xquat[4 * b]); };
   for (const n in figG) set(figG[n], W.bodyId[n]);
   if (torso) for (const bn of torso.bones) set(bn, W.bodyId[bn.name]);
 }
-let sel = null, hover = null, drag = null, lastApply = 0;
-const chainOf = n => HANDLES[n] ? HANDLES[n] : [n];   // a joint without a drag chain turns only itself (sliders)
+let sel = null, hover = null, lastApply = 0, gstart = null;
+const chainOf = n => n && MOVE[n] && mode() === 'translate' ? MOVE[n].j : n ? [n] : [];
 function draw() {
   if (!d2) return; const P = fk(pose); poseFig(); const P0 = fk(ORIG);
   if (!bones.length) build3d();
-  const sk = $('skelOn').checked; for (const [, b] of bones) b.visible = b.visible && sk; ghost.visible = $('ghostOn').checked;
-  updateFig(P, bones, 0.018); updateFig(P0, gbones, 0.012);
-  const piv = sel ? chainOf(sel) : [];
-  for (const n of BODIES) { const mm = jm[n], big = !!HANDLES[n] || n === 'Hips'; mm.visible = sk || n === sel || chainOf(sel || '').includes(n) || !!HANDLES[n];
-    mm.position.set(...P[n].slice(0, 3)); const r = n === sel ? 0.034 : piv.includes(n) ? 0.03 : big ? 0.026 : 0.018; mm.scale.setScalar(r);
+  const sk = $('skelOn').checked;
+  updateFig(P, bones, 0.016); updateFig(P0, gbones, 0.012); for (const [, b] of bones) b.visible = b.visible && sk; ghost.visible = $('ghostOn').checked;
+  const piv = chainOf(sel);
+  for (const n of BODIES) { const mm = jm[n]; mm.visible = sk || n === sel;
+    mm.position.set(...P[n].slice(0, 3)); mm.scale.setScalar(n === sel ? 0.032 : piv.includes(n) ? 0.026 : 0.02);
     mm.material.color.setHex(n === sel ? COL.tgt : piv.includes(n) ? COL.piv : n === hover ? COL.hover : COL.joint); }
+  if (sel && !tc.dragging) { proxy.position.set(...P[sel].slice(0, 3)); proxy.quaternion.set(...P[sel].q); }
   const rows = acts.filter(a => Math.abs((pose[a.name] || 0) - (ORIG[a.name] || 0)) > 0.017).map(a => `<tr><td>${a.name.replace('_', ' ')}</td><td>${((pose[a.name] || 0) * DEG).toFixed(0)} <span class="old" data-j="${a.name}" title="put it back">(${((ORIG[a.name] || 0) * DEG).toFixed(0)})</span></td></tr>`);
   $('tbl').innerHTML = rows.length ? rows.join('') : '<tr><td class="dim">none</td><td></td></tr>';
   for (const o of $('tbl').querySelectorAll('.old')) o.onclick = () => { history.push(Object.assign({}, pose)); const n = o.dataset.j; if (ORIG[n]) pose[n] = ORIG[n]; else delete pose[n]; applyPose(); draw(); dirty(); };
-  panel();
+  $('hint').textContent = sel ? `${sel} · ${mode() === 'translate' ? (MOVE[sel] ? 'move (W)' : 'move: not for this joint') : 'rotate (E)'}` : '';
 }
-// the joint panel: what pivots when you drag the picked joint, and its own angles as sliders (human limits)
-function panel() {
-  if (!sel) { $('jp').innerHTML = 'Pick a joint to see what pivots and to set its angles exactly.'; $('hint').textContent = 'click a joint or body part · drag empty space to turn · wheel to zoom'; return; }
-  const own = acts.filter(a => a.name.startsWith(sel + '_')), piv = chainOf(sel);
-  $('hint').textContent = HANDLES[sel] ? `${sel}: drag it, or use the sliders` : `${sel}: use the sliders (drag the dots at the head, chest, elbows, hands, knees or feet)`;
-  const lim = a => a.j >= 0 && m.jnt_limited[a.j] ? [m.jnt_range[2 * a.j] * DEG, m.jnt_range[2 * a.j + 1] * DEG] : [-180, 180];
-  if (!$('jp').dataset.for || $('jp').dataset.for !== sel) {
-    $('jp').dataset.for = sel;
-    $('jp').innerHTML = `<div style="margin-bottom:4px"><span class="tgt">${sel}</span> · dragging it pivots: <span class="piv">${piv.join(', ')}</span></div>` +
-      (own.length ? own.map(a => { const [lo, hi] = lim(a); return `<div class="jrow"><span>${a.name.replace('_', ' ')} <span class="dim">(${lo.toFixed(0)} to ${hi.toFixed(0)})</span></span><input type="range" min="${lo}" max="${hi}" step="0.5" data-a="${a.name}"><span data-v="${a.name}"></span></div>`; }).join('') : '<div class="dim">This point has no joint of its own; drag it to move the joints above.</div>');
-    for (const r of $('jp').querySelectorAll('input[type=range]')) {
-      r.onpointerdown = () => history.push(Object.assign({}, pose));
-      r.oninput = () => { const a = acts.find(x => x.name === r.dataset.a); pose[a.name] = clampA(a, r.value / DEG); draw(); if (performance.now() - lastApply > 60) { applyPose(); lastApply = performance.now(); } };
-      r.onchange = () => { applyPose(); dirty(); };
+// the gizmo: an invisible stand-in on the selected joint; dragging it poses him
+const proxy = new THREE.Object3D(); scene.add(proxy);
+const tc = new TransformControls(cam, ren.domElement); tc.setSize(0.75); scene.add(tc);
+const mode = () => tc.getMode();
+function setMode(md) { tc.setMode(md); tc.setSpace(md === 'rotate' ? 'local' : 'world'); $('mMove').classList.toggle('on', md === 'translate'); $('mRot').classList.toggle('on', md === 'rotate'); draw(); }
+tc.addEventListener('dragging-changed', e => { orbit.enabled = !e.value;
+  if (e.value) { history.push(Object.assign({}, pose)); const R = fkRaw(pose, BODIES); gstart = { pos: proxy.position.clone(), raw: R }; }
+  else { gstart = null; applyPose(); draw(); dirty(); } });
+tc.addEventListener('objectChange', () => {
+  if (!gstart || !sel) return;
+  if (mode() === 'rotate') {   // FK: this joint's own three hinges turn it to the gizmo's rotation; everything below follows
+    if (!actsOf([sel]).length) return; solve([sel], [{ n: sel, q: proxy.quaternion.clone(), w: 1 }], 10);
+  } else {
+    const M = MOVE[sel]; if (!M) return; const d = proxy.position.clone().sub(gstart.pos), R0 = gstart.raw;
+    if (M.hips) {   // hips: the feet stay where they are (they move the other way, relative to the hips), and flat
+      solve(M.j, ['RightFoot', 'LeftFoot'].flatMap(f => [{ n: f, p: [R0[f].p[0] - d.x, R0[f].p[1] - d.y, R0[f].p[2] - d.z] }, { n: f, q: R0[f].q, w: 0.3 }]));
+    } else {
+      const t = [{ n: sel, p: [R0[sel].p[0] + d.x, R0[sel].p[1] + d.y, R0[sel].p[2] + d.z] }];
+      for (const k of M.keep || []) t.push({ n: k, q: R0[k].q, w: 0.3 });
+      solve(M.kj ? M.j.concat(M.kj) : M.j, t);
     }
   }
-  for (const r of $('jp').querySelectorAll('input[type=range]')) { const v = (pose[r.dataset.a] || 0) * DEG; if (document.activeElement !== r) r.value = v; $('jp').querySelector(`[data-v="${r.dataset.a}"]`).textContent = v.toFixed(0) + '°'; }
-}
-// 3D drag: the picked joint follows the mouse on a plane facing the camera; inverse kinematics on its chain
-const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(), plane = new THREE.Plane(), hit = new THREE.Vector3();
+  draw(); if (performance.now() - lastApply > 60) { applyPose(); lastApply = performance.now(); }
+});
+// selecting: click a joint or a body part; click empty space to clear
+const ray = new THREE.Raycaster(), mouse = new THREE.Vector2();
 function pick(e) { const r = ren.domElement.getBoundingClientRect(); mouse.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1); ray.setFromCamera(mouse, cam);
   const h = ray.intersectObjects(Object.values(jm).filter(o => o.visible)); if (h.length) return h[0].object.userData.name;
   const f = ray.intersectObjects(Object.values(figG), true); return f.length ? f[0].object.userData.name || null : null; }
-ren.domElement.addEventListener('pointerdown', e => { if (!d2 || e.button !== 0) return; const n = pick(e); if (!n) return;
-  sel = n; $('jp').dataset.for = ''; orbit.enabled = false; e.stopPropagation();
-  if (HANDLES[n]) { history.push(Object.assign({}, pose)); plane.setFromNormalAndCoplanarPoint(cam.getWorldDirection(new THREE.Vector3()).negate(), jm[n].position); drag = { n }; ren.domElement.setPointerCapture(e.pointerId); }
-  else orbit.enabled = true;
-  draw(); }, true);
-ren.domElement.addEventListener('pointermove', e => {
-  if (!drag) { const n = pick(e); if (n !== hover) { hover = n; ren.domElement.style.cursor = n ? 'pointer' : 'grab'; draw(); } return; }
-  const r = ren.domElement.getBoundingClientRect(); mouse.set((e.clientX - r.left) / r.width * 2 - 1, -(e.clientY - r.top) / r.height * 2 + 1); ray.setFromCamera(mouse, cam);
-  if (!ray.ray.intersectPlane(plane, hit)) return;
-  ik3(drag.n, [hit.x, hit.y, hit.z]); draw();
-  if (performance.now() - lastApply > 60) { applyPose(); lastApply = performance.now(); } });
-ren.domElement.addEventListener('pointerup', () => { orbit.enabled = true; if (drag) { drag = null; applyPose(); draw(); dirty(); } });
-// damped least squares in 3D (J J^T + lambda I) y = e, dq = J^T y; human joint limits after every step
-function ik3(handle, target) {
-  const chain = acts.filter(a => HANDLES[handle].some(b => a.name.startsWith(b + '_')));
-  for (let it = 0; it < 14; it++) {
-    const P0 = fk(pose)[handle], e = [0, 1, 2].map(k => target[k] - P0[k]); if (Math.hypot(...e) < 0.002) break;
-    const J = chain.map(a => { const s0 = pose[a.name] || 0; pose[a.name] = s0 + 1e-3; const P = fk(pose)[handle]; pose[a.name] = s0; return [0, 1, 2].map(k => (P[k] - P0[k]) / 1e-3); });
-    const A = [[0.02, 0, 0], [0, 0.02, 0], [0, 0, 0.02]]; for (const r of J) for (let i = 0; i < 3; i++) for (let k = 0; k < 3; k++) A[i][k] += r[i] * r[k];
-    const y = solve3(A, e); chain.forEach((a, i) => { pose[a.name] = clampA(a, (pose[a.name] || 0) + J[i][0] * y[0] + J[i][1] * y[1] + J[i][2] * y[2]); });
-  }
-}
-function solve3(A, b) { const [a, c, d] = A, det = a[0] * (c[1] * d[2] - c[2] * d[1]) - a[1] * (c[0] * d[2] - c[2] * d[0]) + a[2] * (c[0] * d[1] - c[1] * d[0]);
-  const inv = [[c[1] * d[2] - c[2] * d[1], a[2] * d[1] - a[1] * d[2], a[1] * c[2] - a[2] * c[1]], [c[2] * d[0] - c[0] * d[2], a[0] * d[2] - a[2] * d[0], a[2] * c[0] - a[0] * c[2]], [c[0] * d[1] - c[1] * d[0], a[1] * d[0] - a[0] * d[1], a[0] * c[1] - a[1] * c[0]]];
-  return inv.map(r => (r[0] * b[0] + r[1] * b[1] + r[2] * b[2]) / det); }
+let down = null;
+ren.domElement.addEventListener('pointerdown', e => { if (!d2 || e.button !== 0 || tc.axis) return; down = { x: e.clientX, y: e.clientY }; });
+ren.domElement.addEventListener('pointerup', e => { if (!down || tc.dragging) { down = null; return; } const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4; down = null; if (moved) return;
+  const n = pick(e); sel = n; if (n) tc.attach(proxy); else tc.detach(); draw(); });
+ren.domElement.addEventListener('pointermove', e => { if (tc.dragging || down) return; const n = pick(e); if (n !== hover) { hover = n; ren.domElement.style.cursor = n ? 'pointer' : 'grab'; draw(); } });
+window.__ed = { tc, proxy, select: n => { sel = n; tc.attach(proxy); draw(); }, setMode, pose: () => pose, fk: () => fk(pose) };   // for checks
+addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'w' || e.key === 'W') setMode('translate'); else if (e.key === 'e' || e.key === 'E') setMode('rotate');
+  else if (e.key === 'Escape') { sel = null; tc.detach(); draw(); } else if ((e.ctrlKey || e.metaKey) && e.key === 'z') { $('undo').click(); e.preventDefault(); } });
 function loop() { const r = host.getBoundingClientRect(); if (r.width && (ren.domElement.width !== Math.round(r.width * ren.getPixelRatio()) || ren.domElement.height !== Math.round(r.height * ren.getPixelRatio()))) { ren.setSize(r.width, r.height, false); cam.aspect = r.width / r.height; cam.updateProjectionMatrix(); }
   orbit.update(); ren.render(scene, cam); requestAnimationFrame(loop); }
 requestAnimationFrame(loop);
 // fk() moves the drawing so his soles are on the floor line; the IK works in that same frame (handle heights shift
 // together with the target), so a dragged foot can be lifted off the floor and the rest stays put.
-function applyPose() { try { B.setStandPose(pose); } catch (e) { console.warn(e); } }
-function dirty() { $('file').textContent = 'changed, not saved'; }
+function applyPose() { try { G.setPose(orders[cur], pose); } catch (e) { console.warn(e); } }
+function dirty() { $('file').textContent = '●'; }
 $('undo').onclick = () => { if (!history.length) return; pose = history.pop(); applyPose(); draw(); dirty(); };
 $('reset').onclick = () => { history.push(Object.assign({}, pose)); pose = Object.assign({}, ORIG); applyPose(); draw(); dirty(); };
-function ordersFile() { return { version: 1, saved: new Date().toISOString(), orders: [{ name: 'Idle', when: Object.assign({}, G.rules), do: { pose: Object.fromEntries(Object.entries(pose).filter(([k, v]) => Math.abs(v) > 1e-6).map(([k, v]) => [k, +v.toFixed(4)])) } }], otherwise: 'chooser' }; }
+// ---------- orders: list, select, add, reorder, delete, start/stop conditions ----------
+function listOrders() {
+  $('olist').innerHTML = orders.map((o, k) => `<div class="ord ${k === cur ? 'on' : ''} ${G && G.active === o ? 'act' : ''} ${G && G.force === o.name ? 'test' : ''}" data-k="${k}">${esc(o.name)}</div>`).join('');
+  for (const d of $('olist').querySelectorAll('.ord')) d.onclick = () => { cur = +d.dataset.k; pose = orders[cur].pose; history = []; sel = null; listOrders(); showOrder(); draw(); };
+}
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+function condUI(box, part, o) {
+  const c = o[part] || (o[part] = { all: [], for: part === 'start' ? 0.2 : 0.3 });
+  const row = (x, k) => `<div class="crow"><select data-k="${k}" data-f="s">${Object.entries(SIGNS).map(([id, [lab]]) => `<option value="${id}" ${id === x.s ? 'selected' : ''}>${lab}</option>`).join('')}</select>
+    <select data-k="${k}" data-f="c"><option value="<" ${x.c === '<' ? 'selected' : ''}>&lt;</option><option value=">" ${x.c === '>' ? 'selected' : ''}>&gt;</option></select>
+    <input data-k="${k}" data-f="v" type="number" step="0.05" value="${x.v}"><span class="u">${SIGNS[x.s][1]}</span><button data-k="${k}" data-f="x">✕</button></div>`;
+  box.innerHTML = c.all.map(row).join('') + `<div class="cfor"><button data-f="add">+ condition</button> for <input data-f="for" type="number" step="0.1" value="${c.for}"> s${part === 'stop' && !c.all.length ? ' · none: stops when Start is no longer true' : ''}</div>`;
+  for (const el of box.querySelectorAll('[data-f]')) {
+    const f = el.dataset.f, k = +el.dataset.k;
+    if (f === 'x') el.onclick = () => { c.all.splice(k, 1); condUI(box, part, o); dirty(); };
+    else if (f === 'add') el.onclick = () => { c.all.push({ s: 'head', c: '<', v: 1.0 }); condUI(box, part, o); dirty(); };
+    else if (f === 'for') el.oninput = () => { const v = parseFloat(el.value); if (isFinite(v)) { c.for = v; dirty(); } };
+    else el.oninput = el.onchange = () => { const x = c.all[k]; x[f] = f === 'v' ? parseFloat(el.value) : el.value; if (f === 's') condUI(box, part, o); dirty(); };
+  }
+}
+function showOrder() {
+  const o = orders[cur]; $('oname').value = o.name; condUI($('cStart'), 'start', o); condUI($('cStop'), 'stop', o);
+  $('oTest').classList.toggle('on', G.force === o.name); $('oDel').disabled = orders.length < 2;
+}
+$('oname').oninput = () => { const o = orders[cur], old = o.name; o.name = $('oname').value || 'Order'; if (G.force === old) G.force = o.name; listOrders(); dirty(); };
+$('addO').onclick = () => { const o = { name: 'Order ' + (orders.length + 1), start: { all: [], for: 0.2 }, stop: { all: [], for: 0.3 }, pose: Object.assign({}, orders[cur].pose) };
+  orders.push(o); cur = orders.length - 1; pose = o.pose; history = []; listOrders(); showOrder(); draw(); dirty(); };
+$('oUp').onclick = () => { if (cur < 1) return; [orders[cur - 1], orders[cur]] = [orders[cur], orders[cur - 1]]; cur--; listOrders(); dirty(); };
+$('oDn').onclick = () => { if (cur >= orders.length - 1) return; [orders[cur + 1], orders[cur]] = [orders[cur], orders[cur + 1]]; cur++; listOrders(); dirty(); };
+$('oDel').onclick = () => { if (orders.length < 2) return; const o = orders.splice(cur, 1)[0]; if (G.active === o) G.active = null; if (G.force === o.name) G.force = null; cur = Math.max(0, cur - 1); pose = orders[cur].pose; listOrders(); showOrder(); draw(); dirty(); };
+$('oTest').onclick = () => { const o = orders[cur]; G.force = G.force === o.name ? null : o.name; showOrder(); listOrders(); };
+const clean = p => Object.fromEntries(Object.entries(p).filter(([k, v]) => Math.abs(v) > 1e-6).map(([k, v]) => [k, +v.toFixed(4)]));
+function ordersFile() { return { version: 2, saved: new Date().toISOString(), orders: orders.map(o => ({ name: o.name, start: o.start, stop: o.stop, pose: clean(o.pose) })), otherwise: 'chooser' }; }
 $('save').onclick = () => { const O = ordersFile(), js = JSON.stringify(O, null, 1); localStorage.setItem('gpc.orders', js);
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = 'orders.json'; a.click();
-  $('file').textContent = 'saved: the game in this browser uses it now; orders.json downloaded'; };
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = 'orders.json'; a.click(); $('file').textContent = ''; };
 $('load').onclick = () => $('fileIn').click();
-$('fileIn').onchange = async () => { const f = $('fileIn').files[0]; if (!f) return; try { const O = JSON.parse(await f.text()), o = O.orders.find(x => x.name === 'Idle');
-  history.push(Object.assign({}, pose)); pose = Object.assign({}, o.do.pose); Object.assign(G.rules, o.when); for (const k in RULES0) $(k).value = G.rules[k]; applyPose(); draw(); $('file').textContent = 'opened ' + f.name + ' (not saved yet)'; } catch (e) { $('file').textContent = 'could not read that file'; } };
+$('fileIn').onchange = async () => { const f = $('fileIn').files[0]; if (!f) return; try { G.apply(JSON.parse(await f.text())); orders = G.orders; cur = 0; pose = orders[0].pose; history = []; listOrders(); showOrder(); draw(); dirty(); } catch (e) { $('file').textContent = '✕ file'; } };
 
 // ---------- the box: keyboard, live state ----------
-function setTilt() { $('rollV').textContent = $('roll').value + '°'; $('pitchV').textContent = $('pitch').value + '°';
-  const r = +$('roll').value, p = +$('pitch').value; fr.style.transform = `perspective(1400px) rotateX(${p}deg) rotate(${r}deg)`; }
+function setTilt() { $('rollV').textContent = $('roll').value + '°'; $('pitchV').textContent = $('pitch').value + '°'; }
+$('lock').onchange = () => { try { localStorage.setItem('gpc.phoneView', $('lock').checked ? '1' : ''); } catch (_) {} fit(); if (F && F.__box) F.__box.worldView = !$('lock').checked; };
+try { $('lock').checked = localStorage.getItem('gpc.phoneView') === '1'; } catch (_) {}
 for (const id of ['roll', 'pitch']) $(id).oninput = setTilt;
 $('level').onclick = () => { $('roll').value = 0; $('pitch').value = 0; setTilt(); };
-(function tiltLoop() { if (F && F.__box) { const r = F.__box.dragRot; r.roll = +$('roll').value / DEG; r.pitch = +$('pitch').value / DEG; } requestAnimationFrame(tiltLoop); })();
+(function tiltLoop() { if (F && F.__box) { const r = F.__box.dragRot; r.roll = +$('roll').value / DEG; r.pitch = +$('pitch').value / DEG; F.__box.worldView = !$('lock').checked; } requestAnimationFrame(tiltLoop); })();
+new ResizeObserver(fit).observe($('stage'));
 function keys(win) {
   const down = e => { if (e.target && (e.target.tagName === 'INPUT' && e.target.type !== 'range' || e.target.tagName === 'SELECT')) return;
     const step = e.shiftKey ? 10 : 3, nudge = (id, d) => { $(id).value = +$(id).value + d; setTilt(); };
@@ -324,11 +362,11 @@ function keys(win) {
     e.preventDefault(); };
   for (const w of [window, win]) w.addEventListener('keydown', down);
 }
+let lastAct = null;
 function tick() {
-  const s = G, on = s.mode === 'idle';
-  $('active').textContent = on ? 'Idle' : s.mode === 'getup' ? 'none: he is down, the chooser decides' : s.mode;
-  $('active').className = on ? 'idle' : 'none';
-  $('live').innerHTML = `head ${(s.head || 0).toFixed(2)} m · hips ${(s.hips || 0).toFixed(2)} m<br>${s.mode === 'getup' ? `chooser: ${s.rate || 0} decisions a second` : 'chooser off'}<br>switches: ${(s.switches || []).slice(-4).map(x => `${x[1]} at ${x[0]} s`).join(', ') || 'none yet'}`;
+  const a = G.active; $('active').textContent = a ? a.name : 'chooser'; $('active').className = a ? 'idle' : 'none';
+  if (a !== lastAct) { lastAct = a; listOrders(); }
+  const S = G.signs || {}; $('signs').innerHTML = Object.entries(SIGNS).map(([k, [lab, u]]) => `<tr><td>${lab}</td><td>${S[k] === undefined ? '–' : S[k].toFixed(u === 'm' || u === 'm/s' ? 2 : 0)} ${u}</td></tr>`).join('');
   setTimeout(tick, 200);
 }
 </script>
