@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v16</title>
+<title>EDITOR v17</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;overflow:hidden}
   #left{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -11,7 +11,7 @@
   header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
   select{font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:3px 6px}
   button{font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:8px;padding:6px 10px;cursor:pointer}
-  button:hover{background:#352b23} #mMove.on,#mRot.on{background:#e0a34a;color:#1b1612} button.pri{background:#e0a34a;color:#1b1612;border-color:#e0a34a}
+  button:hover{background:#352b23} #mMove.on,#mRot.on{background:#e0a34a;color:#1b1612} #gh.on{border-color:#7ddc8a;color:#7ddc8a} button.pri{background:#e0a34a;color:#1b1612;border-color:#e0a34a}
   #main{flex:1;display:grid;grid-template-columns:110px minmax(0,1fr) 300px;min-height:0}
   #orders{border-right:1px solid #3a302a;padding:10px}
   .ord{padding:7px 9px;border-radius:8px;margin-bottom:4px} .ord.on{background:#e0a34a;color:#1b1612;font-weight:600} .ord.off{color:#6f6359}
@@ -30,7 +30,10 @@
   .sent input{width:58px;font:inherit;background:#2a221c;color:#ffd38a;border:1px solid #5a4a3e;border-radius:6px;padding:1px 5px;text-align:center}
   .note{font-size:12px;color:#a99a8c;margin:6px 0 14px} #oTest.on{background:#ff9f43;color:#1b1612}
   #frame{border:0;border-radius:14px;background:#000}
-  #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center}
+  #stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative}
+  #who{position:absolute;left:10px;top:10px;padding:6px 10px;border-radius:8px;font-size:13px;font-weight:600;pointer-events:none;display:flex;flex-direction:column;gap:1px}
+  #who.order{background:#1f3a24;color:#9be3a6;border:1px solid #3f7a4a} #who.chooser{background:#3e2617;color:#ffb27a;border:1px solid #8a4a22}
+  #who small{font-weight:400;font-size:11px;opacity:.85}
   #bar{flex:none;display:grid;gap:3px} .trow{display:grid;grid-template-columns:96px 1fr 40px;gap:8px;align-items:center;font-size:12px;color:#d8cdc2} .trow input{width:100%}
   .brow{display:flex;gap:10px;align-items:center;font-size:12px;color:#d8cdc2} #status{font-size:12px;color:#d8cdc2;text-align:center;max-width:100%}
   #active{font-weight:600} .idle{color:#7ddc8a} .none{color:#ff9f7a}
@@ -39,8 +42,8 @@
 </style></head>
 <body>
 <div id="left">
-  <header><b>EDITOR v16</b><span class="dim" id="file"></span><span class="sp"></span>
-    <button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
+  <header><b>EDITOR v17</b><span class="dim" id="file"></span><span class="sp"></span>
+    <button id="gh" title="GitHub key for publishing">Key</button><button id="undo">Undo</button><button id="reset">Reset pose</button><button id="load">Open</button><button id="save" class="pri">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ Order</button><div class="ord off" style="margin-top:10px">Otherwise<br><small>chooser</small></div></div>
     <div id="puppet">
@@ -61,11 +64,11 @@
 </div>
 <div id="split" title="drag to give the editor or the box more room"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=15"></iframe></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=17"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>left / right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>forward / back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
-    <div class="brow"><button id="level" title="L">Level</button><label title="the view a player has: the camera moves with the phone"><input type="checkbox" id="lock"> Phone view</label><span class="sp"></span><span id="active">–</span></div>
+    <div class="brow"><button id="level" title="L">Level</button><label title="the view a player has: the camera moves with the phone"><input type="checkbox" id="lock"> Phone view</label><span class="sp"></span><span id="sw" class="dim"></span></div>
   </div>
 </div>
 <input id="fileIn" type="file" accept=".json,application/json" style="display:none">
@@ -100,6 +103,7 @@ async function boot() {
   acts = W.act.map(a => ({ name: a.name, qadr: a.qadr, j: mj.mj_name2id(m, mj.mjtObj.mjOBJ_JOINT.value, a.name) }));
   orders = G.orders; cur = 0; pose = orders[0].pose; listOrders(); showOrder();
   applyPose(); draw(); keys(F); tick();
+  $('gh').classList.toggle('on', !!localStorage.getItem('gpc.ghKey'));
   $('mMove').onclick = () => setMode('translate'); $('mRot').onclick = () => setMode('rotate');
   $('figSel').onchange = () => buildFig($('figSel').value); $('skelOn').onchange = draw; $('ghostOn').onchange = draw; buildFig('female');
 }
@@ -354,8 +358,22 @@ $('oDel').onclick = () => { if (orders.length < 2) return; const o = orders.spli
 $('oTest').onclick = () => { const o = orders[cur]; G.force = G.force === o.name ? null : o.name; showOrder(); listOrders(); };
 const clean = p => Object.fromEntries(Object.entries(p).filter(([k, v]) => Math.abs(v) > 1e-6).map(([k, v]) => [k, +v.toFixed(4)]));
 function ordersFile() { return { version: 2, saved: new Date().toISOString(), orders: orders.map(o => ({ name: o.name, start: o.start, stop: o.stop, pose: clean(o.pose) })), otherwise: 'chooser' }; }
-$('save').onclick = () => { const O = ordersFile(), js = JSON.stringify(O, null, 1); localStorage.setItem('gpc.orders', js);
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = 'orders.json'; a.click(); $('file').textContent = ''; };
+// Save: this browser's game uses the orders at once; with a GitHub key, they are also published (gpc/orders.json on
+// facaelectrica/the-box-play), which every phone's game loads within a minute or two. The key stays in this browser.
+const REPO = 'facaelectrica/the-box-play', PATH = 'gpc/orders.json';
+$('gh').onclick = () => { const k = prompt('GitHub key (fine-grained, only the-box-play, Contents: read and write). Empty to remove.', localStorage.getItem('gpc.ghKey') ? '(saved)' : '');
+  if (k === null || k === '(saved)') return; if (k.trim()) localStorage.setItem('gpc.ghKey', k.trim()); else localStorage.removeItem('gpc.ghKey'); $('gh').classList.toggle('on', !!localStorage.getItem('gpc.ghKey')); };
+async function publish(js) {
+  const key = localStorage.getItem('gpc.ghKey'); if (!key) return 'no key';
+  const H = { Authorization: 'Bearer ' + key, Accept: 'application/vnd.github+json' }, url = `https://api.github.com/repos/${REPO}/contents/${PATH}`;
+  let sha; const g = await fetch(url + '?ref=main', { headers: H }); if (g.ok) sha = (await g.json()).sha; else if (g.status !== 404) return 'GitHub ' + g.status;
+  const content = btoa(unescape(encodeURIComponent(js)));
+  const r = await fetch(url, { method: 'PUT', headers: H, body: JSON.stringify({ message: 'orders from the editor (' + orders.map(o => o.name).join(', ') + ')', content, sha, branch: 'main' }) });
+  return r.ok ? 'ok' : 'GitHub ' + r.status;
+}
+$('save').onclick = async () => { const O = ordersFile(), js = JSON.stringify(O, null, 1); localStorage.setItem('gpc.orders', js);
+  if (!localStorage.getItem('gpc.ghKey')) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([js], { type: 'application/json' })); a.download = 'orders.json'; a.click(); $('file').textContent = ''; return; }
+  $('file').textContent = 'publishing…'; const r = await publish(js).catch(e => 'error'); $('file').textContent = r === 'ok' ? 'published' : '✕ ' + r; if (r === 'ok') setTimeout(() => { if ($('file').textContent === 'published') $('file').textContent = ''; }, 4000); };
 $('load').onclick = () => $('fileIn').click();
 $('fileIn').onchange = async () => { const f = $('fileIn').files[0]; if (!f) return; try { G.apply(JSON.parse(await f.text())); orders = G.orders; cur = 0; pose = orders[0].pose; history = []; listOrders(); showOrder(); draw(); dirty(); } catch (e) { $('file').textContent = '✕ file'; } };
 
@@ -381,7 +399,9 @@ function keys(win) {
 }
 let lastAct = null;
 function tick() {
-  const a = G.active; $('active').textContent = a ? a.name : 'chooser'; $('active').className = a ? 'idle' : 'none';
+  const a = G.active; $('active').textContent = a ? `Order: ${a.name}` : 'Chooser'; $('who').className = a ? 'order' : 'chooser';
+  $('whoWhy').textContent = a ? (G.force === a.name ? 'forced by Test · your pose, every frame' : 'your pose, every frame · chooser off') : `the brain decides · ${G.rate || 0} decisions/s`;
+  $('sw').textContent = (G.switches || []).slice(-3).map(x => `${x[0]}s → ${x[1]}`).join('   ');
   if (a !== lastAct) { lastAct = a; listOrders(); }
   const S = G.signs || {}; $('signs').innerHTML = Object.entries(SIGNS).map(([k, [lab, u]]) => `<tr><td>${lab}</td><td>${S[k] === undefined ? '–' : S[k].toFixed(u === 'm' || u === 'm/s' ? 2 : 0)} ${u}</td></tr>`).join('');
   setTimeout(tick, 200);
