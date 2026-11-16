@@ -1,7 +1,7 @@
 // The reverse of the solver, for tests and for the Record page's "Test with a library move": a pose -> the 33 points
 // the camera tracker would report for it (MediaPipe's axes, centred on the hips).
 import { M, V, fk } from './skel.js?v=1';
-import { LM } from './solve.js?v=14';
+import { LM } from './solve.js?v=15';
 export function fakePoints(S, q, o = 0) {
   const K = fk(S, q, o), id = S.id, at = (n, v) => V.add(K.p[id[n]], M.vec(K.R[id[n]], v || [0, 0, 0])), G = new Array(33).fill(null);
   G[LM.nose] = at('Head', [0, -0.10, 0.09]); G[LM.lEar] = at('Head', [0.075, 0, 0.09]); G[LM.rEar] = at('Head', [-0.075, 0, 0.09]);

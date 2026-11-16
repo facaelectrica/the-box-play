@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>RECORD v14</title><link rel="icon" href="../icon-192.png">
+<title>RECORD v15</title><link rel="icon" href="../icon-192.png">
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #3a302a} header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
@@ -25,7 +25,7 @@
   #take[hidden]{display:none}
 </style></head>
 <body>
-<header><b>RECORD v14</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
+<header><b>RECORD v15</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
 <div id="views">
   <div class="view"><span class="lab">Camera</span><div id="vwrap" class="mir"><video id="video" playsinline muted></video><canvas id="over"></canvas></div>
     <div id="msg">Start the camera, step back until your whole body is in view, then calibrate.</div><div id="big" hidden></div><div id="recDot" hidden>REC</div></div>
@@ -68,11 +68,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { lookFromGLTF } from '../sim/look.js';
 import { readBody, fk, M } from './mocap/skel.js?v=1';
-import { makeSolver, toMove } from './mocap/solve.js?v=14';
-import { fakePoints } from './mocap/synth.js?v=14';
+import { makeSolver, toMove } from './mocap/solve.js?v=15';
+import { fakePoints } from './mocap/synth.js?v=15';
 import { encodeQ } from './mocap/encq.js?v=1';
 import { decodeQ } from './libq.js?v=1';
-import { loadHMR, bodyRotations, boxOf, KP, KP_EDGES } from './mocap/hmr.js?v=14';
+import { loadHMR, bodyRotations, boxOf, KP, KP_EDGES } from './mocap/hmr.js?v=15';
 const $ = id => document.getElementById(id);
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3', MODEL = k => `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${k}/float16/latest/pose_landmarker_${k}.task`;
 const HOLISTIC = 'https://storage.googleapis.com/mediapipe-models/holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task';
@@ -167,9 +167,9 @@ function note() {   // what the tracker cannot see right now
 
 // ---------- tracking ----------
 async function loadTracker(kind) {
-  if (kind === 'hmr') {   // the rotation tracker; a light body tracker only finds him in the picture
+  if (kind === 'hmr') {   // the rotation tracker finds and follows him by itself
     if (!st.hmr) { const ort = await import(ORT + 'ort.webgpu.min.mjs'); ort.env.wasm.wasmPaths = ORT; st.hmr = await loadHMR(ort, HMR_MODEL, new URL('./mocap/', import.meta.url).href, t => { $('msg').textContent = t; }); }
-    kind = 'lite'; if (st.tracker && st.trackerKind === kind) return; }
+    return; }
   if (st.tracker && st.trackerKind === kind) return; if (st.tracker) { st.tracker.close(); st.tracker = null; }
   const { PoseLandmarker, HolisticLandmarker, FilesetResolver } = await import(MP + '/vision_bundle.mjs'), files = await FilesetResolver.forVisionTasks(MP + '/wasm');
   const make = delegate => kind === 'holistic' ? HolisticLandmarker.createFromOptions(files, { baseOptions: { modelAssetPath: HOLISTIC, delegate }, runningMode: 'VIDEO' })
@@ -189,7 +189,7 @@ async function start() {
       if (gen !== st.gen) { st.stream.getTracks().forEach(t => t.stop()); st.stream = null; return; }
       video.srcObject = st.stream; await video.play(); listCameras(); }
   } catch (e) { if (gen !== st.gen) return; stop(); setState(e && e.name === 'NotAllowedError' ? 'Camera blocked' : 'Error', 'err'); $('msg').hidden = false; $('msg').textContent = e && e.name === 'NotAllowedError' ? 'The browser blocked the camera. Allow camera access for this page, then start again.' : String(e && e.message || e); return; }
-  st.mode = 'live'; st.fpsT = performance.now(); st.fpsN = 0; $('vwrap').classList.toggle('test', !!st.test); ui(); setState('Tracking', 'live'); st.rot = !st.test && $('model').value === 'hmr'; st.test ? testLoop(gen) : st.rot ? hmrLoop(gen) : camLoop(gen);
+  st.mode = 'live'; st.fpsT = performance.now(); st.fpsN = 0; $('vwrap').classList.toggle('test', !!st.test); ui(); setState('Tracking', 'live'); st.rot = !st.test && $('model').value === 'hmr'; if (st.rot) sol.opt.smooth = +$('smooth').value; st.test ? testLoop(gen) : st.rot ? hmrLoop(gen) : camLoop(gen);
 }
 function stop() { st.gen++; if (st.stream) st.stream.getTracks().forEach(t => t.stop()); st.stream = null; video.srcObject = null; st.test = null; st.frames = null; st.take = null; st.play = false; st.mode = 'off'; $('big').hidden = true; drawPoints(null, over.width, over.height);
   $('msg').textContent = 'Start the camera, step back until your whole body is in view, then calibrate.'; ui(); }
@@ -206,23 +206,18 @@ function camLoop(gen) {
       onPoints(world, img, now / 1000, video.videoWidth, video.videoHeight, hands); } };
   const next = () => video.requestVideoFrameCallback ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); next();
 }
-// The rotation tracker. It needs a box around him: from its own picture points of the frame before, and from the
-// light body tracker at the start, every half second, and whenever it loses him.
+// The rotation tracker: one frame at a time, the next camera frame once the last one is done.
 function hmrLoop(gen) {
-  let box = null, age = 0, lastT = -1;
+  let lastT = -1; st.hmr.lose();
   const tick = async () => { if (gen !== st.gen) return;
-    if (video.readyState >= 2 && video.currentTime !== lastT && st.mode !== 'take') { lastT = video.currentTime; const now = performance.now(), w = video.videoWidth, h = video.videoHeight;
-      try {
-        if (!box || age >= 15) { const res = st.tracker.detectForVideo(video, now), pl = res.landmarks && res.landmarks[0], seen = pl && pl.filter(p => (p.visibility ?? 1) > 0.5);
-          const seed = seen && seen.length > 8 ? boxOf(seen.map(p => [p.x * w, p.y * h]), w, h) : null; if (seed || !pl) box = seed; age = 0; }
-        if (box) { const r = await st.hmr.step(video, box); if (gen !== st.gen) return; age++; box = boxOf(r.pts, w, h); onRot(r, now / 1000, w, h); } else onRot(null, now / 1000, w, h);
-      } catch (e) { console.warn(e); box = null; } }
+    if (video.readyState >= 2 && video.currentTime !== lastT && st.mode !== 'take') { lastT = video.currentTime; const now = performance.now();
+      try { const r = await st.hmr.track(video); if (gen !== st.gen) return; onRot(r, now / 1000, video.videoWidth, video.videoHeight); } catch (e) { console.warn(e); st.hmr.lose(); } }
     video.requestVideoFrameCallback ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); };
   tick();
 }
 function onRot(r, t, w, h) {
   st.last = r ? { rot: r, t } : null; st.fpsN++; if (over.width !== w || over.height !== h) { over.width = w; over.height = h; } g.clearRect(0, 0, w, h);
-  if (t * 1000 - st.fpsT > 1000) { $('fps').textContent = Math.round(st.fpsN * 1000 / (t * 1000 - st.fpsT)) + ' fps'; st.fpsT = t * 1000; st.fpsN = 0; $('note').textContent = !r ? 'No body in view.' : st.calibrated ? '' : 'Not calibrated: stand straight, facing the camera, whole body in view.'; }
+  if (t * 1000 - st.fpsT > 1000) { $('fps').textContent = Math.round(st.fpsN * 1000 / (t * 1000 - st.fpsT)) + ' fps, tracker ' + Math.round(st.hmr.ms.net) + ' ms'; st.fpsT = t * 1000; st.fpsN = 0; $('note').textContent = !r ? 'No body in view.' : st.calibrated ? '' : 'Not calibrated: stand straight, facing the camera, whole body in view.'; }
   if (!r) return;
   g.lineWidth = Math.max(2, w / 320); g.strokeStyle = '#e0a34a'; for (const [a, b] of KP_EDGES) { g.beginPath(); g.moveTo(r.pts[a][0], r.pts[a][1]); g.lineTo(r.pts[b][0], r.pts[b][1]); g.stroke(); }
   const W = bodyRotations(st.hmr.map, S, r.state), mid = (a, b, c) => [(r.pts[a][0] + r.pts[b][0] + r.pts[c][0]) / 3, (r.pts[a][1] + r.pts[b][1] + r.pts[c][1]) / 3];
@@ -333,6 +328,6 @@ $('dlRaw').onclick = () => save(new Blob([trackingJson()], { type: 'application/
 addEventListener('keydown', e => { if (e.target.tagName === 'INPUT' && e.target.type === 'text') return; const k = e.key.toLowerCase();
   if (k === ' ') { e.preventDefault(); playPause(); } else if (k === 'r' && !$('rec').disabled) $('rec').click(); else if (st.mode === 'take' && k === 'i') $('trimIn').click(); else if (st.mode === 'take' && k === 'o') $('trimOut').click(); });
 ui();
-window.__rec = { st, sol, S, finish, trimmed, encode: encodeQ, startFootage, stopFootage };
+window.__rec = { st, sol, S, finish, trimmed, encode: encodeQ, startFootage, stopFootage, drawPose, bodyRotations, loadTracker, render: () => ren.render(scene, cam) };   // for tests and offline renders
 </script>
 </body></html>

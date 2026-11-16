@@ -198,7 +198,12 @@ export function makeSolver(S, opt = {}) {
   function solveRot(W, t, feet = null, ppm = 0) {
     const dt = mem.tF === undefined ? 0 : t - mem.tF; mem.tF = t;
     const still = feet && ppm > 0 ? footStill(feet, ppm, dt) : [1, 1];
-    return finish(W.map(R => R ? M.mul(cal, R) : null), new Array(nb).fill(1), still, !!(feet && ppm > 0));
+    // Steady each body's rotation: a small change from the last frame is mostly shake and is eased; a large one is
+    // real motion and passes at once. (The tracker's own output shakes by about half a degree a frame.)
+    const Ws = W.map((R, b) => { if (!R) return null; const p = mem.Ws && mem.Ws[b]; if (!p || !(o.smooth > 0)) return R;
+      const rel = M.mul(M.T(p), R), a = Math.acos(Math.max(-1, Math.min(1, (rel[0] + rel[4] + rel[8] - 1) / 2))) * 180 / Math.PI; return M.mul(p, M.part(rel, Math.min(1, 0.45 / o.smooth + a / 10))); });
+    mem.Ws = Ws;
+    return finish(Ws.map(R => R ? M.mul(cal, R) : null), new Array(nb).fill(1), still, !!(feet && ppm > 0));
   }
   // he stands straight, facing the camera: the hips' rotation at this moment counts as upright and facing forward
   function calibrateRot(W) { if (!W[0] || !W[0].every(Number.isFinite)) return false; cal = M.T(W[0]); return true; }
