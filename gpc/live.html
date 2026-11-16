@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 13</div><div id="brainver"></div>
+<div id="ver">GPC live 14</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -302,11 +302,11 @@ import { Kin, loadKinLibrary } from './sim/kin.js?v=57';
 import { Springs, humanCap } from './sim/springs.js?v=57';
 import { Balance } from './sim/balance.js?v=57';
 import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=57';
-import { AnatGuard } from './sim/anat.js?v=57';
+import { AnatGuard } from './sim/anat.js?v=58';
 import { PhysBrain } from './sim/physctl.js?v=57';
 import { addPins } from './sim/pins.js?v=57';
 import { rigHand, poseHand } from './sim/fingers.js?v=57';
-import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=57';
+import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=58';
 import * as ort from 'onnxruntime-web';
 if ('serviceWorker' in navigator && !self.crossOriginIsolated && !sessionStorage.getItem('swtry3')) { sessionStorage.setItem('swtry3', '1'); navigator.serviceWorker.register(new URL('gpc/sw.js', document.baseURI).href).then(() => navigator.serviceWorker.ready).then(() => location.reload()); }
 import { POSES, applyPose } from './sim/poses.js';
@@ -1626,6 +1626,7 @@ for (const ev of ['pointerdown', 'pointerup']) $('look').addEventListener(ev, e 
 // Everything needed to see exactly what he saw: his body (every joint), the recording he follows, gravity, the box,
 // what he was doing and why, the last 3 s of his body, and the camera. Shared as a small .json file (phone share sheet:
 // send it straight to the chat), or downloaded; window.__loadSnap(json) puts a page back into that moment.
+const crackHist = [];   // (GPC live 14) the loose pieces' last 3 s
 const hist = [];   // last 3 s of his body, 30 times a second (filled by the frame loop)
 function recordHist() {
   if (look.on || !W) return;
@@ -1635,6 +1636,12 @@ function recordHist() {
   // (V39) kept as raw numbers (was ~2,200 number->text->number roundings a second); rounded when a snapshot is made
   const q = W.d.qpos, h = new Float64Array(q.length + 1); h[0] = t; h.set(q, 1);
   hist.push(h); if (hist.length > 90) hist.shift();
+  // (GPC live 14) the loose pieces too: [t, [piece_id, x, y, z, speed], ...] (big pieces only, not shards)
+  if (crack && crack.debris.list.length) {
+    if (crackHist.length && t < crackHist[crackHist.length - 1][0] - 1e-6) crackHist.length = 0;
+    crackHist.push([t, crack.debris.list.filter(P => P.kind === 'chunk').map(P => [P.id, P.x[0], P.x[1], P.x[2], Math.hypot(P.v[0], P.v[1], P.v[2])])]);
+    if (crackHist.length > 90) crackHist.shift();
+  } else if (crackHist.length && !(crack && crack.debris.list.length)) crackHist.length = 0;
 }
 function makeSnap() {
   const r = a => Array.from(a, v => +(+v).toFixed(5)), d = look.snap || snapBody();
@@ -1647,7 +1654,18 @@ function makeSnap() {
     qpos: r(d.qpos), qvel: r(d.qvel), ghostQpos: G && G !== W ? r(G.d.qpos) : null,
     camera: { yaw: +look.yaw.toFixed(3), pitch: +look.pitch.toFixed(3), dist: +look.dist.toFixed(3), target: [look.tgt.x, look.tgt.y, look.tgt.z].map(v => +v.toFixed(3)), box: !!look.box },
     balance: bal && bal.last ? Object.fromEntries(Object.entries(bal.last).filter(([k, v]) => typeof v !== 'function').map(([k, v]) => [k, typeof v === 'number' ? +v.toFixed(4) : v])) : null,
-    hist: hist.map(h => Array.from(h, (v, i) => +v.toFixed(i ? 4 : 3))), errors: ERRS.slice(), gpc: window.__gpc && window.__gpc.report ? window.__gpc.report() : null, wasmMB: +(W.d.qpos.buffer.byteLength / 1048576).toFixed(1) };
+    hist: hist.map(h => Array.from(h, (v, i) => +v.toFixed(i ? 4 : 3))), errors: ERRS.slice(),
+    // (GPC live 14) what pushes his joints right now: the muscles (MuJoCo actuators) and the joint-envelope stops
+    forces: (() => { try {
+      const f = W.d.actuator_force, top = W.act.map((a, i) => [a.name, +f[i].toFixed(1)]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 8);
+      const S = anat && anat.stats;
+      return { muscleTop: top, muscleSumAbs: +W.act.reduce((s, a, i) => s + Math.abs(f[i]), 0).toFixed(1),
+        envelope: anat ? { on: !!anat.on, lastPushJoint: S.lastTJ || null, lastPushNm: +(S.lastT || 0).toFixed(1), lastAccel: +(S.lastA || 0).toFixed(1) } : null };
+    } catch (e) { return { err: String(e) }; } })(),
+    // (GPC live 14, user Nov 16 13:37) the breaking: what broke and when, whether he has stopped, what is still
+    // attached in MuJoCo, every loose piece (simulated apart, in sim/crack.js), and what is moving
+    crack: (() => { try { return crack ? crack.report() : null; } catch (e) { return { err: String(e) }; } })(),
+    crackHist: crackHist.map(([t, L]) => [+t.toFixed(3), L.map(r => r.map((v, i) => i ? +v.toFixed(3) : v))]), gpc: window.__gpc && window.__gpc.report ? window.__gpc.report() : null, wasmMB: +(W.d.qpos.buffer.byteLength / 1048576).toFixed(1) };
 }
 $('snap').onclick = async e => {
   e.stopPropagation();

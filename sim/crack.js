@@ -31,6 +31,12 @@ export const CRACK = {
   away: 0.08,         // s: a part must have been off that surface this long for a new touch to count
   kind: { Foot: 1.5, Hand: 1.5 },   // feet and hands meet surfaces on purpose (support, catching himself): much more needed
   mass: 0.03,         // what's left of a broken part's weight in his physics (its invisible stub)
+  // (user Nov 16 13:30: "once the head is out ... it should just be pure physics") once he has stopped, his parts get the
+  // twisting and rolling resistance real things have. Without it (MuJoCo's default contact has sliding friction only)
+  // a round part on the floor never stops turning: in his 13:25 snapshot only the hips were left (one 8 cm ball, every
+  // other part broken off) and it spun in place at ~2.6 rad/s for over a minute, the invisible stubs swinging with it.
+  deadTorsion: 0.005, // m: resistance to spinning on the spot (MuJoCo geom friction[1])
+  deadRoll: 0.0005,   // m: resistance to rolling (MuJoCo geom friction[2])
 };
 const BREAK_ROOT = { Hips: 'Spine1' };   // the hips break = the upper body comes off them
 const DEAD = new Set(['Hips', 'Spine1', 'Spine2', 'Chest', 'Neck1', 'Neck2', 'Head']);   // carry the head
@@ -210,7 +216,8 @@ export class Cracks {
     this.actOf = Array.from({ length: m.nbody }, () => []);
     W.act.forEach((a, i) => this.actOf[m.jnt_bodyid[a.joint]].push(i));
     // what to restore
-    this.orig = { ct: Int32Array.from(m.geom_contype), ca: Int32Array.from(m.geom_conaffinity), mass: Float64Array.from(m.body_mass), inertia: Float64Array.from(m.body_inertia) };
+    this.orig = { ct: Int32Array.from(m.geom_contype), ca: Int32Array.from(m.geom_conaffinity), mass: Float64Array.from(m.body_mass), inertia: Float64Array.from(m.body_inertia),
+      condim: Int32Array.from(m.geom_condim), friction: Float64Array.from(m.geom_friction) };
     this.debris = new Debris(W);
     this.wallName = {}; for (const n in W.wall) this.wallName[W.wall[n]] = n;
     this.hist = [];
@@ -233,11 +240,12 @@ export class Cracks {
     if (this.broken && (this.broken.size || this.dead)) {
       m.geom_contype.set(this.orig.ct); m.geom_conaffinity.set(this.orig.ca);
       m.body_mass.set(this.orig.mass); m.body_inertia.set(this.orig.inertia);
+      m.geom_condim.set(this.orig.condim); m.geom_friction.set(this.orig.friction);
       // the muscles: the drive's own reset (attach) puts the brain's strengths back
     }
     if (this.getupWas !== undefined && this.drive) { this.drive.getupBy = this.getupWas; this.getupWas = undefined; }
     this.parts = {};   // piece name -> { level, hits: [...] }
-    this.broken = new Set(); this.dead = false; this.deadHold = null; this.deadT = 0;
+    this.broken = new Set(); this.dead = false; this.deadHold = null; this.deadT = 0; this.deadAt = null; this.log = [];
     this.debris.clear(); this.events = []; this.touch = new Map(); this.lastHit = {};
     this.hist.length = 0; this.quiet = 0.4; this.t = 0; this.chunks = [];
     this.stats = { hits: [], cracks: 0, breaks: 0 }; this.pending = [];
@@ -369,6 +377,7 @@ export class Cracks {
     // a leg gone: get-ups can't be the recording played on his body any more (it would stand him on the missing leg):
     // his muscles try it in the physics instead, and fail like a person on one leg would
     if (this.drive && bodies.some(b => /(Leg|Shin|Foot|ToeBase)$/.test(this.nameOf[b])) && globalThis.CRACK_GETUP !== 'kin') { if (this.getupWas === undefined) this.getupWas = this.drive.getupBy; this.drive.getupBy = globalThis.CRACK_GETUP || 'springs'; }
+    this.log.push({ t: +this.W.d.time.toFixed(3), what: 'broke off', piece, parts: bodies.map(b => this.nameOf[b]), speed: +(+vIn || 0).toFixed(2), piece_id: chunk.id, dead: killed });
     if (killed) this.die();
     this.preStep();
     mj.mj_forward(m, d);
@@ -431,6 +440,7 @@ export class Cracks {
     this.debris.list.splice(this.debris.list.indexOf(P), 1);
     if (!groupsOf.length) {   // a single part: it shatters
       const frs = this.frags(P.x, e.n, P.v, 3 + Math.round(Math.random() * 2), 0.008, 0.035);
+      this.log.push({ t: +W.d.time.toFixed(3), what: 'loose piece shattered', piece, piece_id: P.id, speed: +e.v.toFixed(2) });
       return { type: 'shatter', piece, hit, P, shards: frs };
     }
     const parts = groupsOf.map(bs => {
@@ -440,6 +450,7 @@ export class Cracks {
       return this.debris.add(C);
     });
     const frs = this.frags(e.p, e.n, P.v, 1 + Math.round(Math.random() * 2), 0.005, 0.025);
+    this.log.push({ t: +W.d.time.toFixed(3), what: 'loose piece split', piece, piece_id: P.id, into: parts.map(C => ({ piece_id: C.id, parts: C.bodies.map(b => this.nameOf[b]) })), speed: +e.v.toFixed(2) });
     return { type: 'split', piece, hit, P, parts, shards: frs };
   }
   // (tests) break a part now
@@ -451,11 +462,13 @@ export class Cracks {
   die() {
     if (this.dead) return;
     const W = this.W, m = W.m, d = W.d;
-    this.dead = true; this.deadT = 0;
+    this.dead = true; this.deadT = 0; this.deadAt = +W.d.time.toFixed(3);
     // he stops: every muscle lets go to a little tone holding his last pose (a puppet whose strings were cut, not jelly)
     this.deadHold = W.act.map(a => d.qpos[a.qadr]);
     this.deadGain = W.act.map((a, i) => [m.actuator_gainprm[10 * i] * 0.05, m.actuator_biasprm[10 * i + 2] * 0.25]);
     if (this.drive && this.drive.pins) this.drive.pins.reset();
+    // pure physics from now on: real twisting and rolling resistance on his parts (see CRACK.deadTorsion)
+    for (let g = 0; g < m.ngeom; g++) if (W.isFig[m.geom_bodyid[g]]) { m.geom_condim[g] = 6; m.geom_friction[3 * g + 1] = CRACK.deadTorsion; m.geom_friction[3 * g + 2] = CRACK.deadRoll; }
   }
   // before every physics step: broken parts don't collide, weigh almost nothing and have no muscle
   preStep() {
@@ -476,6 +489,45 @@ export class Cracks {
     this.deadT += dt;
     const hold = this.deadHold, ctl = () => hold; ctl.hz = 30;
     for (let i = 0; i < n; i++) { d.xfrc_applied.fill(0); if (fingerPush) fingerPush(); W.step(ctl); }
+  }
+  // (snapshot, user Nov 16 13:37: "you are not aware that pieces are breaking ... and they're being simulated
+  // independently") everything about the breaking at this moment: what broke and when, whether he has stopped, what is
+  // still attached in MuJoCo (and as what), every loose piece in our own small physics, and what is moving
+  report() {
+    const W = this.W, m = W.m, d = W.d, r3 = v => v.map(x => +(+x).toFixed(3)), sp = v => +len(v).toFixed(3);
+    const root = m.body_rootid[W.bodyId.Hips], c0 = [d.subtree_com[3 * root], d.subtree_com[3 * root + 1], d.subtree_com[3 * root + 2]];
+    // his body in MuJoCo, part by part: the physics' own velocity of each part's centre of mass
+    const body = [];
+    for (const n of W.bodyNames) {
+      const b = W.bodyId[n], cv = d.cvel.subarray(6 * b, 6 * b + 6), w = [cv[0], cv[1], cv[2]];
+      const x = [d.xipos[3 * b], d.xipos[3 * b + 1], d.xipos[3 * b + 2]], v = add([cv[3], cv[4], cv[5]], cross(w, sub(x, c0)));
+      body.push({ part: n, as: this.broken.has(b) ? 'stub (broke off: invisible, no collisions, 3% weight, no muscle)' : 'body',
+        x: r3(x), speed: sp(v), spin: sp(w) });
+    }
+    const piece = P => ({ piece_id: P.id, kind: P.kind === 'chunk' ? 'piece' : 'shard', parts: P.bodies ? P.bodies.map(b => this.nameOf[b]) : undefined,
+      kg: +P.m.toFixed(3), x: r3(P.x), v: r3(P.v), speed: sp(P.v), spin: sp(P.w), asleep: !!P.sleep, resting: !!P.held, touching: !!P.on, age: +(P.age || 0).toFixed(2) });
+    const all = this.debris.list.map(piece), pieces = all.filter(p => p.kind === 'piece'), shards = all.filter(p => p.kind === 'shard');
+    const MOVING = 0.02, SPINNING = 0.2;   // m/s, rad/s
+    const mv = o => o.speed > MOVING || o.spin > SPINNING;
+    const parts = this.parts || {};
+    return {
+      on: this.on, dead: this.dead, deadAt: this.deadAt,
+      driver: this.dead ? 'none: he has stopped (physics only; every muscle at 5% stiffness, 25% damping, holding the pose he had when he broke)' : this.broken.size ? 'the brain, without the broken parts' : 'the brain',
+      frozen: this.dead ? 'state, fallWhy, clip, events, balance, ghostQpos and gpc are no longer updated: they show the moment he broke (simTime ' + this.deadAt + ')' : null,
+      log: this.log.slice(-30),
+      damage: Object.fromEntries(Object.entries(parts).filter(([k, P]) => P.dmg || P.level).map(([k, P]) => [k, { dmg: +(P.dmg || 0).toFixed(2), of: CRACK.breakAt, cracks: P.level, hits: P.hits.length }])),
+      broken: [...this.broken].map(b => this.nameOf[b]),
+      body, pieces,
+      shards: { n: shards.length, awake: shards.filter(p => !p.asleep).length, moving: shards.filter(mv) },
+      moving: {
+        threshold: { speed: MOVING, spin: SPINNING },
+        body: body.filter(o => o.as === 'body' && mv(o)).map(o => o.part),
+        stubs: body.filter(o => o.as !== 'body' && mv(o)).map(o => o.part),
+        pieces: pieces.filter(mv).map(o => o.piece_id + ' (' + o.parts.join(', ') + ')'),
+        shards: shards.filter(mv).length,
+      },
+      hits: this.stats.hits.slice(-20),
+    };
   }
   // the hidden part's world pose for drawing: a chunk's body b
   chunkBodyPose(P, rel) {

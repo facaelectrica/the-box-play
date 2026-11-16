@@ -97,7 +97,7 @@ export class AnatGuard {
   // the torques for the state in d (adds them into d.qfrc_applied, remembers them in this.tau)
   push() {
     const d = this.W.d, q = d.qpos, qv = d.qvel, F = d.qfrc_applied, o = this.opt, tau = this.tau, g = this.g, S = this.stats;
-    const w2 = o.w * o.w, c = 2 * o.zeta * o.w; let any = false; S.steps++; S.lastA = 0; S.lastJ = '';
+    const w2 = o.w * o.w, c = 2 * o.zeta * o.w; let any = false; S.steps++; S.lastA = 0; S.lastJ = ''; S.lastT = 0; S.lastTJ = '';
     for (let j = 0; j < this.J.length; j++) {
       const J = this.J[j], qa = J.qa, k3 = 3 * j;
       const dep = this.depth(J, q[qa[0]], q[qa[1]], q[qa[2]]);
@@ -107,7 +107,7 @@ export class AnatGuard {
       let a = w2 * dep * D2R * (1 + dep / o.soft) + c * Math.max(0, vn);
       if (a > o.amax) a = o.amax;
       if (a > S.lastA) { S.lastA = a; S.lastJ = J.name + ' ' + dep.toFixed(0); }
-      for (let i = 0; i < 3; i++) { const t = -J.I[i] * a * g[i]; tau[k3 + i] = t; F[da[i]] += t; }
+      for (let i = 0; i < 3; i++) { const t = -J.I[i] * a * g[i]; tau[k3 + i] = t; F[da[i]] += t; if (Math.abs(t) > S.lastT) { S.lastT = Math.abs(t); S.lastTJ = J.name + ['_x', '_y', '_z'][i]; } }
     }
     if (any) S.out++;
     this.pushStand();
