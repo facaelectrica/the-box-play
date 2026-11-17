@@ -102,13 +102,17 @@ export async function attachGPC(brain, ort, say) {
   // library moves (do.moves = a list of ids): the game reads clips/<id>.q (Save copies the moves orders use there);
   // the editor, when a move is not copied yet, reads it from the private library with the token kept in this browser
   const LIBQ = 'https://api.github.com/repos/facaelectrica/the-box-library/contents/moves/', MV = {};
-  st.moveRaw = async id => { let r = null;
+  // (Nov 16 23:26) part of a move: "<id>@<from>-<to>" (frames counted from 0, both included) plays only those frames
+  const part = id => { const [b, r] = id.split('@'), m = r && /^(\d+)-(\d+)$/.exec(r); return { base: b, from: m ? +m[1] : 0, to: m ? +m[2] : null }; };
+  st.part = part;
+  st.moveRaw = async id => { id = part(id).base; let r = null;
     try { r = await fetch(here + 'clips/' + encodeURIComponent(id) + '.q'); } catch (_) {}
     if (!r || !r.ok) { const key = localStorage.getItem('gpc.ghKey'); if (!key) throw new Error('move ' + id + ' is not in the game');
       r = await fetch(LIBQ + encodeURIComponent(id) + '.q', { headers: { Authorization: 'Bearer ' + key, Accept: 'application/vnd.github.raw' } });
       if (!r.ok) throw new Error('library ' + r.status); }
     return r.arrayBuffer(); };
-  st.move = id => MV[id] || (MV[id] = st.moveRaw(id).then(decodeQ).then(dec => expandQ(brain.W.mj, brain.W.m, dec, brain.bodyId, BODY_NAMES)).catch(e => { delete MV[id]; throw e; }));
+  st.move = id => MV[id] || (MV[id] = (id.includes('@') ? st.move(part(id).base).then(buf => { const P = part(id), n = Math.floor(buf.length / 376), a = Math.min(P.from, n - 1), b = Math.min(P.to ?? n - 1, n - 1); return buf.slice(a * 376, (Math.max(a, b) + 1) * 376); })
+    : st.moveRaw(id).then(decodeQ).then(dec => expandQ(brain.W.mj, brain.W.m, dec, brain.bodyId, BODY_NAMES))).catch(e => { delete MV[id]; throw e; }));
   // the moves' index (gpc/clips/index.json, written by the editor's Save): what a pick reads from each move, so a pick
   // downloads only the move it chooses (Idle has 472). A move missing from the index is downloaded as before.
   st.index = fetch(here + 'clips/index.json').then(r => r.ok ? r.json() : null).catch(() => null)
@@ -136,8 +140,8 @@ export async function attachGPC(brain, ort, say) {
   // box most get-ups touch a wall, and he still has to try). full: ignore the index (for checks)
   async function pickMove(o, full) {
     const me = shapeOf(brain.rot, 0), d = brain.W.d, out = [], IX = full ? {} : await st.index;
-    for (const id of o.do.moves) { const E = IX[id]; let buf = null, n, s0, q0, k0;
-      if (E) { n = E[2]; s0 = shapeOf(E, 3); q0 = E; k0 = IX_Q0; }
+    for (const id of o.do.moves) { const P = part(id), E = P.from === 0 ? IX[P.base] : null; let buf = null, n, s0, q0, k0;
+      if (E) { n = P.to === null ? E[2] : Math.min(E[2], P.to + 1); s0 = shapeOf(E, 3); q0 = E; k0 = IX_Q0; }
       else { try { buf = await st.move(id); } catch (_) { continue; } n = Math.floor(buf.length / 376); s0 = shapeOf(buf, 3); q0 = buf; k0 = 299; }
       let h = 0, k = 0;
       for (const a of brain.W.act) { h += Math.abs(d.qpos[a.qadr] - q0[k0 + a.qadr]); k++; }

@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v62</title>
+<title>EDITOR v63</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   #tabs{flex:none;display:flex;gap:3px;align-items:flex-end;padding:6px 12px 0;background:#120f0c;border-bottom:1px solid #3a302a} #tabs button{border-radius:8px 8px 0 0;border-bottom:0;padding:5px 16px;background:#1b1612;color:#a99a8c} #tabs button.on{background:#e0a34a;color:#1b1612;border-color:#e0a34a;font-weight:600}
@@ -53,7 +53,7 @@
   .ty .c,.tk .c{flex-basis:100%;color:#8a7d72;font-size:11px;margin-left:20px} .tk .c{margin-left:18px} #libUse .ty .c{margin-left:0}
   .ty input,.tk input{margin:0} .car{color:#8a7d72;width:10px} .cnt{color:#1b1612;background:#a99a8c;border-radius:9px;padding:0 6px;font-size:11px;font-weight:600} .ty .x{color:#8a7d72} .ty .x:hover{color:#eee}
   .ty.in .cnt{background:#7ddc8a} .tk.in .n{color:#9be3a6} .ty.pv,.tk.pv{box-shadow:inset 3px 0 0 #e0a34a;background:#2e241c}
-  #tl{margin-top:6px;background:#241d18;border-radius:8px;padding:6px 8px;font-size:12px} .tlTop{display:flex;gap:8px;align-items:center;margin-bottom:4px;min-width:0} .tlTop button{padding:1px 8px;font-size:12px} #tlFrame{font-size:11px;margin-top:2px}
+  #tl{margin-top:6px;background:#241d18;border-radius:8px;padding:6px 8px;font-size:12px} .tlTop{display:flex;gap:8px;align-items:center;margin-bottom:4px;min-width:0} .tlTop button{padding:1px 8px;font-size:12px} #tlFrame{font-size:11px;margin-top:2px} #tlPart{display:flex;gap:6px;align-items:center;margin-top:4px} #tlPart button{padding:1px 8px;font-size:12px}
   #tlState{font-weight:600;padding:0 6px;border-radius:4px;background:#3a302a;color:#d8cdc2} #tlState.play{background:#1f3a24;color:#9be3a6} #tlState.err{background:#4a2020;color:#ff9f7a}
   #tlName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap} .tlRow{display:flex;gap:6px;align-items:center;min-width:0} .tlRow button{padding:3px 9px;min-width:34px} #tlBar{flex:1;min-width:0;width:0;accent-color:#e0a34a} #tlTime{font-variant-numeric:tabular-nums;color:#ffd38a;white-space:nowrap;text-align:right} #tlLoop.on{background:#e0a34a;color:#1b1612}
   button:disabled{opacity:.4;cursor:default} button.danger{background:#7a2b22;border-color:#b0483a;color:#fff} button.danger:hover{background:#94352a} .nw{white-space:nowrap} body.rec .poseOnly{display:none!important}
@@ -63,7 +63,7 @@
 <div id="tabs"><button id="tabOrders" class="on" title="Orders: the director's rules">Orders</button><button id="tabMotions" title="Motions: record a move with the camera">Motions</button></div>
 <div id="ordersTab">
 <div id="left">
-  <header><b>EDITOR v62</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v63</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Download the current state for debugging (S)">Snapshot</button><button id="gh" title="GitHub token for publishing and for reading the library">GitHub</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove token</button></span><button id="undo" class="poseOnly" title="Undo (Ctrl+Z)">Undo</button><button id="reset" class="poseOnly">Reset pose</button><button id="load" title="Open an orders file">Open file</button><button id="save" class="pri" title="Save and publish the orders to the game">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ New order</button><div class="ord off" style="margin-top:10px" title="Runs when no order is active">No order<br><small>Chooser</small></div></div>
@@ -73,7 +73,7 @@
         <label class="nw"><input type="checkbox" id="skelOn" checked> Skeleton</label><label class="nw poseOnly" title="Grey figure: the previous step, or the default standing pose"><input type="checkbox" id="ghostOn" checked> Previous step</label><span class="sp"></span><button id="frameB" title="Frame the figure (F)">Frame</button><button id="mMove" class="on poseOnly" title="Move (W)">Move</button><button id="mRot" class="poseOnly" title="Rotate (E)">Rotate</button></div>
       <div id="views"><div class="view" id="v3"><span class="lab" id="hint"></span><div id="empty" hidden>This order has no moves.<br>Add a move type from the Library.</div></div></div>
       <div id="steps" style="display:flex;gap:4px;align-items:center;margin-top:6px;font-size:12px"></div>
-      <div id="tl" hidden><div class="tlTop"><span id="tlState"></span><span id="tlName"></span><span class="sp"></span><button id="tlLoop" title="Loop">Loop</button></div><div class="tlRow"><button id="tlStart" title="To start">⏮</button><button id="tlPlay" title="Play (Space)">▶</button><button id="tlEnd" title="To end">⏭</button><input type="range" id="tlBar" min="0" max="1000" value="0" tabindex="-1"><span id="tlTime">0.0 / 0.0 s</span></div><div id="tlFrame" class="dim"></div></div>
+      <div id="tl" hidden><div class="tlTop"><span id="tlState"></span><span id="tlName"></span><span class="sp"></span><button id="tlLoop" title="Loop">Loop</button></div><div class="tlRow"><button id="tlStart" title="To start">⏮</button><button id="tlPlay" title="Play (Space)">▶</button><button id="tlEnd" title="To end">⏭</button><input type="range" id="tlBar" min="0" max="1000" value="0" tabindex="-1"><span id="tlTime">0.0 / 0.0 s</span></div><div id="tlPart"><button id="tlIn" title="Start the part at this frame">Part start</button><button id="tlOut" title="End the part at this frame">Part end</button><span id="tlPartTxt" class="dim"></span><span class="sp"></span><button id="tlAddPart" title="Add only this part of the move to the order">Add part to order</button></div><div id="tlFrame" class="dim"></div></div>
     </div>
     <div id="side">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><input id="oname" style="flex:1;font:inherit;font-weight:600;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:4px 8px">
@@ -98,7 +98,7 @@
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=62"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=63"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>Tilt left/right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>Tilt forward/back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -427,7 +427,8 @@ const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
 const mvLabel = x => x ? cap(x.short) + ' · ' + x.actor : '';
 const mvSec = x => (x.frames / 30).toFixed(1);
 // the library groups takes by move type: BONES recorded each type with several performers (id = type + _NNN__A<actor>)
-const typeKey = id => id.replace(/_\d+__A\d+$/, '');
+const typeKey = id => id.replace(/@.*$/, '').replace(/_\d+__A\d+$/, '');
+const baseId = id => id.replace(/@.*$/, ''), partOf = id => { const m = /@(\d+)-(\d+)$/.exec(id); return m ? [+m[1], +m[2]] : null; };
 const most = a => { const c = new Map(); for (const v of a) c.set(v, (c.get(v) || 0) + 1); return [...c.entries()].sort((p, q) => q[1] - p[1])[0][0]; };
 function typeInfo(takes) { const se = takes.map(x => x.start + ' → ' + x.end), s = most(se), n = new Set(se).size, f = takes.map(x => x.frames / 30), lo = Math.min(...f), hi = Math.max(...f);
   return `${s}${n > 1 ? ' (mixed)' : ''} · ${lo.toFixed(1)}${hi - lo >= 0.1 ? '–' + hi.toFixed(1) : ''} s`; }
@@ -457,10 +458,11 @@ async function libList() { const o = orders[cur], L = await libIndex(); if (orde
     cb.onclick = e => { e.stopPropagation(); setUse([id], cb.checked); }; d.onclick = () => pvOpen(id); } }
 function libUse() { const o = orders[cur], D = o.do, ids = D.moves || [];
   const old = D.file || D.category ? `<div class="li dim">Legacy move set: ${esc(D.file ? D.file.replace(/^kin\//, '').replace(/\.bin$/, '') : 'closest in ' + D.category)}</div>` : '';
-  const groups = new Map(); for (const id of ids) { const k = typeKey(id); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(id); }
+  const groups = new Map(); for (const id of ids) { const k = partOf(id) ? id : typeKey(id); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(id); }
   $('libUseN').textContent = ids.length ? `${groups.size} ${groups.size === 1 ? 'type' : 'types'} · ${ids.length} ${ids.length === 1 ? 'take' : 'takes'}` : '';
   const pvId = PV.cur && PV.cur.id;
-  $('libUse').innerHTML = old + ([...groups.entries()].map(([k, list]) => { const t = LIB.typeBy && LIB.typeBy[k], x = LIB.by && LIB.by[list[0]];
+  $('libUse').innerHTML = old + ([...groups.entries()].map(([k, list]) => { const pt = partOf(k), t = LIB.typeBy && LIB.typeBy[typeKey(k)], x = LIB.by && LIB.by[baseId(list[0])];
+    if (pt) return `<div class="ty ${list.includes(pvId) ? 'pv' : ''}" data-k="${esc(k)}" title="${esc(k)}"><span class="n">${esc(t ? cap(t.short) : typeKey(k))}</span><span class="cnt" title="Part of one take">part</span><span class="x" title="Remove from the order">✕</span><span class="c">${esc((x ? x.actor + ' · ' : '') + `frames ${pt[0] + 1}–${pt[1] + 1} · ${((pt[1] - pt[0]) / 30).toFixed(1)} s`)}</span></div>`;
     return `<div class="ty ${list.includes(pvId) ? 'pv' : ''}" data-k="${esc(k)}" title="${esc(t ? t.desc : k)}"><span class="n">${esc(t ? cap(t.short) : k)}</span><span class="cnt" title="Takes in this order">${list.length}${t ? ' of ' + t.takes.length : ''}</span><span class="x" title="Remove from the order">✕</span><span class="c">${esc(t ? typeInfo(list.map(id => LIB.by[id]).filter(Boolean)) : '')}</span></div>`; }).join('') || (old ? '' : '<div class="li dim">No moves yet. Select a move type in the Library.</div>'));
   for (const d of $('libUse').querySelectorAll('.ty')) { const list = groups.get(d.dataset.k); d.querySelector('.x').onclick = e => { e.stopPropagation(); setUse(list, false); }; d.onclick = () => pvOpen(list[0]); } }
 function setUse(list, on) { const o = orders[cur], D = o.do, drop = new Set(list); let ids = (D.moves || []).filter(x => !drop.has(x)); if (on) ids = ids.concat(list);
@@ -491,21 +493,25 @@ async function pvOpen(id, paused) {
   sel = null; tc.detach(); pvScrub = null;
   const P = PV.cur = { id, o: orders[cur], M: null, t: 0, playing: !paused, loop: PV.cur ? PV.cur.loop : false, err: '' }; showBar(); pvUI(); libMark();
   try { P.M = await loadMove(id); } catch (e) { if (PV.cur === P) { P.err = e.message; pvUI(); } return; }
-  if (PV.cur !== P) return; P.last = performance.now(); frameView([P.M.mid[0], P.M.mid[1], 0.8]);   // look at the middle of where the move goes
+  if (PV.cur !== P) return; P.part = partOf(id); if (P.part) { P.part[1] = Math.min(P.part[1], P.M.T - 1); P.t = P.part[0] / 30; }
+  P.last = performance.now(); frameView([P.M.mid[0], P.M.mid[1], 0.8]);   // look at the middle of where the move goes
   showBar(); pvUI(); requestAnimationFrame(pvTick); }
-function pvTick(now) { const P = PV.cur; if (!P || !P.M) return; const dur = (P.M.T - 1) / 30;
-  if (P.playing) { P.t += (now - P.last) / 1000; if (P.t >= dur) { if (P.loop) P.t = 0; else { P.t = dur; P.playing = false; } } }
+function pvTick(now) { const P = PV.cur; if (!P || !P.M) return; const lo = P.part ? P.part[0] / 30 : 0, dur = P.part ? P.part[1] / 30 : (P.M.T - 1) / 30;
+  if (P.playing) { P.t += (now - P.last) / 1000; if (P.t >= dur) { if (P.loop) P.t = lo; else { P.t = dur; P.playing = false; } } }
   P.last = now; pose = frameAt(P.M, Math.min(P.M.T - 1, Math.round(P.t * 30))); draw(); pvUI(); requestAnimationFrame(pvTick); }
 // Frame: the camera back to its standard view, aimed at c (the figure's middle); also repairs a lost camera
 function frameView(c) { if (!c) { const P = fk(pose, PV.cur && PV.cur.M ? PV.cur.M.fix : null); c = [P.Hips[0], P.Hips[1], 0.8]; } if (!c.every(Number.isFinite)) c = [0, 0, 0.9];
   orbit.target.set(...c); cam.position.set(c[0] + 1.4, c[1] - 2.6, c[2] + 0.5); cam.up.set(0, 0, 1); orbit.update(); }
 $('frameB').onclick = () => frameView();
-function pvToggle() { const P = PV.cur; if (!P || !P.M) return; if (!P.playing && P.t >= (P.M.T - 1) / 30) P.t = 0; P.playing = !P.playing; pvUI(); }
+function pvToggle() { const P = PV.cur; if (!P || !P.M) return; if (!P.playing && P.t >= (P.part ? P.part[1] : P.M.T - 1) / 30) P.t = P.part ? P.part[0] / 30 : 0; P.playing = !P.playing; pvUI(); }
 function pvClose() { if (!PV.cur) return; const o = PV.cur.o; PV.cur = null; if (o === orders[cur]) pose = o.steps[stepK].pose; frameView([0, 0, 0.9]); showBar(); libMark(); draw(); }   // the order's own pose comes back
-function libMark() { const id = PV.cur && PV.cur.id; for (const d of document.querySelectorAll('#libList .tk, #libList .ty, #libUse .ty')) d.classList.toggle('pv', !!id && (d.dataset.id === id || d.dataset.k === typeKey(id))); }
+function libMark() { const id = PV.cur && PV.cur.id; for (const d of document.querySelectorAll('#libList .tk, #libList .ty, #libUse .ty')) d.classList.toggle('pv', !!id && (d.dataset.id === id || d.dataset.k === id || (!partOf(id) && d.dataset.k === typeKey(id)))); }
 let pvScrub = null;
-function pvUI() { const P = PV.cur; if (!P) return; const x = LIB.by && LIB.by[P.id], t = x && x.tk, j = t ? t.takes.indexOf(x) + 1 : 0;
-  $('tlName').textContent = x ? `${cap(x.short)} · take ${j} of ${t.takes.length} · ${x.actor}` : P.id;
+function pvUI() { const P = PV.cur; if (!P) return; const x = LIB.by && LIB.by[baseId(P.id)], t = x && x.tk, j = t ? t.takes.indexOf(x) + 1 : 0;
+  $('tlName').textContent = (x ? `${cap(x.short)} · take ${j} of ${t.takes.length} · ${x.actor}` : baseId(P.id)) + (P.part ? ` · part, frames ${P.part[0] + 1}–${P.part[1] + 1}` : '');
+  { const m = PV.mark && PV.mark.id === baseId(P.id) ? PV.mark : null, inOrd = m && (orders[cur].do.moves || []).includes(`${m.id}@${m.a}-${m.b}`);
+    $('tlPartTxt').textContent = m ? `Part: frames ${m.a + 1}–${m.b + 1} (${((m.b - m.a) / 30).toFixed(1)} s)${inOrd ? ' · in this order' : ''}` : 'Mark a part with Part start and Part end';
+    for (const id of ['tlIn', 'tlOut']) $(id).disabled = !P.M; $('tlAddPart').disabled = !m || m.b <= m.a || inOrd || !(orders[cur].do && orders[cur].do.type === 'recording'); }
   $('tlState').textContent = P.err ? 'Failed to load move: ' + P.err : !P.M ? 'Loading' : P.playing ? 'Playing' : P.t >= (P.M.T - 1) / 30 ? 'Ended' : 'Paused';
   $('tlState').className = P.err ? 'err' : P.playing ? 'play' : '';
   const ok = !!P.M, dur = ok ? (P.M.T - 1) / 30 : 0; for (const id of ['tlPlay', 'tlBar', 'tlStart', 'tlEnd', 'tlLoop']) $(id).disabled = !ok;
@@ -516,8 +522,13 @@ function pvUI() { const P = PV.cur; if (!P) return; const x = LIB.by && LIB.by[P
 function showBar() { const o = orders[cur], rec = !!(o && o.do && o.do.type === 'recording'); document.body.classList.toggle('rec', rec); $('tl').hidden = !PV.cur; $('steps').style.display = rec ? 'none' : 'flex';
   const none = rec && !(PV.cur && PV.cur.M); $('empty').hidden = !(rec && !PV.cur); live.visible = fig.visible = !none; }
 $('tlPlay').onclick = pvToggle; $('tlLoop').onclick = () => { if (PV.cur) { PV.cur.loop = !PV.cur.loop; pvUI(); } };
-$('tlStart').onclick = () => { if (PV.cur && PV.cur.M) { PV.cur.t = 0; pvUI(); } };
-$('tlEnd').onclick = () => { if (PV.cur && PV.cur.M) { PV.cur.t = (PV.cur.M.T - 1) / 30; PV.cur.playing = false; pvUI(); } };
+$('tlStart').onclick = () => { if (PV.cur && PV.cur.M) { PV.cur.t = PV.cur.part ? PV.cur.part[0] / 30 : 0; pvUI(); } };
+$('tlEnd').onclick = () => { if (PV.cur && PV.cur.M) { PV.cur.t = (PV.cur.part ? PV.cur.part[1] : PV.cur.M.T - 1) / 30; PV.cur.playing = false; pvUI(); } };
+// part of a move: mark its first and last frame on the timeline, then add it to the order as its own entry
+const frameNow = () => Math.min(PV.cur.M.T - 1, Math.round(PV.cur.t * 30));
+$('tlIn').onclick = () => { const P = PV.cur; if (!P || !P.M) return; const f = frameNow(), m = PV.mark && PV.mark.id === baseId(P.id) ? PV.mark : null; PV.mark = { id: baseId(P.id), a: f, b: m && m.b > f ? m.b : P.M.T - 1 }; pvUI(); };
+$('tlOut').onclick = () => { const P = PV.cur; if (!P || !P.M) return; const f = frameNow(), m = PV.mark && PV.mark.id === baseId(P.id) ? PV.mark : null; PV.mark = { id: baseId(P.id), a: m && m.a < f ? m.a : 0, b: f }; pvUI(); };
+$('tlAddPart').onclick = () => { const P = PV.cur, m = PV.mark; if (!P || !P.M || !m || m.id !== baseId(P.id)) return; const id = `${m.id}@${m.a}-${m.b}`; if (!(orders[cur].do.moves || []).includes(id)) setUse([id], true); pvOpen(id, true); };
 // dragging the bar: playback pauses while the button is held and resumes on release (wherever the mouse is let go)
 $('tlBar').onpointerdown = () => { if (PV.cur && PV.cur.M) { pvScrub = { P: PV.cur, play: PV.cur.playing }; PV.cur.playing = false; } };
 $('tlBar').oninput = () => { const P = PV.cur; if (P && P.M) { P.t = +$('tlBar').value / 1000 * (P.M.T - 1) / 30; pvUI(); } };
@@ -580,7 +591,7 @@ async function publish(js) {
   const call = async (path, body, method = body ? 'POST' : 'GET') => { const r = await fetch(A + path, { method, headers: H, body: body && JSON.stringify(body) }); if (!r.ok) throw new Error(path.split('/')[1] + ' ' + r.status); return r.json(); };
   const b64 = ab => { const u = new Uint8Array(ab); let t = ''; for (let i = 0; i < u.length; i += 0x8000) t += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(t); };
   const ref = await call('git/ref/heads/main'), base = await call('git/commits/' + ref.object.sha);
-  const used = [...new Set(orders.flatMap(o => o.do && o.do.moves || []))];
+  const used = [...new Set(orders.flatMap(o => o.do && o.do.moves || []).map(baseId))];   // a part uses its whole move's file
   let have = new Set(); try { have = new Set((await call('contents/gpc/clips?ref=main')).map(f => f.name)); } catch (_) {}
   const add = used.filter(id => !have.has(id + '.q')), tree = [];
   for (const [k, id] of add.entries()) { $('file').textContent = `Copying moves to the game: ${k + 1} of ${add.length}`;
@@ -639,7 +650,7 @@ function snapshot() {
 $('snapB').onclick = snapshot;
 addEventListener('keydown', e => { if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') snapshot(); });
 function tick() {
-  const a = G.active, rc = G.rec && G.rec.file && a && G.rec.o === a ? ' · ' + (LIB.by && LIB.by[G.rec.file] ? mvLabel(LIB.by[G.rec.file]) : G.rec.file.replace(/^kin\//, '').replace(/\.bin$/, '')) + (G.rec.wall > 0.05 ? ` · ${Math.round(G.rec.wall * 100)} cm into walls` : '') : '';
+  const a = G.active, rc = G.rec && G.rec.file && a && G.rec.o === a ? ' · ' + (LIB.by && LIB.by[baseId(G.rec.file)] ? mvLabel(LIB.by[baseId(G.rec.file)]) + (partOf(G.rec.file) ? ' (part)' : '') : G.rec.file.replace(/^kin\//, '').replace(/\.bin$/, '')) + (G.rec.wall > 0.05 ? ` · ${Math.round(G.rec.wall * 100)} cm into walls` : '') : '';
   $('active').textContent = a ? a.name + (a.steps.length > 1 && !rc ? ` ${G.step + 1}/${a.steps.length}` : '') + rc : 'Chooser'; $('who').className = a ? 'order' : 'chooser';
   $('whoWhy').textContent = a ? (G.force === a.name ? 'Forced' : 'Translator') : `${G.rate || 0} picks/s`;
   $('sw').textContent = (G.switches || []).slice(-3).map(x => `${x[0]}s → ${x[1]}`).join('   ');
