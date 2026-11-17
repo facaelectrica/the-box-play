@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>MOTIONS v17</title><link rel="icon" href="../icon-192.png">
+<title>MOTIONS v18</title><link rel="icon" href="../icon-192.png">
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #3a302a} header b{font-size:16px} .dim{color:#a99a8c} .sp{flex:1}
@@ -26,7 +26,7 @@
   body.embed header a{display:none}   /* inside the editor's Motions tab: the editor is one tab away */
 </style></head>
 <body>
-<header><b>MOTIONS v17</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
+<header><b>MOTIONS v18</b><span id="state">Camera off</span><span id="fps" class="dim"></span><span id="note"></span><span class="sp"></span><a href="editor.html">Editor</a></header>
 <div id="views">
   <div class="view"><span class="lab">Camera</span><div id="vwrap" class="mir"><video id="video" playsinline muted></video><canvas id="over"></canvas></div>
     <div id="msg">Start the camera, step back until your whole body is in view, then calibrate.</div><div id="big" hidden></div><div id="recDot" hidden>REC</div></div>
@@ -69,11 +69,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { lookFromGLTF } from '../sim/look.js';
 import { readBody, fk, M } from './mocap/skel.js?v=1';
-import { makeSolver, toMove } from './mocap/solve.js?v=17';
-import { fakePoints } from './mocap/synth.js?v=17';
+import { makeSolver, toMove } from './mocap/solve.js?v=18';
+import { fakePoints } from './mocap/synth.js?v=18';
 import { encodeQ } from './mocap/encq.js?v=1';
 import { decodeQ } from './libq.js?v=1';
-import { loadHMR, bodyRotations, boxOf, KP, KP_EDGES } from './mocap/hmr.js?v=17';
+import { loadHMR, bodyRotations, boxOf, KP, KP_EDGES } from './mocap/hmr.js?v=18';
 const $ = id => document.getElementById(id);
 if (new URLSearchParams(location.search).has('embed')) document.body.classList.add('embed');
 const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3', MODEL = k => `https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_${k}/float16/latest/pose_landmarker_${k}.task`;
@@ -208,18 +208,21 @@ function camLoop(gen) {
       onPoints(world, img, now / 1000, video.videoWidth, video.videoHeight, hands); } };
   const next = () => video.requestVideoFrameCallback ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); next();
 }
-// The rotation tracker: one frame at a time, the next camera frame once the last one is done.
+// The rotation tracker. A frame usually takes a little longer than the camera's 33 ms. The camera marks each new frame
+// as it arrives, and the tracker starts on the newest one the moment it is free. (Waiting for the next camera frame
+// after each result, as before, halves the rate: a 40 ms tracker then gives 15 frames a second instead of 25.)
 function hmrLoop(gen) {
-  let lastT = -1; st.hmr.lose();
-  const tick = async () => { if (gen !== st.gen) return;
-    if (video.readyState >= 2 && video.currentTime !== lastT && st.mode !== 'take') { lastT = video.currentTime; const now = performance.now();
-      try { const r = await st.hmr.track(video); if (gen !== st.gen) return; onRot(r, now / 1000, video.videoWidth, video.videoHeight); } catch (e) { console.warn(e); st.hmr.lose(); } }
-    video.requestVideoFrameCallback ? video.requestVideoFrameCallback(tick) : requestAnimationFrame(tick); };
-  tick();
+  let fresh = false, busy = false, lastT = -1; st.hmr.lose();
+  const work = async () => { if (busy) return; busy = true;
+    while (fresh && gen === st.gen) { fresh = false; if (st.mode === 'take' || video.readyState < 2) continue; const now = performance.now();
+      try { const r = await st.hmr.track(video); if (gen !== st.gen) break; onRot(r, now / 1000, video.videoWidth, video.videoHeight); } catch (e) { console.warn(e); st.hmr.lose(); } }
+    busy = false; };
+  const frame = () => { if (gen !== st.gen) return; if (video.currentTime !== lastT) { lastT = video.currentTime; fresh = true; work(); } video.requestVideoFrameCallback ? video.requestVideoFrameCallback(frame) : requestAnimationFrame(frame); };
+  frame();
 }
 function onRot(r, t, w, h) {
   st.last = r ? { rot: r, t } : null; st.fpsN++; if (over.width !== w || over.height !== h) { over.width = w; over.height = h; } g.clearRect(0, 0, w, h);
-  if (t * 1000 - st.fpsT > 1000) { $('fps').textContent = Math.round(st.fpsN * 1000 / (t * 1000 - st.fpsT)) + ' fps, tracker ' + Math.round(st.hmr.ms.net) + ' ms'; st.fpsT = t * 1000; st.fpsN = 0; $('note').textContent = !r ? 'No body in view.' : st.calibrated ? '' : 'Not calibrated: stand straight, facing the camera, whole body in view.'; }
+  if (t * 1000 - st.fpsT > 1000) { $('fps').textContent = Math.round(st.fpsN * 1000 / (t * 1000 - st.fpsT)) + ' fps, tracker ' + Math.round(st.hmr.ms.net) + ' ms, picture ' + Math.round(st.hmr.ms.crop) + ' ms'; st.fpsT = t * 1000; st.fpsN = 0; $('note').textContent = !r ? 'No body in view.' : st.calibrated ? '' : 'Not calibrated: stand straight, facing the camera, whole body in view.'; }
   if (!r) return;
   g.lineWidth = Math.max(2, w / 320); g.strokeStyle = '#e0a34a'; for (const [a, b] of KP_EDGES) { g.beginPath(); g.moveTo(r.pts[a][0], r.pts[a][1]); g.lineTo(r.pts[b][0], r.pts[b][1]); g.stroke(); }
   const W = bodyRotations(st.hmr.map, S, r.state), mid = (a, b, c) => [(r.pts[a][0] + r.pts[b][0] + r.pts[c][0]) / 3, (r.pts[a][1] + r.pts[b][1] + r.pts[c][1]) / 3];
