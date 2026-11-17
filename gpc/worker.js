@@ -3,7 +3,9 @@
 // commands every frame.
 import { makeEngine } from './engine.js?v=11';
 const here = new URL('./', import.meta.url).href; let eng = null;
+let given = {};
 async function get(name) {
+  if (given[name]) { const b = given[name]; delete given[name]; return b; }   // handed over by the page (its start screen downloaded it)
   const r = await fetch(here + name), rd = r.body.getReader(), parts = []; let got = 0;
   for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; postMessage({ load: name, got }); }
   const b = new Uint8Array(got); let o = 0; for (const p of parts) { b.set(p, o); o += p.length; } return b;
@@ -12,6 +14,7 @@ onmessage = async e => {
   const m = e.data;
   try {
     if (m.init) {
+      given = m.files || {};
       const wasm = await get('gemv.wasm'), manifest = JSON.parse(new TextDecoder().decode(await get('live/manifest.json')));
       const layers = await get('live/layers.bin'), head = await get('live/head.bin'), f32 = await get('live/f32.bin'), emb = await get('live/emb_q8.bin'), embScale = await get('live/emb_scale.bin');
       postMessage({ stage: 'building' });

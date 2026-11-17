@@ -8,7 +8,7 @@ export async function attachGPC(brain, ort, say) {
   const ask = +(new URLSearchParams(location.search).get('cores') || 0);
   let threads = iso ? (ask ? Math.max(1, Math.min(ask, 4)) : Math.max(1, Math.min(3, cores - 1))) : 1;
   let fps = 0, fN = 0, fT = performance.now(); const raf = () => { fN++; const n = performance.now(); if (n - fT >= 1000) { fps = fN * 1000 / (n - fT); fN = 0; fT = n; } requestAnimationFrame(raf); }; requestAnimationFrame(raf);
-  const w = new Worker(here + 'worker.js?v=11', { type: 'module' }), tracker = brain.session, st = { codes: null, busy: false, ms: 0, picks: 0, ticks: 0, sinceT: performance.now(), since: 0, rate: 0, err: null, loaded: {}, ready: false, threads };
+  const w = new Worker(here + 'worker.js?v=12', { type: 'module' }), tracker = brain.session, st = { codes: null, busy: false, ms: 0, picks: 0, ticks: 0, sinceT: performance.now(), since: 0, rate: 0, err: null, loaded: {}, ready: false, threads };
   const TOTAL = 195.9e6;
   w.onmessage = e => {
     const m = e.data;
@@ -26,8 +26,14 @@ export async function attachGPC(brain, ort, say) {
     cores: navigator.hardwareConcurrency, memGB: navigator.deviceMemory, isolated: !!self.crossOriginIsolated, ua: navigator.userAgent, screen: [screen.width, screen.height, devicePixelRatio], hidden: document.hidden,
     fpsEach5s: st.fpsHist.slice(-120), picksNote: '[seconds since load, ms to compute, ms from asking to having]', picksLast: st.hist.slice(-400) });
   setInterval(() => { st.fpsHist.push(Math.round(fps)); if (st.fpsHist.length > 240) st.fpsHist.shift(); }, 5000);
-  w.postMessage({ init: true, threads });
-  const load = async n => new Uint8Array(await (await fetch(here + n)).arrayBuffer()), so = { executionProviders: ['wasm'], graphOptimizationLevel: 'all' };
+  // (Nov 17 08:12) the motion brain's files go through the start screen's list (BOXLOAD): they count in its percentage
+  // (before, the screen sat at 99% while ~240 MB came in) and are kept on the phone after the first download
+  const LD = window.BOXLOAD, base = new URL('./', document.baseURI).href, rel = n => (here + n).slice(base.length);
+  const load = async n => LD ? new Uint8Array(await LD.take(LD.url(rel(n)), 'Motion brain')) : new Uint8Array(await (await fetch(here + n)).arrayBuffer());
+  const WF = ['gemv.wasm', 'live/manifest.json', 'live/layers.bin', 'live/head.bin', 'live/f32.bin', 'live/emb_q8.bin', 'live/emb_scale.bin'].concat(threads > 1 ? ['gemv_mt.wasm'] : []);
+  const files = {}; await Promise.all(WF.map(async n => { try { files[n] = await load(n); } catch (_) {} }));
+  w.postMessage({ init: true, threads, files }, Object.values(files).map(b => b.buffer));
+  const so = { executionProviders: ['wasm'], graphOptimizationLevel: 'all' };
   const dec = await ort.InferenceSession.create(await load('live/dec.onnx'), so), enc = await ort.InferenceSession.create(await load('live/enc.onnx'), so);
   brain.meta.getup = true;   // never the tracker's "gave up, go limp"
   // Two ways to choose his 40 codes each tick; the small part (dec) always turns them into joint commands on his body now.
