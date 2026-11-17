@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 30</div><div id="brainver"></div>
+<div id="ver">GPC live 31</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -310,7 +310,7 @@ import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=58';
 import * as ort from 'onnxruntime-web';
 if ('serviceWorker' in navigator && !self.crossOriginIsolated && !sessionStorage.getItem('swtry3')) { sessionStorage.setItem('swtry3', '1'); navigator.serviceWorker.register(new URL('gpc/sw.js', document.baseURI).href).then(() => navigator.serviceWorker.ready).then(() => location.reload()); }
 import { POSES, applyPose } from './sim/poses.js';
-import { buildLook, lookFromGLTF } from './sim/look.js';
+import { buildLook, lookFromGLTF, bindAtStand } from './sim/look.js?v=31';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const $ = id => document.getElementById(id);
@@ -757,7 +757,9 @@ function buildFigure() {
   // the chosen figure's GLB (FIGS); 'shapes' = the MJCF's own shapes; if a GLB fails, the code-sculpted mannequin
   try { look = DOLL ? lookFromGLTF(THREE, DOLL) : FIG === 'shapes' ? null : buildLook(THREE, mergeGeometries, W);
     if (look && DOLL && !DOLL.scene.getObjectByName('pieces_on_joints')) { const bp = n => { const b = W.bodyId[n]; return [m.body_pos[3 * b], m.body_pos[3 * b + 1], m.body_pos[3 * b + 2]]; }, add = (a, c) => a.map((v, i) => v + c[i]);
-      spineByJoint(look, to => to === 'Spine1' ? bp('Spine1') : to === 'Spine2' ? bp('Spine2') : add(bp('Spine2'), bp('Chest'))); } }
+      spineByJoint(look, to => to === 'Spine1' ? bp('Spine1') : to === 'Spine2' ? bp('Spine2') : add(bp('Spine2'), bp('Chest'))); }
+    // (user Nov 16 23:04) the trunk pieces are fitted to the skeleton in the average stand, not with every joint at 0 (sim/look.js)
+    if (look && DOLL) bindAtStand(look, n => { const b = W.bodyId[n]; return [m.body_pos[3 * b], m.body_pos[3 * b + 1], m.body_pos[3 * b + 2]]; }); }
   catch (e) { console.warn('figure look failed, drawing the plain shapes', e); }
   for (const g of bodyGroup) if (g) { figRoot.remove(g); g.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); movers.splice(movers.indexOf(g), 1); }
   bodyGroup.length = 0;

@@ -267,3 +267,24 @@ export function lookFromGLTF(THREE, gltf) {
   });
   return out;
 }
+
+// (user Nov 16 23:04: "the neck and chest is straight but it's all wrong in our female model ... fix the pivots") The
+// figure files are fitted to the skeleton with every joint at 0, where the spine joints sit in one straight column. No
+// one stands like that: over the 472 idle moves of the library the spine joints hold nearly constant angles while
+// standing (below: each joint's own forward/back hinge, degrees; mid back -5.6 +-0.9, chest 12.1 +-2.6, upper neck
+// -3.6 +-0.1). The figures are sculpted already standing, so those angles bent them a second time: the belly tipped
+// back 8 deg under the chest, the chest 4 deg forward, the neck 8 deg further forward. The trunk pieces are now fitted
+// to the skeleton in that average stand: there the figure looks exactly as it was sculpted, and each piece turns about
+// its joint from there. Hips, arms and legs are untouched. bodyPos(name) = the body's offset from its parent (metres).
+export const STAND_SPINE = { Spine1: -2.1, Spine2: -5.6, Chest: 12.1, Neck1: 3.4, Neck2: -3.6, Head: -7.5 };
+export function bindAtStand(look, bodyPos) {
+  let a = 0; const pr = [0, 0, 0], ps = [0, 0, 0];   // the joint's place from the hips: all joints at 0, and in the stand
+  for (const n in STAND_SPINE) {
+    const o = bodyPos(n), c = Math.cos(a), s = Math.sin(a);   // the parent's turn (about x) carries the offset
+    pr[0] += o[0]; pr[1] += o[1]; pr[2] += o[2];
+    ps[0] += o[0]; ps[1] += c * o[1] - s * o[2]; ps[2] += s * o[1] + c * o[2];
+    a += STAND_SPINE[n] * Math.PI / 180;
+    for (const it of look[n] || []) { it.geo.translate(pr[0] - ps[0], pr[1] - ps[1], pr[2] - ps[2]); it.geo.rotateX(-a); }
+  }
+  return look;
+}
