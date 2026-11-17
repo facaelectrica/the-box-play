@@ -61,16 +61,36 @@ export async function loadHMR(ort, modelUrl, here, say = () => {}) {
   catch (e) { console.warn('No WebGPU for the tracker; using the CPU, which is slow', e); gpu = false; net = await ort.InferenceSession.create(netBuf, { executionProviders: ['wasm'], ...fixed }); }
   const S = HMR_SIZE, cv = Object.assign(document.createElement('canvas'), { width: S, height: S }), g = cv.getContext('2d', { willReadFrequently: true }), x = new Float32Array(3 * S * S);
   const MEAN = [0.485, 0.456, 0.406], STD = [0.229, 0.224, 0.225], ms = { crop: 0, net: 0 };
+  // On the GPU the picture and the results stay in GPU buffers and come back in one read: 19 ms a frame against 25 on
+  // the user's GPU. (Recording and replaying the GPU commands, the runtime's "graph capture", was also tried there:
+  // no faster, and it returned wrong results from the second frame on.) The fast path is checked against the plain
+  // one on a test picture when the tracker loads, and is dropped if they disagree.
+  let fast = null;
+  if (gpu) try {
+    const net2 = await ort.InferenceSession.create(netBuf, { executionProviders: ['webgpu'], ...fixed, preferredOutputLocation: 'gpu-buffer' }), dev = ort.env.webgpu.device, U = GPUBufferUsage;
+    const mk = n => dev.createBuffer({ size: Math.ceil(n * 4 / 16) * 16, usage: U.STORAGE | U.COPY_SRC | U.COPY_DST }), gi = mk(3 * S * S), gc = mk(3), bo = { mhr_params: [mk(204), [1, 204]], shape_params: [mk(45), [1, 45]], cam_trans: [mk(3), [1, 3]], joints_2d: [mk(140), [1, 70, 2]] };
+    const feeds = { image: ort.Tensor.fromGpuBuffer(gi, { dataType: 'float32', dims: [1, 3, S, S] }), cliff_cond: ort.Tensor.fromGpuBuffer(gc, { dataType: 'float32', dims: [1, 3] }) }, fetches = {}; for (const k in bo) fetches[k] = ort.Tensor.fromGpuBuffer(bo[k][0], { dataType: 'float32', dims: bo[k][1] });
+    const stage = dev.createBuffer({ size: 1392, usage: U.MAP_READ | U.COPY_DST }), c4 = new Float32Array(4);
+    const go = async cl => { c4[0] = cl[0]; c4[1] = cl[1]; c4[2] = cl[2]; dev.queue.writeBuffer(gi, 0, x); dev.queue.writeBuffer(gc, 0, c4); await net2.run(feeds, fetches);
+      const e = dev.createCommandEncoder(); e.copyBufferToBuffer(bo.mhr_params[0], 0, stage, 0, 816); e.copyBufferToBuffer(bo.joints_2d[0], 0, stage, 816, 560); e.copyBufferToBuffer(bo.cam_trans[0], 0, stage, 1376, 16); dev.queue.submit([e.finish()]);
+      await stage.mapAsync(GPUMapMode.READ); const a = new Float32Array(stage.getMappedRange().slice(0)); stage.unmap(); return a; };   // 204 parameters, 140 picture numbers, 3 of the camera position
+    for (let i = 0; i < x.length; i++) x[i] = Math.sin(i * 0.37) * 1.5; const cl = [0.05, 0.02, 0.5];
+    const ref = (await net.run({ image: new ort.Tensor('float32', x, [1, 3, S, S]), cliff_cond: new ort.Tensor('float32', new Float32Array(cl), [1, 3]) })).mhr_params.data; let worst = 0;
+    for (let k = 0; k < 2; k++) { const o = await go(cl); for (let i = 0; i < 204; i++) worst = Math.max(worst, Math.abs(o[i] - ref[i])); }   // twice: the second frame must be right too
+    if (worst < 2e-3) { fast = go; await net.release(); } else { console.warn('The fast GPU path disagrees with the plain one by ' + worst + '; using the plain one'); await net2.release(); }
+  } catch (e) { console.warn('The fast GPU path is not available; using the plain one', e); fast = null; }
   // One frame: the crop around `box` (x1, y1, x2, y2 in the frame's pixels) -> the rig's joints and picture points.
   async function step(video, box) {
     const t0 = performance.now(), w = video.videoWidth, h = video.videoHeight, f = 1.05 * Math.hypot(h, w), cx = (box[0] + box[2]) / 2, cy = (box[1] + box[3]) / 2, size = Math.max(box[2] - box[0], box[3] - box[1]), side = size * 1.2;
     g.fillStyle = '#000'; g.fillRect(0, 0, S, S); g.drawImage(video, cx - side / 2, cy - side / 2, side, side, 0, 0, S, S);
     const px = g.getImageData(0, 0, S, S).data, n = S * S; for (let i = 0; i < n; i++) { x[i] = (px[4 * i] / 255 - MEAN[0]) / STD[0]; x[n + i] = (px[4 * i + 1] / 255 - MEAN[1]) / STD[1]; x[2 * n + i] = (px[4 * i + 2] / 255 - MEAN[2]) / STD[2]; }
-    const t1 = performance.now(), r = await net.run({ image: new ort.Tensor('float32', x, [1, 3, S, S]), cliff_cond: new ort.Tensor('float32', new Float32Array([Math.atan((cx - w / 2) / f), Math.atan((cy - h / 2) / f), size / f]), [1, 3]) }), t2 = performance.now();
-    const params = Float32Array.from(r.mhr_params.data), j2 = r.joints_2d.data, pts = new Array(70);
+    const t1 = performance.now(), cl = [Math.atan((cx - w / 2) / f), Math.atan((cy - h / 2) / f), size / f]; let params, j2, cam;
+    if (fast) { const o = await fast(cl); params = o.subarray(0, 204); j2 = o.subarray(204, 344); cam = Array.from(o.subarray(344, 347)); }
+    else { const r = await net.run({ image: new ort.Tensor('float32', x, [1, 3, S, S]), cliff_cond: new ort.Tensor('float32', new Float32Array(cl), [1, 3]) }); params = Float32Array.from(r.mhr_params.data); j2 = r.joints_2d.data; cam = Array.from(r.cam_trans.data); }
+    const t2 = performance.now(), pts = new Array(70);
     for (let k = 0; k < 70; k++) pts[k] = [(j2[2 * k] + 1) * 0.5 * side + cx - side / 2, (j2[2 * k + 1] + 1) * 0.5 * side + cy - side / 2];
     ms.crop += 0.1 * (t1 - t0 - ms.crop); ms.net += 0.1 * (t2 - t1 - ms.net);
-    return { params, state: rigState(rig, params), pts, cam: Array.from(r.cam_trans.data), focal: f };
+    return { params, state: rigState(rig, params), pts, cam, focal: f };
   }
   // Following him from frame to frame. The box around him comes from the tracker's own picture points of the frame
   // before, eased so the crop does not shake: a different box alone changes the pose by several degrees, so a box
@@ -84,5 +104,5 @@ export async function loadHMR(ort, modelUrl, here, say = () => {}) {
     if (!nb || nb[3] - nb[1] < 40) box = null; else for (let k = 0; k < 4; k++) box[k] += 0.5 * (nb[k] - box[k]);
     return r;
   }
-  return { map, rig, step, track, lose: () => { box = null; }, ms, gpu };
+  return { map, rig, step, track, lose: () => { box = null; }, ms, gpu, get fast() { return !!fast; } };
 }
