@@ -62,18 +62,56 @@ export function expandQ(mj, m, dec, ids, names) {
 // clipRef (the first frame's hips on his hips, its facing turned to his), in the box's own frame. Returns how far the
 // body would go through the walls, floor or ceiling (m, the worst point; 2 cm is allowed), and the share of points outside.
 export function overflow(buf, n, me, box, ground) {
-  const F = 376, NB = 23, { G, xy, yaw, h0, mid } = me, c = Math.cos(yaw - h0), s = Math.sin(yaw - h0);
+  const F = 376, NB = 23, X = outside(me, box, ground);
+  for (let f = 0; f < n; f += 3) for (let b = 0; b < NB; b++) { const a = f * F + 13 * b; X.add(buf[a], buf[a + 1], buf[a + 2]); }
+  return X.done();
+}
+// the same, from a move's index entry (only the points on the outside of all those points: the worst point is always
+// one of them, so the result is the same number)
+export function overflowIx(E, me, box, ground) {
+  const X = outside(me, box, ground);
+  for (let i = IX_PTS; i < E.length; i += 3) X.add(E[i], E[i + 1], E[i + 2]);
+  return X.done();
+}
+function outside(me, box, ground) {
+  const { G, xy, yaw, h0, mid } = me, c = Math.cos(yaw - h0), s = Math.sin(yaw - h0);
   const Gi = [-G[0], -G[1], -G[2], G[3]], t = [0, 0, 0];
   let worst = 0, out = 0, all = 0;
-  for (let f = 0; f < n; f += 3) for (let b = 0; b < NB; b++) {
-    const a = f * F + 13 * b, dx = buf[a] - mid[0], dy = buf[a + 1] - mid[1];
-    const x = xy[0] + c * dx - s * dy, y = xy[1] + s * dx + c * dy, z = ground + buf[a + 2];
-    qrot(Gi, x, y, z, t);
-    const e = Math.max(Math.abs(t[0]) - box.w / 2, -t[1], t[1] - box.D, t[2] - box.h / 2, 0);
-    all++; if (e > 0.02) out++; if (e > worst) worst = e;
-  }
-  return { worst, share: all ? out / all : 0 };
+  return {
+    add(px, py, pz) {
+      const dx = px - mid[0], dy = py - mid[1];
+      const x = xy[0] + c * dx - s * dy, y = xy[1] + s * dx + c * dy, z = ground + pz;
+      qrot(Gi, x, y, z, t);
+      const e = Math.max(Math.abs(t[0]) - box.w / 2, -t[1], t[1] - box.D, t[2] - box.h / 2, 0);
+      all++; if (e > 0.02) out++; if (e > worst) worst = e;
+    },
+    done: () => ({ worst, share: all ? out / all : 0 }) };
 }
+
+// A move's index entry (gpc/clips/index.json): what the director reads from a move to pick one, without downloading
+// and expanding the move. Float32Array: [first-frame hips x, y; frame count; first-frame hips quaternion x y z w;
+// first-frame qpos (73); then the points (x y z) of every 3rd frame of every body that lie on the outside of all those
+// points (their convex hull, plus any point within 0.1 mm of it)]. Values are copied, not recomputed, so they are
+// exactly the ones the full move gives.
+export const IX_Q0 = 7, IX_PTS = 80;
+export async function indexEntry(buf, n) {
+  const { ConvexHull } = await import('three/addons/math/ConvexHull.js'), { Vector3 } = await import('three');
+  const F = 376, NB = 23, P = [];
+  for (let f = 0; f < n; f += 3) for (let b = 0; b < NB; b++) { const a = f * F + 13 * b; P.push([buf[a], buf[a + 1], buf[a + 2]]); }
+  let keep = P;
+  try {
+    const H = new ConvexHull().setFromPoints(P.map(p => new Vector3(p[0], p[1], p[2])));
+    const planes = H.faces.map(f => [f.normal.x, f.normal.y, f.normal.z, f.constant]);
+    if (planes.length >= 4) keep = P.filter(p => planes.some(([x, y, z, k]) => x * p[0] + y * p[1] + z * p[2] - k > -1e-4));
+  } catch (_) {}
+  const E = new Float32Array(IX_PTS + 3 * keep.length);
+  E[0] = buf[0]; E[1] = buf[1]; E[2] = n; for (let j = 0; j < 4; j++) E[3 + j] = buf[3 + j];
+  for (let j = 0; j < 73; j++) E[IX_Q0 + j] = buf[299 + j];
+  keep.forEach((p, i) => { E[IX_PTS + 3 * i] = p[0]; E[IX_PTS + 3 * i + 1] = p[1]; E[IX_PTS + 3 * i + 2] = p[2]; });
+  return E;
+}
+export const ixPack = E => { const u = new Uint8Array(E.buffer, E.byteOffset, E.byteLength); let t = ''; for (let i = 0; i < u.length; i += 0x8000) t += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(t); };
+export const ixUnpack = s => { const t = atob(s), u = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) u[i] = t.charCodeAt(i); return new Float32Array(u.buffer); };
 function qrot(q, x, y, z, o) {
   const [qx, qy, qz, qw] = q, tx = 2 * (qy * z - qz * y), ty = 2 * (qz * x - qx * z), tz = 2 * (qx * y - qy * x);
   o[0] = x + qw * tx + qy * tz - qz * ty; o[1] = y + qw * ty + qz * tx - qx * tz; o[2] = z + qw * tz + qx * ty - qy * tx;

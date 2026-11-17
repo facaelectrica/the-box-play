@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v54</title>
+<title>EDITOR v55</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   #tabs{flex:none;display:flex;gap:3px;align-items:flex-end;padding:6px 12px 0;background:#120f0c;border-bottom:1px solid #3a302a} #tabs button{border-radius:8px 8px 0 0;border-bottom:0;padding:5px 16px;background:#1b1612;color:#a99a8c} #tabs button.on{background:#e0a34a;color:#1b1612;border-color:#e0a34a;font-weight:600}
@@ -63,7 +63,7 @@
 <div id="tabs"><button id="tabOrders" class="on" title="Orders: the director's rules">Orders</button><button id="tabMotions" title="Motions: record a move with the camera">Motions</button></div>
 <div id="ordersTab">
 <div id="left">
-  <header><b>EDITOR v54</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v55</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Download the current state for debugging (S)">Snapshot</button><button id="gh" title="GitHub token for publishing and for reading the library">GitHub</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove token</button></span><button id="undo" class="poseOnly" title="Undo (Ctrl+Z)">Undo</button><button id="reset" class="poseOnly">Reset pose</button><button id="load" title="Open an orders file">Open file</button><button id="save" class="pri" title="Save and publish the orders to the game">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ New order</button><div class="ord off" style="margin-top:10px" title="Runs when no order is active">No order<br><small>Chooser</small></div></div>
@@ -98,7 +98,7 @@
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=54"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=55"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>Tilt left/right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>Tilt forward/back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -226,7 +226,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { lookFromGLTF } from '../sim/look.js';
 import { makeTwoBone } from './ikA.js?v=19';
-import { decodeQ } from './libq.js?v=1';
+import { decodeQ, ixPack } from './libq.js?v=2';
 const host = $('v3'), ren = new THREE.WebGLRenderer({ antialias: true }); ren.setPixelRatio(devicePixelRatio || 1); host.appendChild(ren.domElement);
 ren.domElement.style.cssText = 'width:100%;height:100%;display:block;border-radius:10px';
 const scene = new THREE.Scene(); scene.background = new THREE.Color(0x241d18);
@@ -582,6 +582,14 @@ async function publish(js) {
   const add = used.filter(id => !have.has(id + '.q')), tree = [];
   for (const [k, id] of add.entries()) { $('file').textContent = `Copying moves to the game: ${k + 1} of ${add.length}`;
     const blob = await call('git/blobs', { content: b64(await G.moveRaw(id)), encoding: 'base64' }); tree.push({ path: 'gpc/clips/' + id + '.q', mode: '100644', type: 'blob', sha: blob.sha }); }
+  // the moves' index (gpc/clips/index.json): what the game's picks read from each move, so a pick downloads only the
+  // move it chooses. Moves already in it are kept; the moves the orders use that are not in it yet are added.
+  let ix = null; try { const r = await fetch(A + 'contents/gpc/clips/index.json?ref=main', { headers: { ...H, Accept: 'application/vnd.github.raw' } }); if (r.ok) { const j = await r.json(); if (j && j.version === 1) ix = j; } } catch (_) {}
+  if (!ix) ix = { version: 1, moves: {} };
+  const miss = used.filter(id => !ix.moves[id]);
+  for (const [k, id] of miss.entries()) { $('file').textContent = `Indexing moves: ${k + 1} of ${miss.length}`;
+    const buf = await G.move(id); ix.moves[id] = ixPack(await G.indexEntry(buf, Math.floor(buf.length / 376))); }
+  if (miss.length) tree.push({ path: 'gpc/clips/index.json', mode: '100644', type: 'blob', content: JSON.stringify(ix) });
   tree.push({ path: PATH, mode: '100644', type: 'blob', content: js });
   const t = await call('git/trees', { base_tree: base.tree.sha, tree });
   const c = await call('git/commits', { message: 'Orders from the editor (' + orders.map(o => o.name).join(', ') + ')' + (add.length ? `, ${add.length} new move${add.length > 1 ? 's' : ''}` : ''), tree: t.sha, parents: [ref.object.sha] });

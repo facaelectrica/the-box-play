@@ -1,7 +1,7 @@
 // Puts NVIDIA's GPC prior in the page brain's seat. Big part in a background worker (a new set of picks whenever it
 // finishes one), small part (decoder, 3 M numbers) here every control tick on his current body.
 import { qrot, qmul, NB, BODY_NAMES } from '../sim/brain.js';
-import { decodeQ, expandQ, overflow } from './libq.js?v=1';
+import { decodeQ, expandQ, overflow, overflowIx, indexEntry, ixUnpack, IX_Q0 } from './libq.js?v=2';
 export async function attachGPC(brain, ort, say) {
   const here = new URL('./', import.meta.url).href, iso = self.crossOriginIsolated, cores = navigator.hardwareConcurrency || 2;
   // the big part's kernel on 3 cores by default when the browser allows shared memory (?cores=1..4 to try others)
@@ -51,7 +51,7 @@ export async function attachGPC(brain, ort, say) {
   st.apply = O => { if (!O || !O.orders) return false; if (!O.version || O.version < 2) O = v1(O);
     st.orders = O.orders.map(norm); tm.clear();
     if (st.rec) { brain.react = null; st.rec = null; }
-    st.active = DANCE ? null : (st.orders.find(o => st.active && o.name === st.active.name) || null); st.step = 0; st.stepT = 0; standFor(st.active, 0); st.ordersFile = O; prefetch(); return true; };
+    st.active = DANCE ? null : (st.orders.find(o => st.active && o.name === st.active.name) || null); st.step = 0; st.stepT = 0; standFor(st.active, 0); st.ordersFile = O; return true; };
   st.setStepPose = (o, k, pose) => { const sp = o.steps[k]; sp.pose = pose; sp._stand = null; if (st.active === o && st.step === k) standFor(o, k); };
   st.setPose = (o, pose) => st.setStepPose(o, 0, pose);
   function standFor(o, k) { if (!o) return; const sp = o.steps[Math.min(k, o.steps.length - 1)]; brain.stand = sp._stand || (sp._stand = makeStand(sp.pose || {})); }
@@ -109,23 +109,34 @@ export async function attachGPC(brain, ort, say) {
       if (!r.ok) throw new Error('library ' + r.status); }
     return r.arrayBuffer(); };
   st.move = id => MV[id] || (MV[id] = st.moveRaw(id).then(decodeQ).then(dec => expandQ(brain.W.mj, brain.W.m, dec, brain.bodyId, BODY_NAMES)).catch(e => { delete MV[id]; throw e; }));
-  const prefetch = () => { for (const o of st.orders) if (o.do && o.do.moves) for (const id of o.do.moves) st.move(id).catch(() => {}); };
+  // the moves' index (gpc/clips/index.json, written by the editor's Save): what a pick reads from each move, so a pick
+  // downloads only the move it chooses (Idle has 472). A move missing from the index is downloaded as before.
+  st.index = fetch(here + 'clips/index.json').then(r => r.ok ? r.json() : null).catch(() => null)
+    .then(J => { const M = {}; if (J && J.version === 1) for (const [id, b] of Object.entries(J.moves || {})) { try { M[id] = ixUnpack(b); } catch (_) {} } return M; });
+  st.indexEntry = indexEntry;
   // which listed move to play: the closest first frame to his body now (shape of the hips, then the joints), and how
   // far it would take his body through the walls from where he is (no move is ruled out for lack of room: in a small
   // box most get-ups touch a wall, and he still has to try)
   async function pickMove(o) {
-    const me = shapeOf(brain.rot, 0), d = brain.W.d, P = brain.pos, yaw = hdg(brain.rot, 0), out = [];
-    for (const id of o.do.moves) { let buf; try { buf = await st.move(id); } catch (_) { continue; }
-      const n = Math.floor(buf.length / 376), s0 = shapeOf(buf, 3); let h = 0, k = 0;
-      for (const a of brain.W.act) { h += Math.abs(d.qpos[a.qadr] - buf[299 + a.qadr]); k++; }
+    const me = shapeOf(brain.rot, 0), d = brain.W.d, P = brain.pos, yaw = hdg(brain.rot, 0), out = [], IX = await st.index;
+    for (const id of o.do.moves) { const E = IX[id]; let buf = null, n, s0, h0, mid, q0, k0;
+      if (E) { n = E[2]; s0 = shapeOf(E, 3); h0 = hdg(E, 3); mid = [E[0], E[1]]; q0 = E; k0 = IX_Q0; }
+      else { try { buf = await st.move(id); } catch (_) { continue; } n = Math.floor(buf.length / 376); s0 = shapeOf(buf, 3); h0 = hdg(buf, 3); mid = [buf[0], buf[1]]; q0 = buf; k0 = 299; }
+      let h = 0, k = 0;
+      for (const a of brain.W.act) { h += Math.abs(d.qpos[a.qadr] - q0[k0 + a.qadr]); k++; }
       const pose = Math.hypot(me[0] - s0[0], me[1] - s0[1], me[2] - s0[2]) + 0.3 * h / k;
-      const ov = brain.W.open ? { worst: 0 } : overflow(buf, n, { G: brain.G, xy: [P[0], P[1]], yaw, h0: hdg(buf, 3), mid: [buf[0], buf[1]] }, brain.W.box, brain.ground);   // open floor: no walls to go through
+      const at = { G: brain.G, xy: [P[0], P[1]], yaw, h0, mid };
+      const ov = brain.W.open ? { worst: 0 } : E ? overflowIx(E, at, brain.W.box, brain.ground) : overflow(buf, n, at, brain.W.box, brain.ground);   // open floor: no walls to go through
       out.push({ id, buf, n, pose: +pose.toFixed(3), wall: +ov.worst.toFixed(2) }); }
     // the start pose comes first (a move he is not in cannot be followed); among moves within 0.15 of the best start,
     // the one that goes least through the walls
     const best = Math.min(...out.map(x => x.pose));
-    out.sort((a, b) => ((a.pose > best + 0.15) - (b.pose > best + 0.15)) || (a.pose > best + 0.15 ? a.pose - b.pose : a.wall - b.wall || a.pose - b.pose)); return out;
+    out.sort((a, b) => ((a.pose > best + 0.15) - (b.pose > best + 0.15)) || (a.pose > best + 0.15 ? a.pose - b.pose : a.wall - b.wall || a.pose - b.pose));
+    // only the chosen move is downloaded (when it came from the index)
+    for (const x of out) { if (!x.buf) { try { x.buf = await st.move(x.id); x.n = Math.floor(x.buf.length / 376); } catch (_) { continue; } } return out.slice(out.indexOf(x)); }
+    return [];
   }
+  st.pickMove = pickMove;
   // a move eases in from where his body is now, not from the last target (user Nov 16 16:40: the right leg thrashed at
   // every get-up: on the open floor the last target, the standing spot, was 3 m away, and the first 0.4 s dragged him there)
   const fromBody = () => { const L = brain.lastRef; if (!L) return; L.pos.set(brain.pos); L.rot.set(brain.rot); L.vel.set(brain.vel); L.ang.set(brain.ang); };
