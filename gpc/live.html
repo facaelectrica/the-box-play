@@ -69,7 +69,7 @@
   #dbgui::before{content:"";position:absolute;left:50%;top:50%;width:10px;height:13px;margin:-5px 0 0 -5px;border-radius:5px 5px 6px 6px;background:rgba(255,235,205,.95)}
   #dbgui::after{content:"";position:absolute;left:50%;top:6px;width:14px;height:7px;margin-left:-7px;border:2px solid rgba(255,235,205,.95);border-bottom:0;border-radius:7px 7px 0 0;box-sizing:border-box}
   #dbgui.on{background:#ffd400;border-color:#ffd400}#dbgui.on::before{background:#111}#dbgui.on::after{border-color:#111}
-  body:not(.debug) #dbg,body:not(.debug) #bal,body:not(.debug) #pose,body:not(.debug) #snap,body:not(.debug) #balTxt,body:not(.debug) #brainver{display:none!important}
+  body:not(.debug) #dbg,body:not(.debug) #bal,body:not(.debug) #pose,body:not(.debug) #snap,body:not(.debug) #balTxt,body:not(.debug) #brainver,body:not(.debug) #gpcst{display:none!important}
   body.debug #pose,body.debug #snap{display:block!important}
   #dbg{top:calc(276px + env(safe-area-inset-top))!important}
   #bal{top:calc(320px + env(safe-area-inset-top))!important}
@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 35</div><div id="brainver"></div>
+<div id="ver">GPC live 36</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -555,10 +555,11 @@ scene.add(spot, spot.target);
 scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12));
 const lightUp = new THREE.Vector3(0, 1, 0);
 // open floor: the view (and the key light with it) pans sideways to follow him (user 14:58); 0 in the box
-let camPan = 0, camDepth = 0; const _panV = new THREE.Vector3();
-// open floor: where the view and light follow him to (x across, depth along the floor), smoothed over 0.5 s
+let camPan = 0, camRise = 0, camDepth = 0; const _panV = new THREE.Vector3();
+// open floor: where the view and light follow him to (x across, up and down, depth along the floor), smoothed over
+// 0.5 s, so his hips stay in the middle of the screen (user Nov 17 07:23)
 function followHim(dt) { const on = place === 'floor', p = on ? bodyPoint('Hips', _panV) : null, a = 1 - Math.exp(-dt / 0.5);
-  camPan += ((on ? p.x : 0) - camPan) * a; camDepth += ((on ? p.z + D / 2 : 0) - camDepth) * a; }
+  camPan += ((on ? p.x : 0) - camPan) * a; camRise += ((on ? p.y : 0) - camRise) * a; camDepth += ((on ? p.z + D / 2 : 0) - camDepth) * a; }
 // (user 09:30: "when we are in pause mode and I rotate the camera, the lighting always respects the camera, so I can
 // examine the model and always have a nice top-down lighting") paused: the key light rides with the camera, above and a
 // little in front of it, aimed at what the camera looks at
@@ -569,8 +570,8 @@ function placeLight() {
   if (dir.z < 0.55) dir.z = 0.55;
   dir.normalize();
   const dist = 4.6;
-  spot.position.set(dir.x * dist + camPan, dir.y * dist, -D / 2 + dir.z * dist + camDepth);
-  spot.target.position.set(camPan, 0, -D * 0.7 + camDepth);
+  spot.position.set(dir.x * dist + camPan, dir.y * dist + camRise, -D / 2 + dir.z * dist + camDepth);
+  spot.target.position.set(camPan, camRise, -D * 0.7 + camDepth);
   spot.angle = Math.atan((Math.max(hw, hh) + 0.4) / dist) + 0.12;
 }
 
@@ -1582,7 +1583,7 @@ function updateCamera(dt) {
   ex = lim * Math.tanh(gain * ex / lim); ey = lim * Math.tanh(gain * ey / lim);
   const ez = EYE;
   followHim(dt);
-  camera.position.set(ex + camPan, ey, ez + camDepth);
+  camera.position.set(ex + camPan, ey + camRise, ez + camDepth);
   camera.quaternion.identity();
   camera.updateMatrixWorld();
   const n = 0.05, f = 40, k = n / ez;
@@ -1798,7 +1799,7 @@ const RV = { yaw: 0, pitch: 0.12, zoom: 1, pan: new THREE.Vector3(), drag: null 
 const _o = new THREE.Vector3(), _t = new THREE.Vector3();
 function worldCamera() {
   _qx.setFromAxisAngle(_v.set(1, 0, 0), dragS.pitch); _q.setFromAxisAngle(_v.set(0, 0, 1), dragS.roll).multiply(_qx);
-  _c.set(camPan, 0, -D / 2 + camDepth); const dist = (3.1 * Math.hypot(hw, hh) + D / 2) * RV.zoom;
+  _c.set(camPan, camRise, -D / 2 + camDepth); const dist = (3.1 * Math.hypot(hw, hh) + D / 2) * RV.zoom;
   _o.set(Math.sin(RV.yaw) * Math.cos(RV.pitch), Math.sin(RV.pitch), Math.cos(RV.yaw) * Math.cos(RV.pitch)).multiplyScalar(dist).add(RV.pan).applyQuaternion(_q);
   _t.copy(RV.pan).applyQuaternion(_q).add(_c);
   camera.position.copy(_c).add(_o);
