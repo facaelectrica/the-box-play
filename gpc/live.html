@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V39</div><div id="brainver"></div>
+<div id="ver">V40</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -301,6 +301,7 @@ import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js?
 import { Kin, loadKinLibrary } from './sim/kin.js?v=57';
 import { Springs, humanCap } from './sim/springs.js?v=57';
 import { Balance } from './sim/balance.js?v=57';
+import { makeMotionBlur } from './gpc/mblur.js?v=1';
 import { BrainDrive, applyHumanLimits } from './sim/drive_brain.js?v=57';
 import { AnatGuard } from './sim/anat.js?v=58';
 import { PhysBrain } from './sim/physctl.js?v=57';
@@ -329,6 +330,7 @@ const OPTS = [
   { k: 'viewReturn', label: 'View re-centre', min: 0.5, max: 12, step: 0.1, def: 3, fmt: v => v.toFixed(1) + ' s', help: 'How fast the view settles back after you turn.' },
   { grp: 'Look and sound' },
   { k: 'hiQ', label: 'High detail', tog: true, def: false, help: 'Sharper picture and shadows, and every frame a 120 Hz screen can show (otherwise 60 there). Uses more battery.' },
+  { k: 'blur', label: 'Motion blur', tog: true, def: true, help: 'Fast movement smears the way it does on a film camera (shutter open for half of each frame).' },
   { k: 'sound', label: 'Sound', tog: true, def: true, help: 'Footsteps, scuffs, hands on the wood, bumps and slides.' },
 ];
 const SET = {};
@@ -351,6 +353,8 @@ renderer.toneMappingExposure = 1.0;
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
+// camera-accurate motion blur (gpc/mblur.js; user Nov 17 08:23); null where the phone can't draw it: the plain picture
+let MB = null; try { MB = makeMotionBlur(THREE, renderer, scene); } catch (e) { console.warn('motion blur unavailable', e); }
 const DARK = new THREE.Color(0x1a120b), ROOM = new THREE.Color(0x7d7368), GREY = new THREE.Color(0x808080);
 scene.background = DARK;
 const camera = new THREE.PerspectiveCamera();
@@ -747,6 +751,7 @@ function standUp() {
   if (drive) drive.reset(); else if (springs) springs.reset();
   newController();
   syncFigure();
+  if (MB) MB.reset();   // no smear from where he was before
   try { standHipY = bodyPoint('Hips', _panV).y; } catch (_) {}   // the open floor's camera height (followHim)
 }
 // nothing pushes him but his own servos and the walls (and your finger while you touch him): checked every step
@@ -1968,7 +1973,10 @@ async function frameStep(now) {
   // bounce light: redrawn only when the light has moved
   frameN++;
   if (envDirty < 2 || (lightUp.angleTo(envUp) > 4 * DEG && frameN - envFrame > 12)) { updateEnv(); envDirty++; envUp.copy(lightUp); envFrame = frameN; }
-  renderer.render(scene, camera);
+  if (MB && SET.blur) {
+    try { MB.render(camera); }
+    catch (e) { logErr('motion blur failed: plain picture from now on', e); MB = null; renderer.setRenderTarget(null); renderer.render(scene, camera); }
+  } else renderer.render(scene, camera);
   adaptSharpness(dt);
 }
 
