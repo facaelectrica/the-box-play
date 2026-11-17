@@ -201,6 +201,9 @@ export async function attachGPC(brain, ort, say) {
     { const R2 = brain.rot, q2 = 4 * 3, f = [0, 0, 0], l = [0, 0, 0]; qrot(R2, q2, 0, -1, 0, f, 0); qrot(R2, q2, 1, 0, 0, l, 0);
       S.lyingOn = S.lean < 50 ? 'upright' : f[2] > 0.5 ? 'back' : f[2] < -0.5 ? 'front' : l[2] > 0 ? 'right side' : 'left side'; }
     S.tiltLR = Math.asin(Math.max(-1, Math.min(1, -G[0] / gn))) * 180 / Math.PI; S.tiltFB = Math.asin(Math.max(-1, Math.min(1, G[1] / gn))) * 180 / Math.PI;
+    // (Nov 16 22:54) the slope of the floor he is on (deg): whichever side of the box is most level is his floor; with the
+    // box turned 153 degrees he stands on the ceiling, which slopes 27
+    S.slope = Math.acos(Math.min(1, Math.max(Math.abs(G[0]), Math.abs(G[1]), Math.abs(G[2])) / gn)) * 180 / Math.PI;
   }
   const holds = c => c && c.all && c.all.length ? c.all.every(x => { const v = st.signs[x.s]; return v !== undefined && (x.c === '=' ? v === x.v : x.c === '<' ? v < x.v : v > x.v); }) : false;
   function held(key, ok, secs) { const n = ok ? (tm.get(key) || 0) + 1 : 0; tm.set(key, n); return n >= Math.max(1, Math.round((secs || 0) * 30)); }
@@ -212,7 +215,10 @@ export async function attachGPC(brain, ort, say) {
     // holds (user Nov 16 15:34), a Pose order ends when its Start no longer holds
     const hasStop = o => o.stop && o.stop.all && o.stop.all.length, isRec = o => o.do && o.do.type === 'recording';
     const playing = () => !!(st.rec && !st.rec.failed && (st.rec.pending || brain.react));
-    if (next) { const o = next, stop = hasStop(o) ? holds(o.stop) : isRec(o) && playing() ? false : !holds(o.start);
+    // (Nov 16 22:54) Start conditions about the box (its tilt, the floor's slope) must hold for the whole order: when one
+    // no longer does, the order ends (Idle on a floor too steep to stand on; Sit once the box is turned back)
+    const BOXS = new Set(['tilt', 'tiltLR', 'tiltFB', 'slope']), boxGone = o => !!(o.start && o.start.all && o.start.all.some(x => BOXS.has(x.s) && !holds({ all: [x] })));
+    if (next) { const o = next, stop = boxGone(o) || (hasStop(o) ? holds(o.stop) : isRec(o) && playing() ? false : !holds(o.start));
       if (held('x' + ai, stop, o.stop ? o.stop.for : 0.3)) next = null; }
     const k = startOK.findIndex(Boolean); if (k >= 0 && (next === null || k < st.orders.indexOf(next))) next = st.orders[k];
     if (st.force) next = st.orders.find(o => o.name === st.force) || next;

@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v56</title>
+<title>EDITOR v57</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   #tabs{flex:none;display:flex;gap:3px;align-items:flex-end;padding:6px 12px 0;background:#120f0c;border-bottom:1px solid #3a302a} #tabs button{border-radius:8px 8px 0 0;border-bottom:0;padding:5px 16px;background:#1b1612;color:#a99a8c} #tabs button.on{background:#e0a34a;color:#1b1612;border-color:#e0a34a;font-weight:600}
@@ -63,7 +63,7 @@
 <div id="tabs"><button id="tabOrders" class="on" title="Orders: the director's rules">Orders</button><button id="tabMotions" title="Motions: record a move with the camera">Motions</button></div>
 <div id="ordersTab">
 <div id="left">
-  <header><b>EDITOR v56</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v57</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Download the current state for debugging (S)">Snapshot</button><button id="gh" title="GitHub token for publishing and for reading the library">GitHub</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove token</button></span><button id="undo" class="poseOnly" title="Undo (Ctrl+Z)">Undo</button><button id="reset" class="poseOnly">Reset pose</button><button id="load" title="Open an orders file">Open file</button><button id="save" class="pri" title="Save and publish the orders to the game">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ New order</button><div class="ord off" style="margin-top:10px" title="Runs when no order is active">No order<br><small>Chooser</small></div></div>
@@ -98,7 +98,7 @@
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=56"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=57"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>Tilt left/right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>Tilt forward/back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -112,10 +112,10 @@
 <script type="module">
 const $ = id => document.getElementById(id), DEG = 180 / Math.PI;
 const ORIG = { RightArm_y: -1.25, LeftArm_y: 1.25, RightArm_z: -0.2, LeftArm_z: 0.2 };   // the game's standing pose (sim/brain.js BRAIN_STAND)
-const GROUPS = { Heights: ['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot'], Angles: ['lean'], Lying: ['lyingOn'], Speed: ['speed'], Tilt: ['tilt', 'tiltLR', 'tiltFB'] };
+const GROUPS = { Heights: ['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot'], Angles: ['lean'], Lying: ['lyingOn'], Speed: ['speed'], Tilt: ['tilt', 'tiltLR', 'tiltFB', 'slope'] };
 const LYING = ['upright', 'back', 'front', 'left side', 'right side'];
 const SIGNS = { lyingOn: ['Lying on', ''], head: ['Head height', 'm'], chest: ['Chest height', 'm'], hips: ['Hips height', 'm'], rightHand: ['Right hand height', 'm'], leftHand: ['Left hand height', 'm'],
-  rightFoot: ['Right foot height', 'm'], leftFoot: ['Left foot height', 'm'], lean: ['Trunk lean', '°'], speed: ['Hips speed', 'm/s'], tilt: ['Tilt', '°'], tiltLR: ['Tilt left/right', '°'], tiltFB: ['Tilt forward/back', '°'] };
+  rightFoot: ['Right foot height', 'm'], leftFoot: ['Left foot height', 'm'], lean: ['Trunk lean', '°'], speed: ['Hips speed', 'm/s'], tilt: ['Tilt', '°'], tiltLR: ['Tilt left/right', '°'], tiltFB: ['Tilt forward/back', '°'], slope: ['Floor slope', '°'] };
 let orders = [], cur = 0, stepK = 0;
 const PV = { cache: new Map(), cur: null };   // move preview: decoded moves, and the one on the timeline
 const fr = $('frame');
@@ -393,7 +393,9 @@ function condUI(box, part, o) {
     (x.s === 'lyingOn' ? `<span style="width:30px;text-align:center">is</span><select data-k="${k}" data-f="v" style="width:96px">${LYING.map(v => `<option ${v === x.v ? 'selected' : ''}>${v}</option>`).join('')}</select><span class="u"></span>`
       : `<select data-k="${k}" data-f="c"><option value="<" ${x.c === '<' ? 'selected' : ''}>&lt;</option><option value=">" ${x.c === '>' ? 'selected' : ''}>&gt;</option></select><input data-k="${k}" data-f="v" type="number" step="0.05" value="${x.v}"><span class="u">${SIGNS[x.s][1]}</span>`) +
     `<button data-k="${k}" data-f="x">✕</button></div>`;
-  box.innerHTML = c.all.map(row).join('') + `<div class="cfor"><button data-f="add">+ Condition</button> Hold for <input data-f="for" type="number" step="0.1" value="${c.for}"> s${part === 'stop' && !c.all.length ? (o.do && o.do.type === 'recording' ? '<div>No conditions: the move plays to the end. The order then ends unless its Start conditions are still met.</div>' : '<div>No conditions: the order stops when its Start conditions are no longer met.</div>') : ''}</div>`;
+  const noStop = part === 'stop' && !c.all.length ? (o.do && o.do.type === 'recording' ? '<div>No conditions: the move plays to the end. The order then ends unless its Start conditions are still met.</div>' : '<div>No conditions: the order stops when its Start conditions are no longer met.</div>') : '';
+  const boxNote = part === 'stop' ? '<div>Start conditions on the tilt or the floor slope also end the order as soon as they are no longer met.</div>' : '';
+  box.innerHTML = c.all.map(row).join('') + `<div class="cfor"><button data-f="add">+ Condition</button> Hold for <input data-f="for" type="number" step="0.1" value="${c.for}"> s${noStop}${boxNote}</div>`;
   for (const el of box.querySelectorAll('[data-f]')) {
     const f = el.dataset.f, k = +el.dataset.k;
     if (f === 'x') el.onclick = () => { c.all.splice(k, 1); condUI(box, part, o); dirty(); };
