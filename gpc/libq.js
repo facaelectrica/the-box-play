@@ -88,12 +88,12 @@ function outside(me, box, ground) {
     done: () => ({ worst, share: all ? out / all : 0 }) };
 }
 
-// A move's index entry (gpc/clips/index.json): what the director reads from a move to pick one, without downloading
-// and expanding the move. Float32Array: [first-frame hips x, y; frame count; first-frame hips quaternion x y z w;
-// first-frame qpos (73); then the points (x y z) of every 3rd frame of every body that lie on the outside of all those
-// points (their convex hull, plus any point within 0.1 mm of it)]. Values are copied, not recomputed, so they are
-// exactly the ones the full move gives.
-export const IX_Q0 = 7, IX_PTS = 80;
+// A move's index entry (gpc/clips/index.json, version 2): what the director reads from a move to pick and place one,
+// without downloading and expanding the move. Float32Array: [first-frame hips x, y; frame count; first-frame hips
+// quaternion x y z w; first-frame qpos (73); first-frame x y of the 23 bodies (46); then the points (x y z) of every 3rd
+// frame of every body that lie on the outside of all those points (their convex hull, plus any point within 0.1 mm of
+// it)]. Values are copied, not recomputed, so they are exactly the ones the full move gives.
+export const IX_VERSION = 2, IX_Q0 = 7, IX_B0 = 80, IX_PTS = 126;
 export async function indexEntry(buf, n) {
   const { ConvexHull } = await import('three/addons/math/ConvexHull.js'), { Vector3 } = await import('three');
   const F = 376, NB = 23, P = [];
@@ -107,6 +107,7 @@ export async function indexEntry(buf, n) {
   const E = new Float32Array(IX_PTS + 3 * keep.length);
   E[0] = buf[0]; E[1] = buf[1]; E[2] = n; for (let j = 0; j < 4; j++) E[3 + j] = buf[3 + j];
   for (let j = 0; j < 73; j++) E[IX_Q0 + j] = buf[299 + j];
+  for (let b = 0; b < 23; b++) { E[IX_B0 + 2 * b] = buf[13 * b]; E[IX_B0 + 2 * b + 1] = buf[13 * b + 1]; }
   keep.forEach((p, i) => { E[IX_PTS + 3 * i] = p[0]; E[IX_PTS + 3 * i + 1] = p[1]; E[IX_PTS + 3 * i + 2] = p[2]; });
   return E;
 }

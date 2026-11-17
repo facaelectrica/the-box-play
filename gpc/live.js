@@ -1,7 +1,7 @@
 // Puts NVIDIA's GPC prior in the page brain's seat. Big part in a background worker (a new set of picks whenever it
 // finishes one), small part (decoder, 3 M numbers) here every control tick on his current body.
 import { qrot, qmul, NB, BODY_NAMES } from '../sim/brain.js';
-import { decodeQ, expandQ, overflow, overflowIx, indexEntry, ixUnpack, IX_Q0 } from './libq.js?v=2';
+import { decodeQ, expandQ, overflow, overflowIx, indexEntry, ixUnpack, IX_VERSION, IX_Q0, IX_B0 } from './libq.js?v=3';
 export async function attachGPC(brain, ort, say) {
   const here = new URL('./', import.meta.url).href, iso = self.crossOriginIsolated, cores = navigator.hardwareConcurrency || 2;
   // the big part's kernel on 3 cores by default when the browser allows shared memory (?cores=1..4 to try others)
@@ -112,22 +112,39 @@ export async function attachGPC(brain, ort, say) {
   // the moves' index (gpc/clips/index.json, written by the editor's Save): what a pick reads from each move, so a pick
   // downloads only the move it chooses (Idle has 472). A move missing from the index is downloaded as before.
   st.index = fetch(here + 'clips/index.json').then(r => r.ok ? r.json() : null).catch(() => null)
-    .then(J => { const M = {}; if (J && J.version === 1) for (const [id, b] of Object.entries(J.moves || {})) { try { M[id] = ixUnpack(b); } catch (_) {} } return M; });
+    .then(J => { const M = {}; if (J && J.version === IX_VERSION) for (const [id, b] of Object.entries(J.moves || {})) { try { M[id] = ixUnpack(b); } catch (_) {} } return M; });
   st.indexEntry = indexEntry;
+  // where a move's first frame goes: laid onto his body as it is now, by the turn and shift along the floor that bring
+  // its 23 bodies closest to his (least squares). (Nov 16 evening: before, its hips went on his hips, turned by the hips'
+  // heading alone; lying, that heading says little about where his head and legs are, and on his side it is undefined,
+  // so the first frame stuck through walls his body was nowhere near. Measured (whole-body placement everywhere): first pick stood 82% vs 66%, walls
+  // 0.11 m vs 0.23 m.) at(b) gives the move's first-frame x, y of body b.
+  function layOn(at, h0) {
+    const P = brain.pos; let mx = 0, my = 0, cx = 0, cy = 0, c = 0, s = 0;
+    for (let b = 0; b < 23; b++) { const [x, y] = at(b); mx += x / 23; my += y / 23; cx += P[3 * b] / 23; cy += P[3 * b + 1] / 23; }
+    for (let b = 0; b < 23; b++) { const [x, y] = at(b), ax = x - mx, ay = y - my, bx = P[3 * b] - cx, by = P[3 * b + 1] - cy; c += ax * bx + ay * by; s += ax * by - ay * bx; }
+    return { mid: [mx, my], h0, xy: [cx, cy], yaw: h0 + Math.atan2(s, c) };
+  }
+  // used only while his hips are on their side (where their heading is undefined); otherwise the move's hips go on his
+  // hips, turned by the hips' heading, as before: once he lies flat that placement got him up 35/36 from the side
+  // starts, the whole-body one only 20/36 (it turned the move 15-24 degrees off his hips)
+  const hipsOn = (mid, h0) => ({ mid, h0, xy: [brain.pos[0], brain.pos[1]], yaw: hdg(brain.rot, 0) });
+  const layBuf = buf => onSide() ? layOn(b => [buf[13 * b], buf[13 * b + 1]], hdg(buf, 3)) : hipsOn([buf[0], buf[1]], hdg(buf, 3));
+  const layIx = E => onSide() ? layOn(b => [E[IX_B0 + 2 * b], E[IX_B0 + 2 * b + 1]], hdg(E, 3)) : hipsOn([E[0], E[1]], hdg(E, 3));
   // which listed move to play: the closest first frame to his body now (shape of the hips, then the joints), and how
   // far it would take his body through the walls from where he is (no move is ruled out for lack of room: in a small
-  // box most get-ups touch a wall, and he still has to try)
-  async function pickMove(o) {
-    const me = shapeOf(brain.rot, 0), d = brain.W.d, P = brain.pos, yaw = hdg(brain.rot, 0), out = [], IX = await st.index;
-    for (const id of o.do.moves) { const E = IX[id]; let buf = null, n, s0, h0, mid, q0, k0;
-      if (E) { n = E[2]; s0 = shapeOf(E, 3); h0 = hdg(E, 3); mid = [E[0], E[1]]; q0 = E; k0 = IX_Q0; }
-      else { try { buf = await st.move(id); } catch (_) { continue; } n = Math.floor(buf.length / 376); s0 = shapeOf(buf, 3); h0 = hdg(buf, 3); mid = [buf[0], buf[1]]; q0 = buf; k0 = 299; }
+  // box most get-ups touch a wall, and he still has to try). full: ignore the index (for checks)
+  async function pickMove(o, full) {
+    const me = shapeOf(brain.rot, 0), d = brain.W.d, out = [], IX = full ? {} : await st.index;
+    for (const id of o.do.moves) { const E = IX[id]; let buf = null, n, s0, q0, k0;
+      if (E) { n = E[2]; s0 = shapeOf(E, 3); q0 = E; k0 = IX_Q0; }
+      else { try { buf = await st.move(id); } catch (_) { continue; } n = Math.floor(buf.length / 376); s0 = shapeOf(buf, 3); q0 = buf; k0 = 299; }
       let h = 0, k = 0;
       for (const a of brain.W.act) { h += Math.abs(d.qpos[a.qadr] - q0[k0 + a.qadr]); k++; }
       const pose = Math.hypot(me[0] - s0[0], me[1] - s0[1], me[2] - s0[2]) + 0.3 * h / k;
-      const at = { G: brain.G, xy: [P[0], P[1]], yaw, h0, mid };
+      const lay = E ? layIx(E) : layBuf(buf), at = { G: brain.G, ...lay };
       const ov = brain.W.open ? { worst: 0 } : E ? overflowIx(E, at, brain.W.box, brain.ground) : overflow(buf, n, at, brain.W.box, brain.ground);   // open floor: no walls to go through
-      out.push({ id, buf, n, pose: +pose.toFixed(3), wall: +ov.worst.toFixed(2) }); }
+      out.push({ id, buf, n, lay, pose: +pose.toFixed(3), wall: +ov.worst.toFixed(2) }); }
     // the start pose comes first (a move he is not in cannot be followed); among moves within 0.15 of the best start,
     // the one that goes least through the walls
     const best = Math.min(...out.map(x => x.pose));
@@ -137,6 +154,13 @@ export async function attachGPC(brain, ort, say) {
     return [];
   }
   st.pickMove = pickMove;
+  // lying on his side (the hips' left-right axis near vertical) NVIDIA's brain cannot follow a move: it reads his body
+  // and the move turned to his heading, which comes from that axis and is undefined there, so it rolls him onto his
+  // back or front within 0.3-2.5 s. A move started on his side is therefore followed only until that has happened (at
+  // least 1 s, hips level again); then the order picks again from his body as it is. (Measured from the side get-ups'
+  // first frames: stood 33/36, against 7/36 following the side moves through.)
+  const onSide = () => Math.abs(shapeOf(brain.rot, 0)[0]) >= 0.5;
+  st.sideDone = () => !!(st.rec && st.rec.side && brain.react && brain.W.d.time - st.rec.side >= 1 && !onSide());
   // a move eases in from where his body is now, not from the last target (user Nov 16 16:40: the right leg thrashed at
   // every get-up: on the open floor the last target, the standing spot, was 3 m away, and the first 0.4 s dragged him there)
   const fromBody = () => { const L = brain.lastRef; if (!L) return; L.pos.set(brain.pos); L.rot.set(brain.rot); L.vel.set(brain.vel); L.ang.set(brain.ang); };
@@ -145,10 +169,10 @@ export async function attachGPC(brain, ort, say) {
     if (D.moves && D.moves.length) {
       const L = await pickMove(o); if (st.active !== o) return; const b = L[0];
       if (!b || b.n < 10) { st.rec = { failed: D.moves.join(' ') }; return; }
-      const P = brain.pos, buf = b.buf;
-      brain.react = { buf, n: b.n, end: b.n - 1, fps: 30, mid: [buf[0], buf[1]], h0: hdg(buf, 3), t: 0, xy: [P[0], P[1]], yaw: hdg(brain.rot, 0) };
+      brain.react = { buf: b.buf, n: b.n, end: b.n - 1, fps: 30, t: 0, ...b.lay };
       fromBody(); if (brain.blendStart) brain.blendStart();
-      st.rec = { file: b.id, n: b.n, o, wall: b.wall, pose: b.pose, others: L.slice(1, 4).map(x => [x.id, x.pose, x.wall]) }; st.fresh = false; return;
+      // (Nov 16 evening) started with his hips on their side: see sideDone
+      st.rec = { file: b.id, n: b.n, o, wall: b.wall, pose: b.pose, others: L.slice(1, 4).map(x => [x.id, x.pose, x.wall]), side: onSide() ? brain.W.d.time : 0 }; st.fresh = false; return;
     }
     if (!file && D.category) {
       const L = (await st.library()).filter(x => x.cat === D.category || x.cat.startsWith(D.category + '-') || (D.category === 'getup' && x.cat.startsWith('getup-'))), me = shapeOf(brain.rot, 0), d = brain.W.d;
@@ -195,6 +219,7 @@ export async function attachGPC(brain, ort, say) {
     if (next !== st.active) { st.switches.push([t, next ? next.name : 'chooser', +st.signs.head.toFixed(2)]); if (st.switches.length > 60) st.switches.shift();
       st.active = next; st.step = 0; st.stepT = 0; standFor(next, 0); st.fresh = false; for (const key of [...tm.keys()]) if (key[0] === 'x') tm.delete(key);
       if (st.rec) { brain.react = null; st.rec = null; } if (next && next.do && next.do.type === 'recording') { st.rec = { pending: true }; startRecording(next); } }
+    if (st.active && isRec(st.active) && st.sideDone()) { st.switches.push([t, st.active.name + ' (off his side: picks again)', +st.signs.head.toFixed(2)]); brain.react = null; st.rec = { pending: true }; startRecording(st.active); }
     if (st.active && isRec(st.active) && (!st.rec || (!st.rec.pending && !st.rec.failed && !brain.react)) && (hasStop(st.active) || holds(st.active.start))) { st.rec = { pending: true }; startRecording(st.active); }   // not started (orders re-applied while it held) or ended while the order still holds: another try
     // steps: on to the next one when he is close to this pose or its time is up
     const o = st.active;

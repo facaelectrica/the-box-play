@@ -1,6 +1,6 @@
 {
  "version": 3,
- "saved": "2026-11-16T20:36:00.724010Z",
+ "saved": "2026-11-17T03:27:20.000Z",
  "orders": [
   {
    "name": "Get Up",
@@ -15,7 +15,11 @@
      "stand_up_lying_stomach_R_002__A472",
      "stand_up_lying_stomach_R_002__A474",
      "stand_up_lying_stomach_R_002__A473",
-     "stand_up_lying_stomach_R_002__A475"
+     "stand_up_lying_stomach_R_002__A475",
+     "stand_up_lying_side_R_002__A472",
+     "stand_up_lying_side_R_002__A473",
+     "stand_up_lying_side_R_002__A474",
+     "stand_up_lying_side_R_002__A475"
     ]
    },
    "start": {
