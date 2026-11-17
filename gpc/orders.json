@@ -1,6 +1,6 @@
 {
  "version": 3,
- "saved": "2026-11-17T04:10:49.000Z",
+ "saved": "2026-11-17T04:21:10.000Z",
  "orders": [
   {
    "name": "Sit",
@@ -19,13 +19,7 @@
      "sitting_legs_bend_arms_front_loop_R_001__A031",
      "sitting_legs_bend_arms_front_loop_R_001__A033",
      "sitting_legs_bend_arms_front_loop_R_001__A034",
-     "sitting_legs_bend_arms_front_loop_R_001__A035",
-     "sitting_legs_bend_arms_back_start_R_001__A029",
-     "sitting_legs_bend_arms_back_start_R_001__A030",
-     "sitting_legs_bend_arms_back_start_R_001__A031",
-     "sitting_legs_bend_arms_front_start_R_001__A029",
-     "sitting_legs_bend_arms_front_start_R_001__A030",
-     "sitting_legs_bend_arms_front_start_R_001__A031"
+     "sitting_legs_bend_arms_front_loop_R_001__A035"
     ]
    },
    "start": {
