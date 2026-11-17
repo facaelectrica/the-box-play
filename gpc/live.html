@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 37</div><div id="brainver"></div>
+<div id="ver">GPC live 38</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -295,7 +295,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import loadMujoco from '@mujoco/mujoco';
-import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=57';
+import { BoxWorld, PHYS, BODY_FILE } from './sim/physics.js?v=58';
 import { makeController, STAND } from './sim/control.js';
 import { Brain, BRAIN_STAND, makeCalmGravity, qmul, qrot } from './sim/brain.js?v=2';
 import { Kin, loadKinLibrary } from './sim/kin.js?v=57';
@@ -556,11 +556,18 @@ scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12));
 const lightUp = new THREE.Vector3(0, 1, 0);
 // open floor: the view (and the key light with it) pans sideways to follow him (user 14:58); 0 in the box
 let camPan = 0, camRise = 0, camDepth = 0, standHipY = 0; const _panV = new THREE.Vector3();
-// open floor: where the view and light follow him to (x across, depth along the floor), smoothed over 0.5 s. The
-// height stays at his standing hips, so the floor never moves on screen and a standing man is centred (user Nov 17
-// 07:23, 07:26)
-function followHim(dt) { const on = place === 'floor', p = on ? bodyPoint('Hips', _panV) : null, a = 1 - Math.exp(-dt / 0.5);
-  camPan += ((on ? p.x : 0) - camPan) * a; camRise += ((on ? standHipY : 0) - camRise) * a; camDepth += ((on ? p.z + D / 2 : 0) - camDepth) * a; }
+// open floor: where the view and light follow him to (x across, depth along the floor), smoothed over 0.08 s and never
+// letting his hips leave the middle 80% of the screen. The height stays at his standing hips, so the floor never moves
+// on screen and a standing man is centred (user Nov 17 07:23, 07:26, 07:58: "the character has to be always on screen")
+function followHim(dt) { const on = place === 'floor', p = on ? bodyPoint('Hips', _panV) : null, a = 1 - Math.exp(-dt / (on ? 0.08 : 0.5));
+  camPan += ((on ? p.x : 0) - camPan) * a; camRise += ((on ? standHipY : 0) - camRise) * a; camDepth += ((on ? p.z + D / 2 : 0) - camDepth) * a;
+  if (!on) return;
+  const half = 0.8 * (hw / zoom) * (EYE + D / 2) / EYE;   // half the view's width at his depth, 80%
+  camPan = Math.min(p.x + half, Math.max(p.x - half, camPan));
+  // the floor never ends: the picture's floor and the physics floor move with him in whole grid squares
+  if (floorGroup) floorGroup.position.set(Math.round(camPan / S) * S, 0, Math.round(camDepth / S) * S);
+  try { const b = W.bodyId.Hips, x = W.d.xpos[3 * b], y = W.d.xpos[3 * b + 1]; W.openAt(x, y); if (G !== W) G.openAt(x, y); } catch (_) {}
+}
 // (user 09:30: "when we are in pause mode and I rotate the camera, the lighting always respects the camera, so I can
 // examine the model and always have a nice top-down lighting") paused: the key light rides with the camera, above and a
 // little in front of it, aimed at what the camera looks at
@@ -1602,10 +1609,10 @@ let place = 'box', floorGroup = null;
 function buildFloor() {
   if (floorGroup) { floorGroup.traverse(o => { if (o.isMesh || o.isLineSegments) { o.geometry.dispose(); o.material.dispose(); } }); scene.remove(floorGroup); }
   floorGroup = new THREE.Group(); scene.add(floorGroup);
-  const size = 40 * S;   // 40 m across
+  const size = 80 * S;   // 80 m across: its edge stays past the fog (34 m) as it moves with him
   const plane = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshStandardMaterial({ color: 0x9a8e80, roughness: 0.88, metalness: 0 }));
   plane.rotation.x = -Math.PI / 2; plane.position.set(0, -iy, -D / 2); plane.receiveShadow = true; floorGroup.add(plane);
-  const grid = new THREE.GridHelper(size, 40, 0x5d544a, 0x6f655a);
+  const grid = new THREE.GridHelper(size, 80, 0x5d544a, 0x6f655a);
   grid.material.transparent = true; grid.material.opacity = 0.45; grid.position.set(0, -iy + 0.002, -D / 2); floorGroup.add(grid);
 }
 function bgNow() { return look.on ? GREY : place === 'floor' ? ROOM : DARK; }

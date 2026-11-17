@@ -205,6 +205,9 @@ export class BoxWorld {
       const k = this.wallMocap[n], p = this.wallAt[n].slice();
       // open floor: every wall but the floor goes far away (the floor slab is 40 m across, centred under him)
       if (this.open && n !== 'floor') { if (n === 'ceil') p[2] += far; else if (n === 'glass') p[1] -= far; else if (n === 'back') p[1] += far; else p[0] += Math.sign(p[0]) * far; }
+      // open floor: the floor slab and the far walls travel with him (openAt), so the floor never ends; the slab is
+      // flat and still, so moving it along its own plane changes nothing he feels
+      if (this.open && this.openOff) { p[0] += this.openOff[0]; p[1] += this.openOff[1]; }
       mp[3 * k] = p[0]; mp[3 * k + 1] = p[1]; mp[3 * k + 2] = p[2];
     }
   }
@@ -224,13 +227,22 @@ export class BoxWorld {
     return this.open ? all.slice(0, 1) : all;
   }
   // open floor (true) or the box (false); he stays where he is
-  setOpen(on) { this.open = !!on; this.placeWalls(); }
+  setOpen(on) { this.open = !!on; this.openOff = null; this.placeWalls(); }
+  // open floor: centre the floor slab and the far walls under (x, y), in whole metres (user, Nov 17 07:58: "the floor
+  // should be infinite in all directions")
+  openAt(x, y) {
+    if (!this.open) return;
+    const ox = Math.round(x), oy = Math.round(y - this.box.D / 2);
+    if (this.openOff && this.openOff[0] === ox && this.openOff[1] === oy) return;
+    this.openOff = [ox, oy]; this.placeWalls();
+  }
   setGravity(v) { const g = this.m.opt.gravity; g[0] = v[0]; g[1] = v[1]; g[2] = v[2]; }
   // stand him up: on the floor, mid-depth, facing the glass (the body's forward is -y: toward you)
   standAt(q) {
     const m = this.m, d = this.d, mj = this.mj;
     mj.mj_resetData(m, d);
     this.tControl = 0;     // the clock restarts: ask the controller again right away
+    this.openOff = null;   // he starts in the middle again
     this.placeWalls();
     const z0 = -this.box.h / 2 + 0.95;   // ProtoMotions soma23 default_root_height
     d.qpos[0] = 0; d.qpos[1] = this.box.D / 2; d.qpos[2] = z0;
