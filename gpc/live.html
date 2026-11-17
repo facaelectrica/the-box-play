@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 33</div><div id="brainver"></div>
+<div id="ver">GPC live 34</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -310,7 +310,7 @@ import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=58';
 import * as ort from 'onnxruntime-web';
 if ('serviceWorker' in navigator && !self.crossOriginIsolated && !sessionStorage.getItem('swtry3')) { sessionStorage.setItem('swtry3', '1'); navigator.serviceWorker.register(new URL('gpc/sw.js', document.baseURI).href).then(() => navigator.serviceWorker.ready).then(() => location.reload()); }
 import { POSES, applyPose } from './sim/poses.js';
-import { buildLook, lookFromGLTF, bindAtStand, standTurn } from './sim/look.js?v=32';
+import { buildLook, lookFromGLTF, bindAtStand, standTurn, STAND_SPINE } from './sim/look.js?v=32';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const $ = id => document.getElementById(id);
@@ -919,11 +919,19 @@ for (const ev of ['pointerdown', 'pointerup']) $('bal').addEventListener(ev, e =
 // steps in gradually once any spine hinge passes the range real people use (the library's, below) by up to 8 deg.
 const SPINE_REAL = {"Spine1_x": [-16.4, 47.8], "Spine1_y": [-17.6, 17.9], "Spine1_z": [-24.5, 27.3], "Spine2_x": [-17.2, 19.9], "Spine2_y": [-9.5, 12.3], "Spine2_z": [-16.4, 14.9], "Chest_x": [-15, 53.8], "Chest_y": [-29.8, 24.3], "Chest_z": [-18.6, 13.5]};
 const _sq = { h: new THREE.Quaternion(), c: new THREE.Quaternion(), r: new THREE.Quaternion(), id: new THREE.Quaternion(), a: new THREE.Quaternion(), p: new THREE.Vector3(), v: new THREE.Vector3() };
+const SPINE_OPP = 7;
 window.__spineView = true;
 function spineView() {
   const d = W.d, m = W.m; let ex = 0;
-  for (const n in SPINE_REAL) { const a = W.act.find(x => x.name === n); if (!a) continue; const v = d.qpos[a.qadr] * 180 / Math.PI, [lo, hi] = SPINE_REAL[n]; ex = Math.max(ex, lo - v, v - hi); }
-  const w = window.__spineView ? Math.max(0, Math.min(1, ex / 8)) : 0; spineView.w = w; if (w <= 0) return;
+  const A = spineView.adr || (spineView.adr = Object.fromEntries(Object.keys(SPINE_REAL).map(n => { const a = W.act.find(x => x.name === n); return [n, a ? a.qadr : -1]; })));
+  for (const n in SPINE_REAL) { if (A[n] < 0) continue; const v = d.qpos[A[n]] * 180 / Math.PI, [lo, hi] = SPINE_REAL[n]; ex = Math.max(ex, lo - v, v - hi); }
+  // (user Nov 16 23:32) also when neighbouring spine joints turn against each other (a zigzag: the mid back one way, the
+  // chest the other), each still inside its own range. Bends are counted from the average stand, twists and side
+  // bends from 0. In the 517 moves the game has, people never do this by more than 7.2 deg: it steps in from 7 to 15.
+  let op = 0;
+  for (const ax of 'xyz') { let prev = 0; for (const n of ['Spine1', 'Spine2', 'Chest']) { const k = A[n + '_' + ax]; if (k < 0) { prev = 0; continue; }
+    const v = d.qpos[k] * 180 / Math.PI - (ax === 'x' ? STAND_SPINE[n] : 0); if (prev * v < 0) op = Math.max(op, Math.min(Math.abs(prev), Math.abs(v))); prev = v; } }
+  const w = window.__spineView ? Math.max(0, Math.min(1, Math.max(ex / 8, (op - SPINE_OPP) / 8))) : 0; spineView.w = w; spineView.op = op; if (w <= 0) return;
   const H = W.bodyId.Hips, C = W.bodyId.Chest, S1 = W.bodyId.Spine1, S2 = W.bodyId.Spine2, Q = (q, b) => q.set(d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]);
   const fb = window.__spineBelly ?? 1;   // the belly's share of the hips-to-chest turn (1 = lined up with the chest)
   // (GPC live 32) "lined up" is measured on the pieces as sculpted: a figure fitted in the average stand (standFit)
