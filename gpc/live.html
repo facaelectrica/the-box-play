@@ -310,7 +310,7 @@ import { Cracks, CrackView, CrackSound } from './sim/crack.js?v=58';
 import * as ort from 'onnxruntime-web';
 if ('serviceWorker' in navigator && !self.crossOriginIsolated && !sessionStorage.getItem('swtry3')) { sessionStorage.setItem('swtry3', '1'); navigator.serviceWorker.register(new URL('gpc/sw.js', document.baseURI).href).then(() => navigator.serviceWorker.ready).then(() => location.reload()); }
 import { POSES, applyPose } from './sim/poses.js';
-import { buildLook, lookFromGLTF, bindAtStand } from './sim/look.js?v=31';
+import { buildLook, lookFromGLTF, bindAtStand, standTurn } from './sim/look.js?v=32';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const $ = id => document.getElementById(id);
@@ -751,6 +751,7 @@ SHELL.side = THREE.DoubleSide; SHELL.shadowSide = THREE.FrontSide;
 const JOINT = new THREE.MeshStandardMaterial({ color: 0x2b2d31, roughness: 0.48, metalness: 0.15, side: THREE.DoubleSide });
 const JOINT2 = JOINT.clone(); JOINT2.side = THREE.DoubleSide;   // open shapes (the shoulder caps)
 const bodyGroup = [];   // by MuJoCo body id
+let standFit = null;   // the trunk pieces' turns in the average stand, when the figure is fitted there (sim/look.js)
 function buildFigure() {
   const m = W.m;
   let look = null;
@@ -759,6 +760,7 @@ function buildFigure() {
     if (look && DOLL && !DOLL.scene.getObjectByName('pieces_on_joints')) { const bp = n => { const b = W.bodyId[n]; return [m.body_pos[3 * b], m.body_pos[3 * b + 1], m.body_pos[3 * b + 2]]; }, add = (a, c) => a.map((v, i) => v + c[i]);
       spineByJoint(look, to => to === 'Spine1' ? bp('Spine1') : to === 'Spine2' ? bp('Spine2') : add(bp('Spine2'), bp('Chest'))); }
     // (user Nov 16 23:04) the trunk pieces are fitted to the skeleton in the average stand, not with every joint at 0 (sim/look.js)
+    standFit = look && DOLL ? standTurn() : null;
     if (look && DOLL) bindAtStand(look, n => { const b = W.bodyId[n]; return [m.body_pos[3 * b], m.body_pos[3 * b + 1], m.body_pos[3 * b + 2]]; }); }
   catch (e) { console.warn('figure look failed, drawing the plain shapes', e); }
   for (const g of bodyGroup) if (g) { figRoot.remove(g); g.traverse(o => { if (o.isMesh) o.geometry.dispose(); }); movers.splice(movers.indexOf(g), 1); }
@@ -924,11 +926,14 @@ function spineView() {
   const w = window.__spineView ? Math.max(0, Math.min(1, ex / 8)) : 0; spineView.w = w; if (w <= 0) return;
   const H = W.bodyId.Hips, C = W.bodyId.Chest, S1 = W.bodyId.Spine1, S2 = W.bodyId.Spine2, Q = (q, b) => q.set(d.xquat[4 * b + 1], d.xquat[4 * b + 2], d.xquat[4 * b + 3], d.xquat[4 * b]);
   const fb = window.__spineBelly ?? 1;   // the belly's share of the hips-to-chest turn (1 = lined up with the chest)
-  Q(_sq.h, H); Q(_sq.c, C); _sq.r.copy(_sq.h).invert().multiply(_sq.c); _sq.r.copy(_sq.id.identity().slerp(_sq.r, fb / 2));   // the lower back and the mid back each take half of the belly's share
-  _sq.p.set(d.xpos[3 * H], d.xpos[3 * H + 1], d.xpos[3 * H + 2]); _sq.a.copy(_sq.h);
-  for (const b of [S1, S2]) { const g = bodyGroup[b];
-    _sq.v.set(m.body_pos[3 * b], m.body_pos[3 * b + 1], m.body_pos[3 * b + 2]).applyQuaternion(_sq.a); _sq.p.add(_sq.v); _sq.a.multiply(_sq.r);   // down the chain: this joint's place, then its turn
-    if (g) { g.position.lerp(_sq.p, w); g.quaternion.slerp(_sq.a, w); } }
+  // (GPC live 32) "lined up" is measured on the pieces as sculpted: a figure fitted in the average stand (standFit)
+  // has each piece turned by its stand angle inside its body, so that turn is taken off the chest and put back on each piece
+  const sf = standFit || {}, X = _sq.x || (_sq.x = new THREE.Vector3(1, 0, 0)), T = _sq.t || (_sq.t = new THREE.Quaternion()), turn = n => T.setFromAxisAngle(X, sf[n] || 0);
+  Q(_sq.h, H); Q(_sq.c, C); _sq.c.multiply(turn('Chest').invert()); _sq.r.copy(_sq.h).invert().multiply(_sq.c); _sq.r.copy(_sq.id.identity().slerp(_sq.r, fb / 2));   // the lower back and the mid back each take half of the belly's share
+  _sq.p.set(d.xpos[3 * H], d.xpos[3 * H + 1], d.xpos[3 * H + 2]); _sq.a.copy(_sq.h); _sq.c.copy(_sq.h);   // a = the piece as sculpted, c = its body
+  for (const [b, n] of [[S1, 'Spine1'], [S2, 'Spine2']]) { const g = bodyGroup[b];
+    _sq.v.set(m.body_pos[3 * b], m.body_pos[3 * b + 1], m.body_pos[3 * b + 2]).applyQuaternion(_sq.c); _sq.p.add(_sq.v); _sq.a.multiply(_sq.r); _sq.c.copy(_sq.a).multiply(turn(n));   // down the chain: this joint's place, then its turn
+    if (g) { g.position.lerp(_sq.p, w); g.quaternion.slerp(_sq.c, w); } }
 }
 function syncFigure() {
   const d = W.d;

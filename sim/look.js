@@ -288,3 +288,6 @@ export function bindAtStand(look, bodyPos) {
   }
   return look;
 }
+// each trunk body's own turn in that stand, from the hips (radians, about x): a piece drawn "lined up" with another
+// must differ from it by the difference of these (the game's spineView)
+export function standTurn() { const t = { Hips: 0 }; let a = 0; for (const n in STAND_SPINE) { a += STAND_SPINE[n] * Math.PI / 180; t[n] = a; } return t; }
