@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 38</div><div id="brainver"></div>
+<div id="ver">V39</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -556,14 +556,19 @@ scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12));
 const lightUp = new THREE.Vector3(0, 1, 0);
 // open floor: the view (and the key light with it) pans sideways to follow him (user 14:58); 0 in the box
 let camPan = 0, camRise = 0, camDepth = 0, standHipY = 0; const _panV = new THREE.Vector3();
-// open floor: where the view and light follow him to (x across, depth along the floor), smoothed over 0.08 s and never
-// letting his hips leave the middle 80% of the screen. The height stays at his standing hips, so the floor never moves
-// on screen and a standing man is centred (user Nov 17 07:23, 07:26, 07:58: "the character has to be always on screen")
-function followHim(dt) { const on = place === 'floor', p = on ? bodyPoint('Hips', _panV) : null, a = 1 - Math.exp(-dt / (on ? 0.08 : 0.5));
-  camPan += ((on ? p.x : 0) - camPan) * a; camRise += ((on ? standHipY : 0) - camRise) * a; camDepth += ((on ? p.z + D / 2 : 0) - camDepth) * a;
+// open floor: where the view and light follow him to (x across, depth along the floor), smoothed over 0.08 s. The aim
+// allows for where the screen's middle really is: the eye's sideways shift (phone tilt, drag) and the pinch-zoom
+// centre both move it, so the camera is placed so that his hips land in the middle of the screen. His hips never leave
+// the middle 40% of the screen even if he moves faster than the camera. The height stays at his standing hips, so the
+// floor never moves on screen (user Nov 17 07:23, 07:26, 07:58, 08:20)
+function followHim(dt, ex = 0) { const on = place === 'floor', p = on ? bodyPoint('Hips', _panV) : null, a = 1 - Math.exp(-dt / (on ? 0.08 : 0.5));
+  // his hips' depth behind the screen's plane and, from that, where they must be (across, from the view's centre line)
+  // for the ray from the eye through the screen's middle to meet them
+  const behind = on ? Math.max(0.2, camDepth - p.z) : 0, off = on ? ex + (zoomC.x - ex) * (EYE + behind) / EYE : 0;
+  camPan += ((on ? p.x - off : 0) - camPan) * a; camRise += ((on ? standHipY : 0) - camRise) * a; camDepth += ((on ? p.z + D / 2 : 0) - camDepth) * a;
   if (!on) return;
-  const half = 0.8 * (hw / zoom) * (EYE + D / 2) / EYE;   // half the view's width at his depth, 80%
-  camPan = Math.min(p.x + half, Math.max(p.x - half, camPan));
+  const half = 0.4 * (hw / zoom) * (EYE + behind) / EYE;   // 40% of half the view's width at his depth
+  camPan = Math.min(p.x - off + half, Math.max(p.x - off - half, camPan));
   // the floor never ends: the picture's floor and the physics floor move with him in whole grid squares
   if (floorGroup) floorGroup.position.set(Math.round(camPan / S) * S, 0, Math.round(camDepth / S) * S);
   try { const b = W.bodyId.Hips, x = W.d.xpos[3 * b], y = W.d.xpos[3 * b + 1]; W.openAt(x, y); if (G !== W) G.openAt(x, y); } catch (_) {}
@@ -1591,7 +1596,7 @@ function updateCamera(dt) {
   const lim = 1.4, gain = EYE * SET.view;
   ex = lim * Math.tanh(gain * ex / lim); ey = lim * Math.tanh(gain * ey / lim);
   const ez = EYE;
-  followHim(dt);
+  followHim(dt, ex);
   camera.position.set(ex + camPan, ey + camRise, ez + camDepth);
   camera.quaternion.identity();
   camera.updateMatrixWorld();
