@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V41</div><div id="brainver"></div>
+<div id="ver">V42</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -1575,14 +1575,16 @@ function applyQuality() {
   resizeAll();
 }
 // if frames take too long, draw fewer pixels (and more again when there's room)
-let ftSum = 0, ftN = 0, ftT = 0, settleT = 0;
+let ftSum = 0, ftN = 0, ftT = 0, settleT = 0, sinceUp = 1e9, upHold = 0;
 function adaptSharpness(dt) {
-  ftSum += dt; ftN++; ftT += dt; settleT += dt;
+  ftSum += dt; ftN++; ftT += dt; settleT += dt; sinceUp += dt; upHold = Math.max(0, upHold - dt);
   if (ftT < 1) return;
   const avg = ftSum / ftN; ftSum = 0; ftN = 0; ftT = 0;
   if (settleT < 2) return;
-  if (avg > 1 / 52 && dpr > 0.75) { dpr = Math.max(0.75, dpr - 0.25); resizeAll(); settleT = 0; }
-  else if (avg < 1 / 58 && dpr < dprMax && settleT > 4) { dpr = Math.min(dprMax, dpr + 0.25); resizeAll(); settleT = 0; }
+  // (Nov 17 08:33) a sharper step that made frames slow again within 8 s is not tried again for a minute: going up and
+  // down every few seconds flashed the screen
+  if (avg > 1 / 52 && dpr > 0.75) { dpr = Math.max(0.75, dpr - 0.25); resizeAll(); settleT = 0; if (sinceUp < 8) upHold = 60; }
+  else if (avg < 1 / 58 && dpr < dprMax && settleT > 4 && upHold <= 0) { dpr = Math.min(dprMax, dpr + 0.25); resizeAll(); settleT = 0; sinceUp = 0; }
 }
 
 // ================= camera: a window into the box =================
@@ -1973,11 +1975,11 @@ async function frameStep(now) {
   // bounce light: redrawn only when the light has moved
   frameN++;
   if (envDirty < 2 || (lightUp.angleTo(envUp) > 4 * DEG && frameN - envFrame > 12)) { updateEnv(); envDirty++; envUp.copy(lightUp); envFrame = frameN; }
+  adaptSharpness(dt);   // (Nov 17 08:33) before drawing: a resize clears the canvas, and after drawing that frame showed black
   if (MB && SET.blur) {
     try { MB.render(camera); }
     catch (e) { logErr('motion blur failed: plain picture from now on', e); MB = null; renderer.setRenderTarget(null); renderer.render(scene, camera); }
   } else renderer.render(scene, camera);
-  adaptSharpness(dt);
 }
 
 // ================= "Recording only (no physics)" (user, Nov 13 09:26: "This is extremely far from anything remotely
