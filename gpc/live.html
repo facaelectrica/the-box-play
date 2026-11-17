@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 36</div><div id="brainver"></div>
+<div id="ver">GPC live 37</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -555,11 +555,12 @@ scene.add(spot, spot.target);
 scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12));
 const lightUp = new THREE.Vector3(0, 1, 0);
 // open floor: the view (and the key light with it) pans sideways to follow him (user 14:58); 0 in the box
-let camPan = 0, camRise = 0, camDepth = 0; const _panV = new THREE.Vector3();
-// open floor: where the view and light follow him to (x across, up and down, depth along the floor), smoothed over
-// 0.5 s, so his hips stay in the middle of the screen (user Nov 17 07:23)
+let camPan = 0, camRise = 0, camDepth = 0, standHipY = 0; const _panV = new THREE.Vector3();
+// open floor: where the view and light follow him to (x across, depth along the floor), smoothed over 0.5 s. The
+// height stays at his standing hips, so the floor never moves on screen and a standing man is centred (user Nov 17
+// 07:23, 07:26)
 function followHim(dt) { const on = place === 'floor', p = on ? bodyPoint('Hips', _panV) : null, a = 1 - Math.exp(-dt / 0.5);
-  camPan += ((on ? p.x : 0) - camPan) * a; camRise += ((on ? p.y : 0) - camRise) * a; camDepth += ((on ? p.z + D / 2 : 0) - camDepth) * a; }
+  camPan += ((on ? p.x : 0) - camPan) * a; camRise += ((on ? standHipY : 0) - camRise) * a; camDepth += ((on ? p.z + D / 2 : 0) - camDepth) * a; }
 // (user 09:30: "when we are in pause mode and I rotate the camera, the lighting always respects the camera, so I can
 // examine the model and always have a nice top-down lighting") paused: the key light rides with the camera, above and a
 // little in front of it, aimed at what the camera looks at
@@ -734,6 +735,7 @@ function standUp() {
   if (drive) drive.reset(); else if (springs) springs.reset();
   newController();
   syncFigure();
+  try { standHipY = bodyPoint('Hips', _panV).y; } catch (_) {}   // the open floor's camera height (followHim)
 }
 // nothing pushes him but his own servos and the walls (and your finger while you touch him): checked every step
 const AUDIT = { n: 0, check() {
