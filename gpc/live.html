@@ -112,7 +112,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">GPC live 31</div><div id="brainver"></div>
+<div id="ver">GPC live 32</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -1798,7 +1798,9 @@ function lookCamera() {
   const c = Math.cos(look.pitch);
   camera.position.set(look.tgt.x + look.dist * c * Math.sin(look.yaw), look.tgt.y + look.dist * Math.sin(look.pitch), look.tgt.z + look.dist * c * Math.cos(look.yaw));
   camera.up.set(0, 1, 0); camera.lookAt(look.tgt); camera.updateMatrixWorld();
-  const n = 0.05, top = n * Math.tan(25 * DEG), right = top * hw / hh;   // a 50-degree view
+  // a 50-degree view, shaped like the frame it is drawn into (hw/hh is the glass, which in the editor is a phone's shape
+  // inside a frame of any shape: using it stretched the paused picture sideways)
+  const n = 0.05, top = n * Math.tan(25 * DEG), right = top * innerWidth / innerHeight;
   camera.projectionMatrix.makePerspective(-right, right, top, -top, n, 40);
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 }
