@@ -508,6 +508,15 @@ export class Brain {
     return o;
   }
 
+  // (Nov 16 23:00) each commanded joint angle written as the one nearest the joint's angle now: the conversion gives
+  // angles between -180 and +180 degrees, so a command of +188 (the brain often asks the right knee for about 180 when he
+  // lies on his right side) came out as -172, and the knee swung the long way round: the right-leg spasm. +188 and -172
+  // are the same rotation; whole turns are added or taken off, nothing else changes.
+  nearestAngles(T) {
+    const q = this.W.d.qpos, P = 2 * Math.PI;
+    for (let i = 0; i < ND; i++) { const c = q[this.hingeQ[i]] * this.sign[i]; T[i] += P * Math.round((c - T[i]) / P); }
+  }
+
   due() { return this.W.d.time >= this.tNext; }
 
   // one control tick: read him, place the reference, run the network, set the servo targets
@@ -538,6 +547,7 @@ export class Brain {
       for (let i = 0; i < ND; i++) this.targets[this.actIdx[i]] = s * Math.tanh(a[i]);
     } else {
       for (let j = 0; j < ND; j += 3) rotvecToXYZ(s * Math.tanh(a[j]), s * Math.tanh(a[j + 1]), s * Math.tanh(a[j + 2]), T, j);
+      if (!globalThis.NO_NEAREST) this.nearestAngles(T);
       for (let i = 0; i < ND; i++) this.targets[this.actIdx[i]] = T[i] * this.sign[i];
     }
     // how far he is from where the reference wants him (the tracker was trained to give up past 0.5 m)

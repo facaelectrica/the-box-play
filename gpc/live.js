@@ -1,6 +1,6 @@
 // Puts NVIDIA's GPC prior in the page brain's seat. Big part in a background worker (a new set of picks whenever it
 // finishes one), small part (decoder, 3 M numbers) here every control tick on his current body.
-import { qrot, qmul, NB, BODY_NAMES } from '../sim/brain.js';
+import { qrot, qmul, NB, BODY_NAMES } from '../sim/brain.js?v=2';
 import { decodeQ, expandQ, overflow, overflowIx, indexEntry, ixUnpack, IX_VERSION, IX_Q0, IX_B0 } from './libq.js?v=3';
 export async function attachGPC(brain, ort, say) {
   const here = new URL('./', import.meta.url).href, iso = self.crossOriginIsolated, cores = navigator.hardwareConcurrency || 2;
