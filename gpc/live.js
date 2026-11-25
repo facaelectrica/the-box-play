@@ -214,6 +214,10 @@ export async function attachGPC(brain, ort, say) {
     // (Nov 16 22:54) the slope of the floor he is on (deg): whichever side of the box is most level is his floor; with the
     // box turned 153 degrees he stands on the ceiling, which slopes 27
     S.slope = Math.acos(Math.min(1, Math.max(Math.abs(G[0]), Math.abs(G[1]), Math.abs(G[2])) / gn)) * 180 / Math.PI;
+    // (Nov 24) the light scene: the ceiling lamp's level (0 off .. 1 full) and how fast it is rising (level per second,
+    // over the last 0.3 s; a tap that switches it on reads about 3.3). Outside the scene these signs don't exist, so
+    // orders that use them never start there.
+    if (st.scene && st.scene.on) { S.light = st.scene.level; S.lightRate = st.scene.rate; } else { delete S.light; delete S.lightRate; }
   }
   const holds = c => c && c.all && c.all.length ? c.all.every(x => { const v = st.signs[x.s]; return v !== undefined && (x.c === '=' ? v === x.v : x.c === '<' ? v < x.v : v > x.v); }) : false;
   function held(key, ok, secs) { const n = ok ? (tm.get(key) || 0) + 1 : 0; tm.set(key, n); return n >= Math.max(1, Math.round((secs || 0) * 30)); }
@@ -243,6 +247,11 @@ export async function attachGPC(brain, ort, say) {
       if (poseGap(sp.pose) < (sp.close ?? 0.12) || st.stepT > (sp.time ?? 1)) { st.step++; st.stepT = 0; standFor(o, st.step); } }
     const mode = !o ? 'getup' : 'idle'; if (mode !== st.mode) { st.mode = mode; st.fresh = false; }
   }
+  // (Nov 24) give an order now, as if its Start had just held (the light scene starts him asleep in Sleep)
+  st.begin = name => { const o = st.orders.find(x => x.name === name); if (!o) return false;
+    st.switches.push([+((performance.now() - st.t0) / 1000).toFixed(1), name + ' (begun)', +(st.signs.head || 0).toFixed(2)]);
+    st.active = o; st.step = 0; st.stepT = 0; standFor(o, 0); st.fresh = false; for (const key of [...tm.keys()]) tm.delete(key);
+    if (st.rec) { brain.react = null; st.rec = null; } if (o.do && o.do.type === 'recording') { st.rec = { pending: true }; startRecording(o); } return true; };
   st.mode = DANCE ? 'dance' : 'idle'; standFor(st.active, 0);
   // the orders: this browser's last save or the published file, whichever was saved later (st.ordersReady once decided)
   { let saved = null; try { saved = JSON.parse(localStorage.getItem('gpc.orders') || 'null'); } catch (_) {}

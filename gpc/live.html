@@ -71,10 +71,22 @@
   #dbgui.on{background:#ffd400;border-color:#ffd400}#dbgui.on::before{background:#111}#dbgui.on::after{border-color:#111}
   body:not(.debug) #dbg,body:not(.debug) #bal,body:not(.debug) #pose,body:not(.debug) #snap,body:not(.debug) #balTxt,body:not(.debug) #brainver,body:not(.debug) #gpcst{display:none!important}
   body.debug #pose,body.debug #snap{display:block!important}
-  #dbg{top:calc(276px + env(safe-area-inset-top))!important}
-  #bal{top:calc(320px + env(safe-area-inset-top))!important}
-  #pose{top:calc(364px + env(safe-area-inset-top))!important}
-  #snap{top:calc(408px + env(safe-area-inset-top))!important}
+  #dbg{top:calc(320px + env(safe-area-inset-top))!important}
+  #bal{top:calc(364px + env(safe-area-inset-top))!important}
+  #pose{top:calc(408px + env(safe-area-inset-top))!important}
+  #snap{top:calc(452px + env(safe-area-inset-top))!important}
+  /* (Nov 24) the light scene: the lamp button, and the light switch under the box */
+  #lamp{position:fixed;right:calc(14px + env(safe-area-inset-right));top:calc(276px + env(safe-area-inset-top));z-index:6;width:34px;height:34px;border-radius:50%;border:2px solid rgba(255,235,205,.85);background:rgba(28,18,10,.45);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);padding:0;box-shadow:0 2px 8px rgba(0,0,0,.45)}
+  #lamp::before{content:"";position:absolute;left:50%;top:7px;width:12px;height:12px;margin-left:-6px;border-radius:50%;border:2px solid rgba(255,235,205,.95);box-sizing:border-box}
+  #lamp::after{content:"";position:absolute;left:50%;top:20px;width:6px;height:4px;margin-left:-3px;border-radius:0 0 2px 2px;background:rgba(255,235,205,.95)}
+  #lamp.on{background:#ffd400;border-color:#ffd400}#lamp.on::before{border-color:#111}#lamp.on::after{background:#111}
+  #lightbar{display:none;position:fixed;left:0;right:0;bottom:0;height:calc(72px + env(safe-area-inset-bottom));background:#000;z-index:3;touch-action:none}
+  body.scene #lightbar{display:block}
+  body.scene #hud{bottom:calc(90px + env(safe-area-inset-bottom))}
+  body.scene #tilt{opacity:.35;pointer-events:none}
+  #ltrack{position:absolute;left:34px;right:34px;top:34px;height:4px;margin-top:-2px;border-radius:2px;background:rgba(255,255,255,.14)}
+  #lfill{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:2px;background:rgba(255,214,150,.85)}
+  #lknob{position:absolute;top:50%;left:0;width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:#262626;border:2px solid rgba(255,255,255,.5);box-sizing:border-box}
   #ver{font-size:15px!important;padding:3px 9px!important}
   html.editor #ver,html.editor #gpcst,html.editor #brainver,html.editor #title,html.editor #hud{display:none!important}
   /* (user 09:30: "once the game has finished loading, we see this text on top of everything for like 3 seconds") */
@@ -112,7 +124,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V42</div><div id="brainver"></div>
+<div id="ver">V43</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -265,6 +277,8 @@ window.BOXLOAD = (() => {
 <button id="dbgui" aria-label="Debug: wireframe, balance, poses, snapshot and what he is doing"></button>
 <div id="title" aria-hidden="true"><div>YOU<br>CAN’T<br>BREAK<br>ME.</div></div>
 <button id="tilt" class="on" aria-label="Phone tilt moves the box (off: gravity stays straight down)"></button>
+<button id="lamp" aria-label="Light scene: the box stays still, he sleeps in the dark, and the switch below turns the light on"></button>
+<div id="lightbar" aria-label="Light: slide to dim, tap to switch"><div id="ltrack"><i id="lfill"></i><b id="lknob"></b></div></div>
 <div id="note"></div>
 <div id="hud">
   <button class="pill" id="optBtn">Options</button>
@@ -315,6 +329,9 @@ import { buildLook, lookFromGLTF, bindAtStand, standTurn, STAND_SPINE } from './
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 const $ = id => document.getElementById(id);
+// (Nov 24) the height the box is drawn in: the whole screen, or above the light switch in the light scene
+const SCN = { on: false, level: 0, rate: 0, hist: [], shown: -1 };
+const VH = () => innerHeight - (SCN.on ? ($('lightbar').offsetHeight || 72) : 0);
 const DEG = Math.PI / 180;
 const clamp = THREE.MathUtils.clamp;
 
@@ -345,7 +362,7 @@ loadSettings();
 // ================= renderer / scene =================
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(1);
-renderer.setSize(innerWidth, innerHeight);
+renderer.setSize(innerWidth, VH());
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -509,8 +526,8 @@ const EDITOR = /[?&]editor/.test(location.search);
 const roomView = () => EDITOR && window.__box && window.__box.worldView;
 if (EDITOR) document.documentElement.classList.add('editor');
 function buildBox() {
-  const s = Math.min(innerWidth, innerHeight);
-  hw = innerWidth / s; hh = innerHeight / s;
+  const s = Math.min(innerWidth, VH());
+  hw = innerWidth / s; hh = VH() / s;
   if (EDITOR) { hw = 1; hh = 915 / 412; }   // the editor's box is always a phone's (Pixel-class, 412 x 915): the frame around it can be any shape
   ix = hw - LIP; iy = hh - LIP;
   if (boxGroup) {
@@ -545,6 +562,7 @@ function buildBox() {
   const rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({ map: rt.map, bumpMap: rt.bump, bumpScale: 1, roughness: .7, emissive: 0x2a1a0c, emissiveIntensity: .45 }));
   rim.material.envMapIntensity = .4;
   boxGroup.add(rim);
+  buildLamp();
   physBox();
   envDirty = 0;
 }
@@ -556,7 +574,7 @@ spot.castShadow = true;
 spot.shadow.bias = -0.0004;
 spot.shadow.normalBias = 0.02;
 scene.add(spot, spot.target);
-scene.add(new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12));
+const hemi = new THREE.HemisphereLight(0xfff2e0, 0x3a2410, 0.12); scene.add(hemi);
 const lightUp = new THREE.Vector3(0, 1, 0);
 // open floor: the view (and the key light with it) pans sideways to follow him (user 14:58); 0 in the box
 let camPan = 0, camRise = 0, camDepth = 0, standHipY = 0; const _panV = new THREE.Vector3();
@@ -698,7 +716,7 @@ if (kin && PHYSICAL && BB.dir) try {
   const session = await ort.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
   const brainNet = new Brain(W, ort, session, meta); brainNet.setStandPose(BRAIN_STAND);
   // --- test page: NVIDIA's GPC prior alone drives him (gpc/live.js) ---
-  const { attachGPC, GpcDrive } = await import(new URL('gpc/live.js?v=26', document.baseURI).href);
+  const { attachGPC, GpcDrive } = await import(new URL('gpc/live.js?v=27', document.baseURI).href);
   const gst = document.createElement('div'); gst.id = 'gpcst'; gst.style.cssText = 'position:fixed;left:12px;right:60px;top:calc(48px + env(safe-area-inset-top));z-index:6;font:700 12px system-ui;color:#111;background:#ffd400;border-radius:8px;padding:5px 8px;pointer-events:none'; document.body.appendChild(gst);
   window.__gpc = await attachGPC(brainNet, ort, t => { gst.textContent = t + (/[?&]strong/.test(location.search) ? ' · full strength' : ' · human strength and joint limits'); });
   window.__brainNet = brainNet;
@@ -1168,7 +1186,7 @@ function onMotion(e) {
 const poke = { on: false, part: 0, local: [0, 0, 0], t: 0, x: 0, y: 0, x0: 0, y0: 0, id: null };
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
 function figureAt(cx, cy) {
-  ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1);
+  ndc.set(cx / innerWidth * 2 - 1, -(cy / VH()) * 2 + 1);
   ray.setFromCamera(ndc, camera);
   const hits = ray.intersectObjects(bodyGroup.filter(g => g && g.visible), true);   // (a broken-off part is hidden)
   if (!hits.length) return null;
@@ -1191,7 +1209,7 @@ function fingerPush() {
   const Wt = W.mass * 9.81;
   // into the box (+y): builds up over a moment like a finger pressing; plus the way the finger has moved on the glass
   const press = Wt * 0.4 * Math.min(1, poke.t / 0.15) * SET.push;
-  const k = 2 * Math.min(innerWidth, innerHeight);
+  const k = 2 * Math.min(innerWidth, VH());
   const dx = (poke.x - poke.x0) / k * 2 * hw / S, dz = -(poke.y - poke.y0) / k * 2 * hw / S;   // metres on the glass
   let F = [dx * Wt * 4 * SET.push, press, dz * Wt * 4 * SET.push];
   const n = Math.hypot(...F), lim = Wt * 1.2; if (n > lim) F = F.map(v => v * lim / n);
@@ -1220,7 +1238,7 @@ if (EDITOR) {
   el.addEventListener('pointermove', e => {
     if (!window.__box || !RV.drag) return; const dx = e.clientX - RV.drag.x, dy = e.clientY - RV.drag.y;
     if (!RV.drag.pan) { RV.yaw = RV.drag.yaw - dx * 0.008; RV.pitch = clamp(RV.drag.pitch + dy * 0.008, -1.45, 1.45); }
-    else { const k = (3.1 * Math.hypot(hw, hh) + D / 2) * RV.zoom * 0.75 / innerHeight, cy = Math.cos(RV.yaw), sy = Math.sin(RV.yaw), cp = Math.cos(RV.pitch), sp = Math.sin(RV.pitch);
+    else { const k = (3.1 * Math.hypot(hw, hh) + D / 2) * RV.zoom * 0.75 / VH(), cy = Math.cos(RV.yaw), sy = Math.sin(RV.yaw), cp = Math.cos(RV.pitch), sp = Math.sin(RV.pitch);
       RV.pan.copy(RV.drag.p).add(new THREE.Vector3(-cy * dx * k - sy * sp * dy * k, cp * dy * k, sy * dx * k - cy * sp * dy * k)); }
     e.stopImmediatePropagation();
   }, true);
@@ -1246,7 +1264,7 @@ const endPoke = e => { if (poke.on && e.pointerId === poke.id) { poke.on = false
 el.addEventListener('pointerup', endPoke); el.addEventListener('pointercancel', endPoke);
 el.addEventListener('pointermove', e => {
   if (!drag || e.pointerId !== drag.id) return;
-  const k = Math.min(innerWidth, innerHeight) * 0.45;
+  const k = Math.min(innerWidth, VH()) * 0.45;
   dragRot.roll = clamp((e.clientX - drag.x) / k, -1.6, 1.6) * 75 * DEG;
   dragRot.pitch = clamp((e.clientY - drag.y) / k, -1.6, 1.6) * 75 * DEG;
 });
@@ -1268,12 +1286,12 @@ el.addEventListener('pointercancel', endDrag);
 // the pinch moves the orbit camera closer or farther. Mouse wheel does the same on a computer. =================
 let zoom = 1; const zoomC = { x: 0, y: 0 };
 const ptrs = new Map(); let pinch = null;
-function glassAt(sx, sy, z, c) { return { x: c.x + (sx / innerWidth * 2 - 1) * hw / z, y: c.y + (1 - sy / innerHeight * 2) * hh / z }; }
+function glassAt(sx, sy, z, c) { return { x: c.x + (sx / innerWidth * 2 - 1) * hw / z, y: c.y + (1 - sy / VH() * 2) * hh / z }; }
 function setZoom(z, anchorGlass, sx, sy) {
   zoom = clamp(z, 1, 5);
   // keep the glass point anchorGlass under screen point (sx, sy), then keep the view inside the glass
   zoomC.x = anchorGlass.x - (sx / innerWidth * 2 - 1) * hw / zoom;
-  zoomC.y = anchorGlass.y - (1 - sy / innerHeight * 2) * hh / zoom;
+  zoomC.y = anchorGlass.y - (1 - sy / VH() * 2) * hh / zoom;
   const mx = hw - hw / zoom, my = hh - hh / zoom;
   zoomC.x = clamp(zoomC.x, -mx, mx); zoomC.y = clamp(zoomC.y, -my, my);
 }
@@ -1296,7 +1314,7 @@ el.addEventListener('pointermove', e => {
   if (look.on) {
     look.dist = clamp(pinch.dist0 / r, 0.6 * S, 8 * S);
     // two fingers moving together pan the view (user, Nov 13 09:47): the point under them moves with them
-    const k = 2 * look.dist * Math.tan(camera.fov * Math.PI / 360) / innerHeight;
+    const k = 2 * look.dist * Math.tan(camera.fov * Math.PI / 360) / VH();
     const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
     look.tgt.copy(pinch.tgt0).addScaledVector(right, -(mx - pinch.mx) * k).addScaledVector(up, (my - pinch.my) * k);
   }
@@ -1563,7 +1581,7 @@ for (const ev of ['pointerdown', 'pointermove', 'touchmove']) $('opts').addEvent
 
 // ================= picture quality: sharpness follows the frame rate =================
 let dpr = 1, dprMax = 1;
-function resizeAll() { renderer.setPixelRatio(dpr); renderer.setSize(innerWidth, innerHeight); }
+function resizeAll() { renderer.setPixelRatio(dpr); renderer.setSize(innerWidth, VH()); }
 function applyQuality() {
   const size = SET.hiQ ? 2048 : 1024;
   if (spot.shadow.mapSize.x !== size) {
@@ -1801,7 +1819,7 @@ for (const ev of ['pointerdown', 'pointerup']) $('pose').addEventListener(ev, e 
 el.addEventListener('pointerdown', e => { if (look.on) look.drag = { x: e.clientX, y: e.clientY, yaw: look.yaw, pitch: look.pitch, id: e.pointerId }; }, true);
 el.addEventListener('pointermove', e => {
   if (!look.on || !look.drag || e.pointerId !== look.drag.id) return;
-  const k = Math.PI / Math.min(innerWidth, innerHeight);
+  const k = Math.PI / Math.min(innerWidth, VH());
   look.yaw = look.drag.yaw - (e.clientX - look.drag.x) * k * 1.2;
   look.pitch = clamp(look.drag.pitch + (e.clientY - look.drag.y) * k, -1.2, 1.35);
 }, true);
@@ -1825,7 +1843,7 @@ function worldCamera() {
   _t.copy(RV.pan).applyQuaternion(_q).add(_c);
   camera.position.copy(_c).add(_o);
   camera.up.set(0, 1, 0).applyQuaternion(_q); camera.lookAt(_t); camera.updateMatrixWorld();
-  const n = 0.05, top = n * Math.tan(20 * DEG), right = top * innerWidth / innerHeight;
+  const n = 0.05, top = n * Math.tan(20 * DEG), right = top * innerWidth / VH();
   camera.projectionMatrix.makePerspective(-right, right, top, -top, n, 60);
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 }
@@ -1835,7 +1853,7 @@ function lookCamera() {
   camera.up.set(0, 1, 0); camera.lookAt(look.tgt); camera.updateMatrixWorld();
   // a 50-degree view, shaped like the frame it is drawn into (hw/hh is the glass, which in the editor is a phone's shape
   // inside a frame of any shape: using it stretched the paused picture sideways)
-  const n = 0.05, top = n * Math.tan(25 * DEG), right = top * innerWidth / innerHeight;
+  const n = 0.05, top = n * Math.tan(25 * DEG), right = top * innerWidth / VH();
   camera.projectionMatrix.makePerspective(-right, right, top, -top, n, 40);
   camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
 }
@@ -1876,7 +1894,7 @@ for (const ev of ['pointerdown', 'pointermove', 'pointerup', 'click', 'wheel', '
   addEventListener(ev, wake, { capture: true, passive: true });
 function skipFrame(now) {
   if (look.on) {
-    const t = look.tgt, sig = [look.yaw, look.pitch, look.dist, t.x, t.y, t.z, look.box, poseIdx, dbgMode, balOn, place, innerWidth, innerHeight, dpr].join();
+    const t = look.tgt, sig = [look.yaw, look.pitch, look.dist, t.x, t.y, t.z, look.box, poseIdx, dbgMode, balOn, place, innerWidth, VH(), dpr].join();
     const pn = performance.now();
     if (sig === lookSig && pn > wakeUntil && pn - lookDrawn < 2000) return true;
     lookDrawn = pn;   // (and a fresh picture every 2 s, just in case)
@@ -1914,6 +1932,7 @@ setInterval(() => {
 }, 1000);
 async function frameStep(now) {
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  sceneFrame(dt);
 
   // which way is down? (in g, screen axes; shakes included)
   let gx, gy, gz;
@@ -1974,7 +1993,7 @@ async function frameStep(now) {
   if (look.on) lookCamera(); else if (window.__box && window.__box.worldView) { followHim(dt); worldCamera(); } else updateCamera(dt);
   // bounce light: redrawn only when the light has moved
   frameN++;
-  if (envDirty < 2 || (lightUp.angleTo(envUp) > 4 * DEG && frameN - envFrame > 12)) { updateEnv(); envDirty++; envUp.copy(lightUp); envFrame = frameN; }
+  if (envDirty < 2 || (lightUp.angleTo(envUp) > 4 * DEG && frameN - envFrame > 12) || (Math.abs(SCN.shown - (SCN.envAt ?? -1)) > 0.03 && frameN - envFrame > 3)) { updateEnv(); envDirty++; envUp.copy(lightUp); envFrame = frameN; SCN.envAt = SCN.shown; }
   adaptSharpness(dt);   // (Nov 17 08:33) before drawing: a resize clears the canvas, and after drawing that frame showed black
   if (MB && SET.blur) {
     try { MB.render(camera); }
@@ -2013,6 +2032,113 @@ function playRecording(dt) {
   mj.mj_forward(W.m, d);
 }
 
+// ================= the light scene (user, Nov 24 23:14-23:26) =================
+// "A version of the game where the box doesn't move, but the character reacts to things." The box stays still (phone
+// tilt off), the room is dark, and he sleeps sitting on the floor (the box is too small to lie down in). A lamp hangs
+// from the ceiling; the black switch under the box sets its light: slide for a gradual change, tap to switch it on (or
+// off) at once. What he does is decided by orders (gpc/orders.json, editable), from two signs this sets: the light's
+// level and how fast it is rising. Slowly: he wakes slowly and gets up. Fast: he startles, covers his face, gets up.
+// Light off: after 10 s standing he sits down and falls asleep again. Every move is performed by the brain under physics.
+let lamp = null;
+function buildLamp() {
+  if (lamp) lamp.light.dispose();
+  const g = new THREE.Group(), y0 = iy, cz = -D / 2;
+  const metal = new THREE.MeshStandardMaterial({ color: 0x2b2622, roughness: 0.45, metalness: 0.6 });
+  const shadeM = new THREE.MeshStandardMaterial({ color: 0x1f2a24, roughness: 0.5, metalness: 0.3, side: THREE.DoubleSide });
+  const bulbM = new THREE.MeshStandardMaterial({ color: 0xfff4e0, emissive: 0xffd9a0, emissiveIntensity: 0, roughness: 0.3 });
+  const canopy = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.095, 0.035, 32), metal); canopy.position.set(0, y0 - 0.0175, cz);
+  const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.26, 8), metal); cord.position.set(0, y0 - 0.035 - 0.13, cz);
+  const shade = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.19, 0.15, 40, 1, true), shadeM); shade.position.set(0, y0 - 0.295 - 0.075, cz);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, 0.03, 24), metal); cap.position.set(0, y0 - 0.295 + 0.012, cz);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.05, 24, 16), bulbM); bulb.position.set(0, y0 - 0.41, cz);
+  for (const m of [canopy, cord, shade, cap]) { m.castShadow = false; m.receiveShadow = true; g.add(m); }
+  g.add(bulb);
+  // the bulb's light: a wide spot straight down (the shade stops it going up), soft edge, shadows
+  const light = new THREE.SpotLight(0xffdcae, 0, 0, 1.2, 0.75, 2);
+  light.position.set(0, y0 - 0.39, cz); light.target.position.set(0, -iy, cz);
+  light.castShadow = true; light.shadow.bias = -0.0004; light.shadow.normalBias = 0.02; light.shadow.mapSize.set(1024, 1024);
+  g.add(light, light.target);
+  boxGroup.add(g);
+  lamp = { g, light, bulbM };
+  lampLevel(true);
+}
+// the picture follows the light's level: the bulb, its light, the faint night light, and the room's key light (off)
+function lampLevel(force) {
+  if (!lamp) return;
+  const L = SCN.on ? SCN.level : 0;
+  if (!force && Math.abs(L - SCN.shown) < 1e-4) return;
+  SCN.shown = L;
+  lamp.g.visible = SCN.on;
+  const k = L * L;   // a dimmer: the light grows like the square of the slider
+  lamp.light.intensity = 32 * k; lamp.light.visible = SCN.on && L > 0.001;
+  lamp.bulbM.emissiveIntensity = 0.15 + 3.5 * L;
+  if (SCN.on) {
+    spot.intensity = 0; spot.castShadow = false;
+    hemi.color.setHex(0x8fa3c8); hemi.groundColor.setHex(0x0c0d12); hemi.intensity = 0.03 + 0.06 * k;
+  } else {
+    spot.intensity = 70; spot.castShadow = true;
+    hemi.color.setHex(0xfff2e0); hemi.groundColor.setHex(0x3a2410); hemi.intensity = 0.12;
+  }
+  const kn = $('lknob'), fi = $('lfill'), tr = $('ltrack');
+  if (kn && tr) { const w = tr.clientWidth; kn.style.left = (L * w) + 'px'; fi.style.width = (L * w) + 'px';
+    kn.style.background = `rgb(${38 + 200 * L | 0},${38 + 170 * L | 0},${38 + 110 * L | 0})`; }
+}
+// every frame: the rising speed the director reads (level per second over the last 0.3 s; falling counts as 0)
+function sceneFrame(dt) {
+  if (!SCN.on) return;
+  const t = W.d.time; SCN.hist.push([t, SCN.level]);   // his own clock: the director counts in it too
+  if (SCN.hist.length > 1 && SCN.hist[0][0] > t) SCN.hist = [[t, SCN.level]];   // (a reset turned the clock back)
+  while (SCN.hist.length > 2 && SCN.hist[1][0] <= t - 0.3) SCN.hist.shift();
+  const a = SCN.hist[0];
+  SCN.rate = Math.max(0, (SCN.level - a[1]) / 0.3);
+  lampLevel();
+}
+// the switch: drag from anywhere moves the light from where it is; a tap (no drag, short) switches it at once
+{ const bar = $('lightbar'); let p = null;
+  const setL = v => { SCN.level = Math.min(1, Math.max(0, v)); lampLevel(); };
+  bar.addEventListener('pointerdown', e => { e.stopPropagation(); e.preventDefault(); try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+    p = { x: e.clientX, l: SCN.level, t: performance.now(), moved: false }; });
+  bar.addEventListener('pointermove', e => { e.stopPropagation(); if (!p) return; const dx = e.clientX - p.x;
+    if (Math.abs(dx) > 6) p.moved = true; if (p.moved) setL(p.l + dx / Math.max(80, $('ltrack').clientWidth)); });
+  const up = e => { e.stopPropagation(); if (!p) return; if (!p.moved && performance.now() - p.t < 400) setL(SCN.level > 0.5 ? 0 : 1); p = null; };
+  bar.addEventListener('pointerup', up); bar.addEventListener('pointercancel', up);
+  for (const ev of ['click', 'touchstart', 'touchmove']) bar.addEventListener(ev, e => e.stopPropagation(), { passive: true });
+}
+// him asleep, sitting on the floor facing you: the sleep move's first frame, turned to face the glass, his hips far
+// enough back that his feet are clear of it, the lowest point on the floor (a reset, like standing him up)
+async function sitAsleep() {
+  const gp = window.__gpc;
+  if (!gp || !drive) { standUp(); return; }
+  let buf; try { buf = await gp.move('light_sleep_sit_001'); } catch (e) { logErr('light scene: sleep move missing', e); standUp(); return; }
+  if (crack) { crack.reset(); if (crackView) crackView.reset(); }
+  const q = Array.from(buf.subarray(299, 372)), b = W.box;
+  const fx = (buf[13 * 17] + buf[13 * 21]) / 2 - buf[0], fy = (buf[13 * 17 + 1] + buf[13 * 21 + 1]) / 2 - buf[1], L = Math.hypot(fx, fy);
+  const a = -Math.PI / 2 - Math.atan2(fy, fx), qa = [Math.cos(a / 2), 0, 0, Math.sin(a / 2)], r = q.slice(3, 7);
+  q[3] = qa[0] * r[0] - qa[3] * r[3]; q[4] = qa[0] * r[1] - qa[3] * r[2]; q[5] = qa[0] * r[2] + qa[3] * r[1]; q[6] = qa[0] * r[3] + qa[3] * r[0];
+  q[0] = 0; q[1] = Math.min(b.D - 0.3, Math.max(b.D / 2, L + 0.2));
+  for (const X of (G !== W ? [W, G] : [W])) { const d = X.d; d.qpos.set(q); d.qvel.fill(0); X.mj.mj_forward(X.m, d); }
+  const lo = W.lowestZ() + b.h / 2; for (const X of (G !== W ? [W, G] : [W])) { X.d.qpos[2] -= lo - 0.002; X.mj.mj_forward(X.m, X.d); X.started = true; }
+  W.tControl = 0;
+  drive.reset(); newController(); syncFigure(); if (MB) MB.reset();
+  gp.begin('Sleep');
+}
+async function setScene(on) {
+  if (on === SCN.on) return;
+  SCN.on = on; document.body.classList.toggle('scene', on); $('lamp').classList.toggle('on', on);
+  if (on) { SCN.tiltWas = tiltOn; tiltOn = false; $('tilt').classList.remove('on'); SCN.level = 0; SCN.rate = 0; SCN.hist = []; }
+  else if (SCN.tiltWas) { tiltOn = true; $('tilt').classList.add('on'); gS.copy(gRaw); levelPending = true; levelT = 0; }
+  if (window.__gpc) window.__gpc.scene = SCN;
+  resizeAll(); buildBox(); envDirty = 0; lampLevel(true);
+  if (on) await sitAsleep(); else standUp();
+  try { localStorage.setItem('box.scene', on ? 'light' : ''); } catch (_) {}
+  note(on ? 'Light scene: slide the switch below for light, or tap it.' : 'Light scene off.', 2600);
+}
+$('lamp').onclick = e => { e.stopPropagation(); setScene(!SCN.on); };
+for (const ev of ['pointerdown', 'pointerup']) $('lamp').addEventListener(ev, e => e.stopPropagation());
+window.__scene = { SCN, setScene, sitAsleep, frame: sceneFrame, gaze: dt => { if (brain) gaze(dt); },
+  // (checks) draw the picture as it is now and return it as a PNG
+  draw: () => { lampLevel(true); syncFigure(); updateCamera(1 / 60); updateEnv(); renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); } };
+
 // ================= where he looks (user, Nov 13 01:26) =================
 // "The character is always looking at us, unless they are losing balance. Then they look at the direction that they're
 // going to fall into. Every once in a while [when idle] they look down on the floor and then back at you."
@@ -2045,13 +2171,17 @@ function gaze(dt) {
     } else if (GZ.state === 'floor' && GZ.t > GZ.dur) { GZ.state = 'you'; GZ.t = 0; GZ.next = 6 + Math.random() * 10; }
     want = GZ.state === 'floor' ? GZ.floor : you;
   }
-  if (!want) { brain.lookW = 0; return; }
+  if (!want) { brain.lookW = 0; GZ.w = 0; return; }
   // the eyes lead, the head follows: the point moves there over ~0.25 s; toward a fall it snaps there (user 01:46:
   // "should be a fast turn")
   if (!GZ.pt) GZ.pt = want.slice();
   const k = 1 - Math.exp(-dt / (GZ.state === 'fall' ? 0.03 : 0.25));
   for (let i = 0; i < 3; i++) GZ.pt[i] += (want[i] - GZ.pt[i]) * k;
-  brain.lookAt = GZ.pt; brain.lookW = 1;
+  // (Nov 24) an order can switch his looking at you off (its "Looks at you" setting; asleep, hands over his face): the
+  // pull on his head fades out and back in over ~0.35 s
+  const gp = window.__gpc, wantW = gp && gp.active && gp.active.look === false ? 0 : 1;
+  GZ.w = (GZ.w ?? 1) + (wantW - (GZ.w ?? 1)) * (1 - Math.exp(-dt / 0.35));
+  brain.lookAt = GZ.pt; brain.lookW = GZ.w;
 }
 
 // what he's doing, under the release label (recording names help tell the user what he sees)
@@ -2077,6 +2207,8 @@ $('go').onclick = async () => {
   $('hud').classList.add('show');
   if (!/[?&]editor/.test(location.search)) { $('title').classList.add('show'); setTimeout(() => $('title').classList.remove('show'), 3000); }
   fullSync();
+  { let want = /[?&]light\b/.test(location.search); try { want = want || (!EDITOR && localStorage.getItem('box.scene') === 'light'); } catch (_) {}
+    if (want) (async () => { for (let i = 0; i < 200 && !(window.__gpc && window.__gpc.ordersReady); i++) await new Promise(r => setTimeout(r, 50)); setScene(true); })(); }
   setTimeout(() => { if (mode !== 'sensor') { mode = 'touch'; note('No motion sensors here, so drag to turn the box.', 4500); } }, 1300);
 };
 

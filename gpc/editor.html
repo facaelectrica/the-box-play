@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>EDITOR v70</title>
+<title>EDITOR v71</title>
 <style>
   *{box-sizing:border-box} body{margin:0;font:14px/1.5 system-ui,sans-serif;background:#1b1612;color:#eee;height:100vh;display:flex;flex-direction:column;overflow:hidden}
   #tabs{flex:none;display:flex;gap:3px;align-items:flex-end;padding:6px 12px 0;background:#120f0c;border-bottom:1px solid #3a302a} #tabs button{border-radius:8px 8px 0 0;border-bottom:0;padding:5px 16px;background:#1b1612;color:#a99a8c} #tabs button.on{background:#e0a34a;color:#1b1612;border-color:#e0a34a;font-weight:600}
@@ -63,7 +63,7 @@
 <div id="tabs"><button id="tabOrders" class="on" title="Orders: the director's rules">Orders</button><button id="tabMotions" title="Motions: record a move with the camera">Motions</button></div>
 <div id="ordersTab">
 <div id="left">
-  <header><b>EDITOR v70</b><span class="dim" id="file"></span><span class="sp"></span>
+  <header><b>EDITOR v71</b><span class="dim" id="file"></span><span class="sp"></span>
     <button id="snapB" title="Download the current state for debugging (S)">Snapshot</button><button id="gh" title="GitHub token for publishing and for reading the library">GitHub</button><span id="tokBox" hidden><input id="tokIn" type="password" autocomplete="off" style="width:220px;font:inherit;font-size:13px;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:5px 8px"> <button id="tokSet">Set</button><button id="tokDel">Remove token</button></span><button id="undo" class="poseOnly" title="Undo (Ctrl+Z)">Undo</button><button id="reset" class="poseOnly">Reset pose</button><button id="load" title="Open an orders file">Open file</button><button id="save" class="pri" title="Save and publish the orders to the game">Save</button></header>
   <div id="main">
     <div id="orders"><div id="olist"></div><button id="addO" style="width:100%;margin-top:6px">+ New order</button><div class="ord off" style="margin-top:10px" title="Runs when no order is active">No order<br><small>Chooser</small></div></div>
@@ -79,6 +79,7 @@
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><input id="oname" style="flex:1;font:inherit;font-weight:600;background:#2a221c;color:#eee;border:1px solid #5a4a3e;border-radius:6px;padding:4px 8px">
         </div><div style="display:flex;gap:4px;margin:-4px 0 10px"><button id="oUp" title="Raise priority">▲</button><button id="oDn" title="Lower priority">▼</button><button id="oTest" title="Run this order now, ignoring its Start conditions">Test</button><span class="sp"></span><button id="oDel">Delete order</button><span id="oDelAsk" hidden><span class="dim" style="margin-right:6px">Delete this order?</span><button id="oDelYes" class="danger">Delete</button> <button id="oDelNo">Cancel</button></span></div>
       <div class="crow" style="margin-bottom:10px"><span style="width:62px">Action</span><select id="oDo"><option value="pose">Pose steps</option><option value="recording">Moves</option></select></div>
+      <div class="crow" style="margin-bottom:10px"><span style="width:62px">Gaze</span><label title="His head turns toward the camera while this order runs. Off: the move's own head movement plays as recorded."><input type="checkbox" id="oLook"> Looks at you</label></div>
       <div id="libBox" hidden>
         <div class="pan" id="libPan"><div class="panH"><b>Library</b><span class="sp"></span><button id="libBig" title="Enlarge the list">Expand</button></div>
           <div class="crow"><input id="libQ" placeholder="Search moves" style="flex:1;width:auto;text-align:left;color:#eee"></div>
@@ -98,7 +99,7 @@
 </div>
 <div id="split"></div>
 <div id="right">
-  <div id="stage"><iframe id="frame" src="live.html?editor&v=70"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
+  <div id="stage"><iframe id="frame" src="live.html?editor&v=71"></iframe><div id="who"><span id="active">–</span><small id="whoWhy"></small></div></div>
   <div id="bar">
     <div class="trow"><span>Tilt left/right</span><input type="range" id="roll" min="-180" max="180" step="1" value="0"><span id="rollV">0°</span></div>
     <div class="trow"><span>Tilt forward/back</span><input type="range" id="pitch" min="-90" max="90" step="1" value="0"><span id="pitchV">0°</span></div>
@@ -112,10 +113,10 @@
 <script type="module">
 const $ = id => document.getElementById(id), DEG = 180 / Math.PI;
 const ORIG = { RightArm_y: -1.25, LeftArm_y: 1.25, RightArm_z: -0.2, LeftArm_z: 0.2 };   // the game's standing pose (sim/brain.js BRAIN_STAND)
-const GROUPS = { Heights: ['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot'], Angles: ['lean'], Lying: ['lyingOn'], Speed: ['speed'], Tilt: ['tilt', 'tiltLR', 'tiltFB', 'slope'] };
+const GROUPS = { Heights: ['head', 'chest', 'hips', 'rightHand', 'leftHand', 'rightFoot', 'leftFoot'], Angles: ['lean'], Lying: ['lyingOn'], Speed: ['speed'], Tilt: ['tilt', 'tiltLR', 'tiltFB', 'slope'], Light: ['light', 'lightRate'] };
 const LYING = ['upright', 'back', 'front', 'left side', 'right side'];
 const SIGNS = { lyingOn: ['Lying on', ''], head: ['Head height', 'm'], chest: ['Chest height', 'm'], hips: ['Hips height', 'm'], rightHand: ['Right hand height', 'm'], leftHand: ['Left hand height', 'm'],
-  rightFoot: ['Right foot height', 'm'], leftFoot: ['Left foot height', 'm'], lean: ['Trunk lean', '°'], speed: ['Hips speed', 'm/s'], tilt: ['Tilt', '°'], tiltLR: ['Tilt left/right', '°'], tiltFB: ['Tilt forward/back', '°'], slope: ['Floor slope', '°'] };
+  rightFoot: ['Right foot height', 'm'], leftFoot: ['Left foot height', 'm'], lean: ['Trunk lean', '°'], speed: ['Hips speed', 'm/s'], tilt: ['Tilt', '°'], tiltLR: ['Tilt left/right', '°'], tiltFB: ['Tilt forward/back', '°'], light: ['Light level (0-1)', ''], lightRate: ['Light rising', '/s'], slope: ['Floor slope', '°'] };
 let orders = [], cur = 0, stepK = 0;
 const PV = { cache: new Map(), cur: null };   // move preview: decoded moves, and the one on the timeline
 const fr = $('frame');
@@ -406,8 +407,9 @@ function condUI(box, part, o) {
       if (f === 's') { if (x.s === 'lyingOn') { x.c = '='; x.v = 'back'; } else if (x.c === '=' || typeof x.v === 'string') { x.c = '<'; x.v = 1; } condUI(box, part, o); } dirty(); };
   }
 }
+$('oLook').onchange = () => { orders[cur].look = $('oLook').checked; dirty(); };
 function showOrder() {
-  const o = orders[cur]; $('oname').value = o.name; if (!o.do) o.do = { type: 'pose' }; $('oDo').value = o.do.type; doUI(); condUI($('cStart'), 'start', o); condUI($('cStop'), 'stop', o); stepsUI();
+  const o = orders[cur]; $('oname').value = o.name; if (!o.do) o.do = { type: 'pose' }; $('oDo').value = o.do.type; $('oLook').checked = o.look !== false; doUI(); condUI($('cStart'), 'start', o); condUI($('cStop'), 'stop', o); stepsUI();
   $('oTest').classList.toggle('on', G.force === o.name); $('oDel').disabled = orders.length < 2; $('oDel').title = orders.length < 2 ? 'The last order cannot be deleted' : ''; delAsk(false); revAsk(false); revUI();
 }
 $('libBig').onclick = () => { const b = $('libPan').classList.toggle('big'); $('libBig').textContent = b ? 'Shrink' : 'Expand'; $('libBig').title = b ? 'Shrink the list' : 'Enlarge the list'; };
@@ -576,7 +578,7 @@ $('oDelYes').onclick = () => { delAsk(false); if (orders.length < 2) return; con
 $('oTest').onclick = () => { const o = orders[cur]; G.force = G.force === o.name ? null : o.name; showOrder(); listOrders(); };
 const clean = p => Object.fromEntries(Object.entries(p).filter(([k, v]) => Math.abs(v) > 1e-6 || k === 'root_w').map(([k, v]) => [k, +v.toFixed(4)]));
 function ordersFile() { return { version: 3, saved: new Date().toISOString(), orders: orders.map(ordersFile.one), otherwise: 'chooser' }; }
-ordersFile.one = o => ({ name: o.name, on: o.on !== false, do: o.do || { type: 'pose' }, start: o.start, stop: o.stop, steps: o.steps.map(x => ({ pose: clean(x.pose), time: x.time ?? 1 })), example: o.example });
+ordersFile.one = o => ({ name: o.name, on: o.on !== false, look: o.look !== false, do: o.do || { type: 'pose' }, start: o.start, stop: o.stop, steps: o.steps.map(x => ({ pose: clean(x.pose), time: x.time ?? 1 })), example: o.example });
 // Save: this browser's game uses the orders at once; with a GitHub key, they are also published (gpc/orders.json on
 // facaelectrica/the-box-play), which every phone's game loads within a minute or two. The key stays in this browser.
 const REPO = 'facaelectrica/the-box-play', PATH = 'gpc/orders.json';

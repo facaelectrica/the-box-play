@@ -1,7 +1,213 @@
 {
  "version": 3,
- "saved": "2026-11-17T04:21:10.000Z",
+ "saved": "2026-11-25T04:33:44.000Z",
  "orders": [
+  {
+   "name": "Startle",
+   "on": true,
+   "look": false,
+   "do": {
+    "type": "recording",
+    "moves": [
+     "light_startle_cover_001"
+    ]
+   },
+   "start": {
+    "all": [
+     {
+      "s": "light",
+      "c": ">",
+      "v": 0.3
+     },
+     {
+      "s": "lightRate",
+      "c": ">",
+      "v": 1.5
+     },
+     {
+      "s": "hips",
+      "c": "<",
+      "v": 0.5
+     }
+    ],
+    "for": 0
+   },
+   "stop": {
+    "all": [],
+    "for": 0.3
+   },
+   "steps": [
+    {
+     "pose": {},
+     "time": 1
+    }
+   ]
+  },
+  {
+   "name": "Wake up",
+   "on": true,
+   "look": false,
+   "do": {
+    "type": "recording",
+    "moves": [
+     "light_wake_slow_001"
+    ]
+   },
+   "start": {
+    "all": [
+     {
+      "s": "light",
+      "c": ">",
+      "v": 0.35
+     },
+     {
+      "s": "hips",
+      "c": "<",
+      "v": 0.5
+     }
+    ],
+    "for": 0.5
+   },
+   "stop": {
+    "all": [],
+    "for": 0.3
+   },
+   "steps": [
+    {
+     "pose": {},
+     "time": 1
+    }
+   ]
+  },
+  {
+   "name": "Look at you",
+   "on": true,
+   "look": true,
+   "do": {
+    "type": "recording",
+    "moves": [
+     "idle_to_idle_right_R_001__A093",
+     "idle_to_idle_right_R_002__A032",
+     "idle_to_idle_right_R_103__A038",
+     "idle_to_idle_right_R_002__A054",
+     "idle_to_idle_right_R_003__A068",
+     "idle_to_idle_right_R_001__A237",
+     "idle_right_to_idle_R_001__A094",
+     "idle_right_to_idle_R_002__A031",
+     "idle_right_to_idle_R_004__A024",
+     "idle_right_to_idle_R_002__A052",
+     "idle_right_to_idle_R_003__A060",
+     "idle_right_to_idle_R_001__A257"
+    ]
+   },
+   "start": {
+    "all": [
+     {
+      "s": "light",
+      "c": ">",
+      "v": 0.35
+     },
+     {
+      "s": "head",
+      "c": ">",
+      "v": 1.3
+     },
+     {
+      "s": "hips",
+      "c": ">",
+      "v": 0.8
+     }
+    ],
+    "for": 0.2
+   },
+   "stop": {
+    "all": [],
+    "for": 0.3
+   },
+   "steps": [
+    {
+     "pose": {},
+     "time": 1
+    }
+   ]
+  },
+  {
+   "name": "Sit down to sleep",
+   "on": true,
+   "look": false,
+   "do": {
+    "type": "recording",
+    "moves": [
+     "light_sit_down_sleep_001"
+    ]
+   },
+   "start": {
+    "all": [
+     {
+      "s": "light",
+      "c": "<",
+      "v": 0.15
+     },
+     {
+      "s": "head",
+      "c": ">",
+      "v": 1.3
+     },
+     {
+      "s": "hips",
+      "c": ">",
+      "v": 0.8
+     }
+    ],
+    "for": 10
+   },
+   "stop": {
+    "all": [],
+    "for": 0.3
+   },
+   "steps": [
+    {
+     "pose": {},
+     "time": 1
+    }
+   ]
+  },
+  {
+   "name": "Sleep",
+   "on": true,
+   "look": false,
+   "do": {
+    "type": "recording",
+    "moves": [
+     "light_sleep_sit_001"
+    ]
+   },
+   "start": {
+    "all": [
+     {
+      "s": "light",
+      "c": "<",
+      "v": 0.35
+     },
+     {
+      "s": "hips",
+      "c": "<",
+      "v": 0.5
+     }
+    ],
+    "for": 0.3
+   },
+   "stop": {
+    "all": [],
+    "for": 0.3
+   },
+   "steps": [
+    {
+     "pose": {},
+     "time": 1
+    }
+   ]
+  },
   {
    "name": "Sit",
    "on": true,
