@@ -124,7 +124,7 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V43</div><div id="brainver"></div>
+<div id="ver">V44</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
@@ -2074,7 +2074,7 @@ function lampLevel(force) {
   lamp.bulbM.emissiveIntensity = 0.15 + 3.5 * L;
   if (SCN.on) {
     spot.intensity = 0; spot.castShadow = false;
-    hemi.color.setHex(0x8fa3c8); hemi.groundColor.setHex(0x0c0d12); hemi.intensity = 0.03 + 0.06 * k;
+    hemi.color.setHex(0x8fa3c8); hemi.groundColor.setHex(0x0c0d12); hemi.intensity = 0.02 + 0.07 * k;
   } else {
     spot.intensity = 70; spot.castShadow = true;
     hemi.color.setHex(0xfff2e0); hemi.groundColor.setHex(0x3a2410); hemi.intensity = 0.12;
