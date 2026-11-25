@@ -17,6 +17,8 @@
   canvas{display:block;width:100%;height:100%}
   #start{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:rgba(22,14,8,.74);text-align:center;padding:24px;z-index:5;transition:opacity .4s}
   #start.hide{opacity:0;pointer-events:none}
+  body.scene #start,html.dark-start #start{background:#000}
+  html.dark-start,html.dark-start body{background:#000}
   #load{width:min(320px,86vw);font-size:13px;font-variant-numeric:tabular-nums}
   #load.done{display:none}
   #load .ltop{display:flex;justify-content:space-between;font-size:15px;font-weight:700;margin-bottom:8px}
@@ -121,13 +123,15 @@
   </div>
   <button id="go" disabled>Loading…</button>
 </div>
-<div id="ver">V45</div><div id="brainver"></div>
+<div id="ver">V46</div><div id="brainver"></div>
 <script>
 // ================= loading screen + early downloads (v15.21) =================
 // Every big file starts downloading here, all at once, the moment the page arrives (before v15.21 each waited for the
 // one before it: ~20 MB one after another), and the start screen shows each with its percentage. The module script
 // further down picks them up with BOXLOAD.take(url): the same URL gets the same download, anything not started here
 // is fetched then. take() forgets the file, so no second copy stays in memory.
+// (Nov 25) the light scene starts in the dark: black behind the loading screen from the first moment
+try { if (/[?&]light\b/.test(location.search) || (!/[?&]editor/.test(location.search) && localStorage.getItem('box.scene') === 'light')) document.documentElement.classList.add('dark-start'); } catch (_) {}
 window.BOXLOAD = (() => {
   // (V40; user Nov 15 12:59: "the file sizes are wrong ... we should know the total size. If the brain is downloaded
   // once, if it's the same version, does it have to be downloaded twice?") every file the page needs at start, with its
@@ -328,6 +332,10 @@ const $ = id => document.getElementById(id);
 // (Nov 24) the height the box is drawn in: the whole screen, or above the light switch in the light scene
 const SCN = { on: false, level: 0, rate: 0, hist: [], shown: -1 };
 const VH = () => innerHeight - (SCN.on ? ($('lightbar').offsetHeight || 72) : 0);
+// (user Nov 25 07:29: "we see the box while loading, defeating the darkness") the light scene, when asked for (?light) or
+// on last time, is on from the very first frame: dark, behind a black loading screen; he is sat down asleep at Start
+try { SCN.want = /[?&]light\b/.test(location.search) || (!/[?&]editor/.test(location.search) && localStorage.getItem('box.scene') === 'light'); } catch (_) {}
+if (SCN.want) { SCN.on = true; document.body.classList.add('scene', 'dark'); }
 const DEG = Math.PI / 180;
 const clamp = THREE.MathUtils.clamp;
 
@@ -1137,7 +1145,7 @@ function levelG(g, out) {
 }
 // user 17:45: by default the phone's tilt does NOT change his gravity (he is tested with the finger: touch pushes, drag
 // pulls); the round phone button turns the tilt on (the angle you hold it at then becomes level)
-let tiltOn = true;   // Recordings page: the phone's tilt is on from the start (the button turns it off)
+let tiltOn = !SCN.on;   // Recordings page: the phone's tilt is on from the start (the button turns it off)
 const eul = new THREE.Euler();
 
 function screenAngle() {
@@ -2041,7 +2049,8 @@ function playRecording(dt) {
 let lamp = null;
 function buildLamp() {
   if (lamp) lamp.light.dispose();
-  const g = new THREE.Group(), y0 = iy, cz = -D / 2;
+  // (user Nov 25 07:29) near the front of the box, so the light falls on him from the front, not from straight above
+  const g = new THREE.Group(), y0 = iy, cz = -D * 0.24;
   const metal = new THREE.MeshStandardMaterial({ color: 0x2b2622, roughness: 0.45, metalness: 0.6 });
   const shadeM = new THREE.MeshStandardMaterial({ color: 0x1f2a24, roughness: 0.5, metalness: 0.3, side: THREE.DoubleSide });
   const bulbM = new THREE.MeshStandardMaterial({ color: 0xfff4e0, emissive: 0xffd9a0, emissiveIntensity: 0, roughness: 0.3 });
@@ -2054,7 +2063,7 @@ function buildLamp() {
   g.add(bulb);
   // the bulb's light: a wide spot straight down (the shade stops it going up), soft edge, shadows
   const light = new THREE.SpotLight(0xffdcae, 0, 0, 1.2, 0.75, 2);
-  light.position.set(0, y0 - 0.39, cz); light.target.position.set(0, -iy, cz);
+  light.position.set(0, y0 - 0.39, cz); light.target.position.set(0, -iy + 0.9, -D * 0.62);   // aimed at where he sits
   light.castShadow = true; light.shadow.bias = -0.0004; light.shadow.normalBias = 0.02; light.shadow.mapSize.set(1024, 1024);
   g.add(light, light.target);
   boxGroup.add(g);
@@ -2126,10 +2135,10 @@ async function sitAsleep() {
   drive.reset(); newController(); syncFigure(); if (MB) MB.reset();
   gp.begin('Sleep');
 }
-async function setScene(on) {
-  if (on === SCN.on) return;
+async function setScene(on, force) {
+  if (on === SCN.on && !force) return;
   SCN.on = on; document.body.classList.toggle('scene', on); $('lamp').classList.toggle('on', on);
-  if (on) { SCN.tiltWas = tiltOn; tiltOn = false; $('tilt').classList.remove('on'); SCN.level = 0; SCN.rate = 0; SCN.hist = []; }
+  if (on) { SCN.tiltWas = force ? (SCN.tiltWas ?? true) : tiltOn; tiltOn = false; $('tilt').classList.remove('on'); SCN.level = 0; SCN.rate = 0; SCN.hist = []; }
   else if (SCN.tiltWas) { tiltOn = true; $('tilt').classList.add('on'); gS.copy(gRaw); levelPending = true; levelT = 0; }
   if (window.__gpc) window.__gpc.scene = SCN;
   resizeAll(); buildBox(); envDirty = 0; lampLevel(true);
@@ -2210,8 +2219,7 @@ $('go').onclick = async () => {
   $('start').classList.add('hide');
   $('hud').classList.add('show');
   fullSync();
-  { let want = /[?&]light\b/.test(location.search); try { want = want || (!EDITOR && localStorage.getItem('box.scene') === 'light'); } catch (_) {}
-    if (want) (async () => { for (let i = 0; i < 200 && !(window.__gpc && window.__gpc.ordersReady); i++) await new Promise(r => setTimeout(r, 50)); setScene(true); })(); }
+  if (SCN.want) (async () => { for (let i = 0; i < 200 && !(window.__gpc && window.__gpc.ordersReady); i++) await new Promise(r => setTimeout(r, 50)); setScene(true, true); })();
   setTimeout(() => { if (mode !== 'sensor') { mode = 'touch'; note('No motion sensors here, so drag to turn the box.', 4500); } }, 1300);
 };
 
